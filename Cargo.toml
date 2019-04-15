@@ -1,0 +1,9 @@
+[package]
+name = "loopers"
+version = "0.1.0"
+authors = ["Micah Wylde <micah@micahw.com>"]
+edition = "2018"
+
+[dependencies]
+jack = "0.6"
+crossbeam = "0.7"
