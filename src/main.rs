@@ -1,10 +1,43 @@
 extern crate jack;
-extern crate crossbeam;
-use std::io;
-use crossbeam::queue::SegQueue;
+extern crate crossbeam_queue;
+extern crate azul;
+use std::{io, thread};
 use std::f32::NEG_INFINITY;
 
+mod gui;
+
+#[derive(Ord, PartialOrd, PartialEq, Eq, Debug, Copy, Clone)]
+pub enum RecordMode {
+    NONE, READY, RECORD, OVERDUB
+}
+
+#[derive(Ord, PartialOrd, PartialEq, Eq, Debug, Copy, Clone)]
+pub enum PlayMode {
+    PAUSED, PLAYING
+}
+
+// Messages are sent from the audio thread to the gui
+#[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
+pub enum Message {
+    RecordingStateChanged(RecordMode),
+    PlayingStateChanged(PlayMode),
+    TimeChanged(i64),
+    LengthChanged(i64),
+}
+
+// Commands are sent from the Gui to the audio thread
+pub enum Command {
+
+}
+
 fn main() {
+    let (gui, output, input) = gui::Gui::new();
+    thread::spawn(move|| {
+        gui.run();
+        println!("window exited... shutting down");
+        std::process::exit(0);
+    });
+
     // Create client
     let (client, _status) =
         jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER).unwrap();
@@ -25,16 +58,6 @@ fn main() {
 
     let mut buffer: Vec<[Vec<f32>; 2]> = vec![];
 
-    #[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
-    enum RecordMode {
-        NONE, READY, RECORD, OVERDUB
-    }
-
-    #[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
-    enum PlayMode {
-        PAUSED, PLAYING
-    }
-
     let mut pos = 0usize;
 
     const THRESHOLD: f32 = 0.1;
@@ -54,43 +77,51 @@ fn main() {
         let in_b_p = in_b.as_slice(ps);
 
         controller.iter(ps).for_each(|e| {
-            println!("{:?}", e);
             if e.bytes.len() == 3 && e.bytes[0] == 144 {
                 match e.bytes[1]{
                     60 => {
                         if buffer.is_empty() || play_mode == PlayMode::PAUSED {
                             record_mode = RecordMode::READY;
+                            output.push(Message::RecordingStateChanged(record_mode));
                         } else {
                             record_mode = RecordMode::OVERDUB;
+                            output.push(Message::RecordingStateChanged(record_mode));
                         }
                     }
                     62 => {
                         record_mode = RecordMode::NONE;
+                        output.push(Message::RecordingStateChanged(record_mode));
                         play_mode = PlayMode::PLAYING;
+                        output.push(Message::PlayingStateChanged(play_mode));
+
                         pos = 0;
+                        output.push(Message::TimeChanged(pos as i64));
                     },
                     64 => {
                         play_mode = PlayMode::PAUSED;
+                        output.push(Message::PlayingStateChanged(play_mode));
                     }
                     _ => {}
                 }
-                println!("r = {:?}; p ={:?}", record_mode, play_mode);
             }
         });
 
         if record_mode == RecordMode::READY && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
             buffer = vec![];
             record_mode = RecordMode::RECORD;
-            println!("recording");
+            output.push(Message::RecordingStateChanged(record_mode));
         }
 
         let mut l = in_a_p.to_vec();
         let mut r = in_b_p.to_vec();
 
+        let times = ps.cycle_times().unwrap();
+        let frame_time = times.next_usecs - times.current_usecs;
+
         if play_mode == PlayMode::PLAYING {
             if !buffer.is_empty() {
                 let len = buffer.len();
-                let el = &mut buffer[pos as usize % len];
+                let el = &mut buffer[pos % len];
                 for i in 0..el[0].len() {
                     l[i] += el[0][i];
                     r[i] += el[1][i];
@@ -102,6 +133,7 @@ fn main() {
                 }
 
                 pos += 1;
+                output.push(Message::TimeChanged(((pos % len) as i64) * frame_time as i64));
             }
         }
 
@@ -110,6 +142,8 @@ fn main() {
 
         if record_mode == RecordMode::RECORD {
             buffer.push([l, r]);
+            output.push(Message::TimeChanged(buffer.len() as i64 * frame_time as i64));
+            output.push(Message::LengthChanged(buffer.len() as i64 * frame_time as i64));
         }
 
         jack::Control::Continue

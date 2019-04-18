@@ -1,0 +1,15 @@
+#wrapper {
+    background: #222;
+    color: white;
+    font-size: 20px;
+}
+
+.progress {
+    height: 50px;
+    border: 1px solid #888;
+}
+
+.progress-inner {
+    width: [[ progress_width | 50px ]];
+    background-color: green;
+}

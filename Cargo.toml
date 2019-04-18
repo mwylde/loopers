@@ -6,4 +6,5 @@ edition = "2018"
 
 [dependencies]
 jack = "0.6"
-crossbeam = "0.7"
+crossbeam-queue = "0.1"
+azul = { git = "https://github.com/maps4print/azul" }
