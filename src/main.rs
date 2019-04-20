@@ -2,8 +2,8 @@ extern crate jack;
 extern crate crossbeam_queue;
 extern crate azul;
 use std::{io, thread};
-use std::f32::NEG_INFINITY;
 
+mod engine;
 mod gui;
 
 #[derive(Ord, PartialOrd, PartialEq, Eq, Debug, Copy, Clone)]
@@ -56,97 +56,12 @@ fn main() {
     let controller = client
         .register_port("rust_midi_in", jack::MidiIn::default()).unwrap();
 
-    let mut buffer: Vec<[Vec<f32>; 2]> = vec![];
 
-    let mut pos = 0usize;
+    let mut engine = engine::Engine::new(in_a, in_b, out_a, out_b, controller,
+                                     output, input);
 
-    const THRESHOLD: f32 = 0.1;
-
-    let mut record_mode = RecordMode::NONE;
-    let mut play_mode = PlayMode::PAUSED;
-
-    fn max_abs(b: &[f32]) -> f32 {
-        b.iter().map(|v| v.abs())
-            .fold(NEG_INFINITY, |a, b| a.max(b))
-    }
-
-    let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        let out_a_p = out_a.as_mut_slice(ps);
-        let out_b_p = out_b.as_mut_slice(ps);
-        let in_a_p = in_a.as_slice(ps);
-        let in_b_p = in_b.as_slice(ps);
-
-        controller.iter(ps).for_each(|e| {
-            if e.bytes.len() == 3 && e.bytes[0] == 144 {
-                match e.bytes[1]{
-                    60 => {
-                        if buffer.is_empty() || play_mode == PlayMode::PAUSED {
-                            record_mode = RecordMode::READY;
-                            output.push(Message::RecordingStateChanged(record_mode));
-                        } else {
-                            record_mode = RecordMode::OVERDUB;
-                            output.push(Message::RecordingStateChanged(record_mode));
-                        }
-                    }
-                    62 => {
-                        record_mode = RecordMode::NONE;
-                        output.push(Message::RecordingStateChanged(record_mode));
-                        play_mode = PlayMode::PLAYING;
-                        output.push(Message::PlayingStateChanged(play_mode));
-
-                        pos = 0;
-                        output.push(Message::TimeChanged(pos as i64));
-                    },
-                    64 => {
-                        play_mode = PlayMode::PAUSED;
-                        output.push(Message::PlayingStateChanged(play_mode));
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        if record_mode == RecordMode::READY && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
-            buffer = vec![];
-            record_mode = RecordMode::RECORD;
-            output.push(Message::RecordingStateChanged(record_mode));
-        }
-
-        let mut l = in_a_p.to_vec();
-        let mut r = in_b_p.to_vec();
-
-        let times = ps.cycle_times().unwrap();
-        let frame_time = times.next_usecs - times.current_usecs;
-
-        if play_mode == PlayMode::PLAYING {
-            if !buffer.is_empty() {
-                let len = buffer.len();
-                let el = &mut buffer[pos % len];
-                for i in 0..el[0].len() {
-                    l[i] += el[0][i];
-                    r[i] += el[1][i];
-
-                    if record_mode == RecordMode::OVERDUB {
-                        el[0][i] += in_a_p[i];
-                        el[1][i] += in_b_p[i];
-                    }
-                }
-
-                pos += 1;
-                output.push(Message::TimeChanged(((pos % len) as i64) * frame_time as i64));
-            }
-        }
-
-        out_a_p.clone_from_slice(&l);
-        out_b_p.clone_from_slice(&r);
-
-        if record_mode == RecordMode::RECORD {
-            buffer.push([l, r]);
-            output.push(Message::TimeChanged(buffer.len() as i64 * frame_time as i64));
-            output.push(Message::LengthChanged(buffer.len() as i64 * frame_time as i64));
-        }
-
-        jack::Control::Continue
+    let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+        engine.process(client, ps)
     };
     let process = jack::ClosureProcessHandler::new(process_callback);
 
