@@ -19,8 +19,8 @@ pub enum PlayMode {
 // Messages are sent from the audio thread to the gui
 #[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
 pub enum Message {
-    RecordingStateChanged(RecordMode),
-    PlayingStateChanged(PlayMode),
+    RecordingStateChanged(RecordMode, u128),
+    PlayingStateChanged(PlayMode, u128),
     TimeChanged(i64),
     LengthChanged(i64),
 }

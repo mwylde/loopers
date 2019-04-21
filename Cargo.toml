@@ -8,3 +8,5 @@ edition = "2018"
 jack = "0.6"
 crossbeam-queue = "0.1"
 azul = { git = "https://github.com/maps4print/azul" }
+rand = "0.6"
+

@@ -77,11 +77,11 @@ fn process_queue(state: &mut GuiState, _info: &mut AppResources) -> (UpdateScree
             Ok(message) =>{
                 update = Redraw;
                 match message {
-                    Message::RecordingStateChanged(mode) => {
+                    Message::RecordingStateChanged(mode, _) => {
                         state.record_state = mode;
                         println!("record mode = {:?}", mode);
                     },
-                    Message::PlayingStateChanged(mode) => {
+                    Message::PlayingStateChanged(mode, _) => {
                         state.play_state = mode;
                         println!("play mode = {:?}", mode);
                     },
