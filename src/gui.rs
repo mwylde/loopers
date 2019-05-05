@@ -3,19 +3,51 @@ use std::time::Duration;
 use crate::{Message, Command, RecordMode, PlayMode};
 use crossbeam_queue::SegQueue;
 use std::sync::Arc;
+use std::collections::HashMap;
+use azul::dom::NodeType::Div;
+
+#[derive(Clone)]
+struct LooperState {
+    uuid: u128,
+    record_state: RecordMode,
+    play_state: PlayMode,
+    time: i64,
+    length: i64,
+}
+
+impl LooperState {
+    fn new(uuid: u128) -> LooperState {
+        LooperState {
+            uuid,
+            record_state: RecordMode::NONE,
+            play_state: PlayMode::PAUSED,
+            time: 0,
+            length: 0,
+        }
+    }
+}
 
 pub struct Gui {
     state: GuiState,
 }
 
+
 #[derive(Clone)]
 struct GuiState {
-    record_state: RecordMode,
-    play_state: PlayMode,
-    time: i64,
-    length: i64,
+    loopers: Vec<LooperState>,
+    active: u128,
     input: Arc<SegQueue<Message>>,
     output: Arc<SegQueue<Command>>,
+}
+
+impl GuiState {
+    fn apply_to_loop(&mut self, uuid: u128, f: &Fn(&mut LooperState) -> ()) {
+        if let Some(looper) = self.loopers.iter_mut().find(|f| f.uuid == uuid) {
+            f(looper)
+        } else {
+            println!("could not update unknown loop {}", uuid)
+        }
+    }
 }
 
 impl Gui {
@@ -24,10 +56,8 @@ impl Gui {
         let output = Arc::new(SegQueue::new());
         let gui = Gui {
             state: GuiState {
-                record_state: RecordMode::NONE,
-                play_state: PlayMode::PAUSED,
-                time: 0,
-                length: 0,
+                loopers: vec![],
+                active: 0,
                 input: input.clone(),
                 output: output.clone(),
             },
@@ -65,11 +95,6 @@ impl Gui {
     }
 }
 
-fn update_counter(app_state: &mut AppState<GuiState>, _info: &mut CallbackInfo<GuiState>) -> UpdateScreen {
-    // app_state.data.modify(|state| state.counter += 1);
-    Redraw
-}
-
 fn process_queue(state: &mut GuiState, _info: &mut AppResources) -> (UpdateScreen, TerminateTimer) {
     let mut update = DontRedraw;
     loop {
@@ -77,16 +102,27 @@ fn process_queue(state: &mut GuiState, _info: &mut AppResources) -> (UpdateScree
             Ok(message) =>{
                 update = Redraw;
                 match message {
-                    Message::RecordingStateChanged(mode, _) => {
-                        state.record_state = mode;
-                        println!("record mode = {:?}", mode);
+                    Message::LoopCreated(uuid) => {
+                        state.loopers.push(LooperState::new(uuid))
+                    }
+                    Message::LoopDestroyed(uuid) => {
+                        state.loopers.retain(|s| s.uuid != uuid)
+                    }
+                    Message::RecordingStateChanged(mode, uuid) => {
+                        state.apply_to_loop(uuid, &|l| l.record_state = mode)
                     },
-                    Message::PlayingStateChanged(mode, _) => {
-                        state.play_state = mode;
-                        println!("play mode = {:?}", mode);
+                    Message::PlayingStateChanged(mode, uuid) => {
+                        state.apply_to_loop(uuid, &|l| l.play_state = mode)
                     },
-                    Message::TimeChanged(t) => state.time = t,
-                    Message::LengthChanged(t) => state.length = t,
+                    Message::TimeChanged(t, uuid) => {
+                        state.apply_to_loop(uuid, &|l| l.time = t)
+                    },
+                    Message::LengthChanged(t, uuid) => {
+                        state.apply_to_loop(uuid, &|l| l.length = t)
+                    },
+                    Message::ActiveChanged(uuid) => {
+                        state.active = uuid
+                    }
                 }
             }
             Err(_) => break,
@@ -96,35 +132,60 @@ fn process_queue(state: &mut GuiState, _info: &mut AppResources) -> (UpdateScree
     (update, TerminateTimer::Continue)
 }
 
+fn button<T: Sized>(label: &'static str, active: bool) -> Dom<T> {
+    let mut button = Button::with_label(label).dom().with_class("control");
+    if active {
+        button.add_class("active");
+    }
+    button
+}
+
 impl Layout for GuiState {
     fn layout(&self, layout_info: LayoutInfo<Self>) -> Dom<Self> where Self: Sized {
-        let time_label = Label::new(format!("{}", self.time / 1000)).dom();
+        let mut loopers = Dom::new(NodeType::Div).with_id("loopers");
 
-        let width = if self.length == 0 {
-            0.0
-        } else {
-            layout_info.window.state.size.dimensions.width * 1.3 * (self.time as f64 / self.length as f64)
-        };
+        for looper in &self.loopers {
 
-        let mut time_progress = Dom::new(NodeType::Div)
-            .with_class("progress");
+            let time_label = Label::new(format!("{}", looper.time / 1000)).dom();
 
-        time_progress.add_child(Dom::new(NodeType::Div)
-            .with_class("progress-inner")
-            .with_css_override(
-                "progress_width", CssProperty::Width(LayoutWidth(PixelValue::const_px(width as isize)))));
+            let width = if looper.length == 0 {
+                0.0
+            } else {
+                layout_info.window.state.size.dimensions.width * 1.3 * (looper.time as f64 / looper.length as f64)
+            };
 
-        let record_label = Label::new(format!("record: {:?}", self.record_state)).dom();
-        let play_label = Label::new(format!("play: {:?}", self.play_state)).dom();
-        let button = Button::with_label("Update counter").dom()
-            .with_callback(On::MouseUp, Callback(update_counter));
+            let mut time_progress = Dom::new(NodeType::Div)
+                .with_class("progress");
+
+            time_progress.add_child(Dom::new(NodeType::Div)
+                .with_class("progress-inner")
+                .with_css_override(
+                    "progress_width", CssProperty::Width(LayoutWidth(PixelValue::const_px(width as isize)))));
+
+//            let record_label = Label::new(format!("record: {:?}", looper.record_state)).dom();
+//            let play_label = Label::new(format!("play: {:?}", looper.play_state)).dom();
+
+            let mut buttons = Dom::new(NodeType::Div)
+                .with_class("controls");
+            buttons.add_child(button("record", looper.record_state == RecordMode::RECORD));
+            buttons.add_child(button("overdub", looper.record_state == RecordMode::OVERDUB));
+            buttons.add_child(button("play", looper.play_state == PlayMode::PLAYING));
+
+            let mut parent = Dom::new(NodeType::Div)
+                .with_class("looper")
+                .with_child(time_label)
+                .with_child(time_progress)
+                .with_child(buttons);
+
+            if self.active == looper.uuid {
+                parent.add_class("active");
+            }
+
+            loopers.add_child(parent)
+        }
 
         Dom::new(NodeType::Div)
             .with_id("wrapper")
-            .with_child(time_label)
-            .with_child(time_progress)
-            .with_child(record_label)
-            .with_child(play_label)
-            .with_child(button)
+            .with_child(loopers)
     }
 }

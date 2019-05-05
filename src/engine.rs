@@ -15,13 +15,17 @@ struct Looper {
 
 impl Looper {
     fn new(message_sink: Arc<SegQueue<Message>>) -> Looper {
-        Looper {
+        let looper = Looper {
             uuid: rand::thread_rng().gen(),
             buf: vec![],
             play_mode: PlayMode::PAUSED,
             record_mode: RecordMode::NONE,
             message_sink,
-        }
+        };
+
+        looper.message_sink.push(Message::LoopCreated(looper.uuid));
+
+        looper
     }
 
     fn set_record_mode(&mut self, mode: RecordMode) {
@@ -49,7 +53,7 @@ pub struct Engine {
     time: usize,
 
     loopers: Vec<Looper>,
-    selected: usize,
+    active: usize,
 }
 
 const THRESHOLD: f32 = 0.1;
@@ -75,7 +79,7 @@ impl Engine {
             gui_input,
             time: 0,
             loopers: vec![Looper::new(gui_output)],
-            selected: 0,
+            active: 0,
         }
     }
 
@@ -85,11 +89,12 @@ impl Engine {
 
     fn update_states(&mut self, ps: &jack::ProcessScope) {
         let midi_in = &self.midi_in;
-        let time = &mut self.time;
-        let looper = &mut self.loopers[self.selected];
-        let gui_output = &mut self.gui_output;
 
-        midi_in.iter(ps).for_each(|e| {
+        for e in midi_in.iter(ps) {
+            let time = &mut self.time;
+            let looper = &mut self.loopers[self.active];
+            let gui_output = &mut self.gui_output;
+
             if e.bytes.len() == 3 && e.bytes[0] == 144 {
                 match e.bytes[1]{
                     60 => {
@@ -104,15 +109,18 @@ impl Engine {
                         looper.set_play_mode(PlayMode::PLAYING);
 
                         *time = 0;
-                        gui_output.push(Message::TimeChanged(*time as i64));
+                        gui_output.push(Message::TimeChanged(*time as i64, looper.uuid));
                     },
                     64 => {
-                        looper.set_play_mode(PlayMode::PAUSED);
+                        // looper.set_play_mode(PlayMode::PAUSED);
+                        self.loopers.push(Looper::new(gui_output.clone()));
+                        self.active = self.loopers.len() - 1;
+                        gui_output.push(Message::ActiveChanged(self.loopers[self.active].uuid))
                     }
                     _ => {}
                 }
             }
-        });
+        }
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -154,7 +162,7 @@ impl Engine {
                 }
 
                 self.time += 1;
-                self.gui_output.push(Message::TimeChanged(((self.time % len) as i64) * frame_time as i64));
+                self.gui_output.push(Message::TimeChanged(((self.time % len) as i64) * frame_time as i64, looper.uuid));
             }
         }
 
@@ -163,8 +171,8 @@ impl Engine {
 
         if looper.record_mode == RecordMode::RECORD {
             looper.buf.push([l, r]);
-            self.gui_output.push(Message::TimeChanged(looper.buf.len() as i64 * frame_time as i64));
-            self.gui_output.push(Message::LengthChanged(looper.buf.len() as i64 * frame_time as i64));
+            self.gui_output.push(Message::TimeChanged(looper.buf.len() as i64 * frame_time as i64, looper.uuid));
+            self.gui_output.push(Message::LengthChanged(looper.buf.len() as i64 * frame_time as i64,  looper.uuid));
         }
 
         jack::Control::Continue

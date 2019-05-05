@@ -19,10 +19,13 @@ pub enum PlayMode {
 // Messages are sent from the audio thread to the gui
 #[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
 pub enum Message {
+    LoopCreated(u128),
+    LoopDestroyed(u128),
     RecordingStateChanged(RecordMode, u128),
     PlayingStateChanged(PlayMode, u128),
-    TimeChanged(i64),
-    LengthChanged(i64),
+    TimeChanged(i64, u128),
+    LengthChanged(i64, u128),
+    ActiveChanged(u128),
 }
 
 // Commands are sent from the Gui to the audio thread

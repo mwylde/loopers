@@ -13,3 +13,29 @@
     width: [[ progress_width | 50px ]];
     background-color: green;
 }
+
+.looper {
+    border: 1px solid blue;
+}
+
+.active {
+    background: #444;
+}
+
+.controls {
+  flex-direction: row;
+}
+
+.controls .control {
+  width: 100px;
+  height: 40px;
+  font-size: 14px;
+  padding: 0px;
+  border: 1px solid #ccc;
+  padding-top: 5px
+}
+
+.controls .control.active {
+  background: #ac0000;
+}
+
