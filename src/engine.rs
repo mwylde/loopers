@@ -131,7 +131,7 @@ impl Engine {
         let in_a_p = self.in_a.as_slice(ps);
         let in_b_p = self.in_b.as_slice(ps);
 
-        let looper = &mut self.loopers[0];
+        let looper = &mut self.loopers[self.active];
 
         let gui_output = &mut self.gui_output;
         let time = &mut self.time;

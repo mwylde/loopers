@@ -1,6 +1,12 @@
 extern crate jack;
 extern crate crossbeam_queue;
-extern crate azul;
+extern crate crossbeam_channel;
+extern crate tui;
+extern crate termion;
+#[macro_use]
+extern crate log;
+extern crate log4rs;
+
 use std::{io, thread};
 
 mod engine;
@@ -34,10 +40,12 @@ pub enum Command {
 }
 
 fn main() {
-    let (gui, output, input) = gui::Gui::new();
+    log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
+
+    let (mut gui, output, input) = gui::Gui::new();
     thread::spawn(move|| {
         gui.run();
-        println!("window exited... shutting down");
+        info!("window exited... shutting down");
         std::process::exit(0);
     });
 
@@ -72,7 +80,6 @@ fn main() {
     let active_client = client.activate_async(Notifications, process).unwrap();
 
     // Wait for user input to quit
-    println!("Press enter/return to quit...");
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).ok();
 
@@ -83,35 +90,35 @@ struct Notifications;
 
 impl jack::NotificationHandler for Notifications {
     fn thread_init(&self, _: &jack::Client) {
-        println!("JACK: thread init");
+        info!("JACK: thread init");
     }
 
     fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
-        println!(
+        info!(
             "JACK: shutdown with status {:?} because \"{}\"",
             status, reason
         );
     }
 
     fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
-        println!(
+        info!(
             "JACK: freewheel mode is {}",
             if is_enabled { "on" } else { "off" }
         );
     }
 
     fn buffer_size(&mut self, _: &jack::Client, sz: jack::Frames) -> jack::Control {
-        println!("JACK: buffer size changed to {}", sz);
+        info!("JACK: buffer size changed to {}", sz);
         jack::Control::Continue
     }
 
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        println!("JACK: sample rate changed to {}", srate);
+        info!("JACK: sample rate changed to {}", srate);
         jack::Control::Continue
     }
 
     fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
-        println!(
+        info!(
             "JACK: {} client with name \"{}\"",
             if is_reg { "registered" } else { "unregistered" },
             name
@@ -119,7 +126,7 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
-        println!(
+        info!(
             "JACK: {} port with id {}",
             if is_reg { "registered" } else { "unregistered" },
             port_id
@@ -133,7 +140,7 @@ impl jack::NotificationHandler for Notifications {
         old_name: &str,
         new_name: &str,
     ) -> jack::Control {
-        println!(
+        info!(
             "JACK: port with id {} renamed from {} to {}",
             port_id, old_name, new_name
         );
@@ -147,7 +154,7 @@ impl jack::NotificationHandler for Notifications {
         port_id_b: jack::PortId,
         are_connected: bool,
     ) {
-        println!(
+        info!(
             "JACK: ports with id {} and {} are {}",
             port_id_a,
             port_id_b,
@@ -160,17 +167,17 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        println!("JACK: graph reordered");
+        info!("JACK: graph reordered");
         jack::Control::Continue
     }
 
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
-        println!("JACK: xrun occurred");
+        info!("JACK: xrun occurred");
         jack::Control::Continue
     }
 
     fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
-        println!(
+        info!(
             "JACK: {} latency has changed",
             match mode {
                 jack::LatencyType::Capture => "capture",

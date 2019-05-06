@@ -7,6 +7,9 @@ edition = "2018"
 [dependencies]
 jack = "0.6"
 crossbeam-queue = "0.1"
-azul = { git = "https://github.com/maps4print/azul" }
+crossbeam-channel = "0.3"
 rand = "0.6"
-
+tui = "0.5"
+termion = "1.5"
+log = "0.4"
+log4rs = "0.8"
