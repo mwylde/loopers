@@ -13,6 +13,8 @@ pub struct LoopState {
     pub time: i64,
     #[prost(int64, tag="5")]
     pub length: i64,
+    #[prost(bool, tag="6")]
+    pub active: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct State {

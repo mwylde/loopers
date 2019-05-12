@@ -27,6 +27,7 @@ message LoopState {
     PlayMode playMode = 3;
     int64 time = 4;
     int64 length = 5;
+    bool active = 6;
 }
 
 message State {

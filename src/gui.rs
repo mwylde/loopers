@@ -72,8 +72,6 @@ impl Gui {
                 if let Some(m) = message {
                     let mut channels = state.channels.lock().unwrap();
 
-                    println!("state = {:?}", m);
-
                     channels.retain(|tx| {
                         let mut tx = tx.clone().wait();
                         if let Err(err) = tx.send(m.clone()) {
@@ -85,7 +83,7 @@ impl Gui {
                     });
                 }
 
-                std::thread::sleep(Duration::from_millis(1000));
+                std::thread::sleep(Duration::from_millis(100));
             }
         });
 

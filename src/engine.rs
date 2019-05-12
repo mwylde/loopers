@@ -140,7 +140,8 @@ impl Engine {
         let in_a_p = self.in_a.as_slice(ps);
         let in_b_p = self.in_b.as_slice(ps);
 
-        let looper = &mut self.loopers[self.active];
+        let active = self.active;
+        let looper = &mut self.loopers[active];
 
         let gui_output = &mut self.gui_output;
 
@@ -178,14 +179,24 @@ impl Engine {
         }
 
         // TODO: make this non-allocating
-        let real_time = Engine::convert_time(ps, self.time as u64);
-        let loop_states: Vec<LoopState> = self.loopers.iter().map(|l| {
+        let time = self.time;
+        let loop_states: Vec<LoopState> = self.loopers.iter().enumerate().map(|(i, l)| {
+            let len = Engine::convert_time(ps,l.buf.get(0).map(|b| b.len() as u64)
+                .unwrap_or(0));
+
+            let real_time = if len == 0 {
+                0
+            } else {
+                Engine::convert_time(ps, ((time % l.buf[0].len()) as u64))
+            };
+
             LoopState {
                 id: l.id,
                 record_mode: l.record_mode as i32,
                 play_mode: l.play_mode as i32,
                 time: real_time,
-                length: 0, //Engine::convert_time(ps, l.buf[0].len() as u64),
+                length: len,
+                active: i == active,
             }
         }).collect();
 
