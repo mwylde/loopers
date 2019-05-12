@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package protos;
+
+service Looper {
+    rpc GetState(GetStateReq) returns (stream State) {}
+}
+
+enum RecordMode {
+    NONE = 0;
+    READY = 1;
+    RECORD = 2;
+    OVERDUB = 3;
+}
+
+enum PlayMode {
+    PAUSED = 0;
+    PLAYING = 1;
+}
+
+message GetStateReq {
+}
+
+message LoopState {
+    uint32 id = 1;
+    RecordMode recordMode = 2;
+    PlayMode playMode = 3;
+    int64 time = 4;
+    int64 length = 5;
+}
+
+message State {
+    repeated LoopState loops = 1;
+}
+
+message Command {
+
+}

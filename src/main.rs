@@ -1,37 +1,17 @@
 extern crate jack;
 extern crate crossbeam_queue;
-extern crate azul;
+extern crate prost;
+extern crate tokio;
+extern crate tower_grpc;
+extern crate tower_hyper;
+extern crate futures;
+extern crate bytes;
+
 use std::{io, thread};
 
 mod engine;
 mod gui;
-
-#[derive(Ord, PartialOrd, PartialEq, Eq, Debug, Copy, Clone)]
-pub enum RecordMode {
-    NONE, READY, RECORD, OVERDUB
-}
-
-#[derive(Ord, PartialOrd, PartialEq, Eq, Debug, Copy, Clone)]
-pub enum PlayMode {
-    PAUSED, PLAYING
-}
-
-// Messages are sent from the audio thread to the gui
-#[derive(Ord, PartialOrd, PartialEq, Eq, Debug)]
-pub enum Message {
-    LoopCreated(u128),
-    LoopDestroyed(u128),
-    RecordingStateChanged(RecordMode, u128),
-    PlayingStateChanged(PlayMode, u128),
-    TimeChanged(i64, u128),
-    LengthChanged(i64, u128),
-    ActiveChanged(u128),
-}
-
-// Commands are sent from the Gui to the audio thread
-pub enum Command {
-
-}
+mod protos;
 
 fn main() {
     let (gui, output, input) = gui::Gui::new();
