@@ -125,8 +125,6 @@ class LooperWidget extends StatelessWidget {
         ? 0.0
         : state.time.toDouble() / state.length.toDouble();
 
-    print("${state.time}, ${state.length}");
-
     var color = state.active ? Colors.orange[100] : Colors.black12;
 
     return Container(

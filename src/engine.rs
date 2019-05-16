@@ -5,9 +5,11 @@ use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::PlayMode::Playing;
 
+const SAMPLE_RATE: f64 = 44.100;
+
 struct Looper {
     id: u32,
-    buf: Vec<[Vec<f32>; 2]>,
+    buffers: Vec<[Vec<f32>; 2]>,
     play_mode: PlayMode,
     record_mode: RecordMode,
 }
@@ -16,7 +18,7 @@ impl Looper {
     fn new(id: u32) -> Looper {
         let looper = Looper {
             id,
-            buf: vec![],
+            buffers: vec![],
             play_mode: PlayMode::Paused,
             record_mode: RecordMode::None,
         };
@@ -80,10 +82,6 @@ impl Engine {
         }
     }
 
-    fn update(&mut self, state: State) {
-        self.gui_output.push(state);
-    }
-
     fn update_states(&mut self, ps: &jack::ProcessScope) {
         let midi_in = &self.midi_in;
 
@@ -97,10 +95,12 @@ impl Engine {
             if e.bytes.len() == 3 && e.bytes[0] == 144 {
                 match e.bytes[1]{
                     60 => {
-                        if looper.buf.is_empty() || looper.play_mode == PlayMode::Paused {
+                        if looper.buffers.is_empty() || looper.play_mode == PlayMode::Paused {
                             looper.set_record_mode(RecordMode::Ready);
                         } else {
                             looper.set_record_mode(RecordMode::Overdub);
+                            // todo: pre-allocate
+                            looper.buffers.push([vec![], vec![]]);
                         }
                     }
                     62 => {
@@ -126,10 +126,8 @@ impl Engine {
         }
     }
 
-    fn convert_time(ps: &jack::ProcessScope, time: u64) -> i64 {
-        let times = ps.cycle_times().unwrap();
-        let frame_time = times.next_usecs - times.current_usecs;
-        time as i64 * frame_time as i64
+    fn samples_to_time(time: usize) -> u64 {
+        ((time as f64) / SAMPLE_RATE) as u64
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -146,7 +144,7 @@ impl Engine {
         let gui_output = &mut self.gui_output;
 
         if looper.record_mode == RecordMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
-            looper.buf.clear();
+            looper.buffers.clear();
             looper.set_record_mode(RecordMode::Record);
         }
 
@@ -154,48 +152,58 @@ impl Engine {
         let mut r = in_b_p.to_vec();
 
         if looper.play_mode == PlayMode::Playing {
-            if !looper.buf.is_empty() {
-                let len = looper.buf.len();
-                let el = &mut looper.buf[self.time % len];
-                for i in 0..el[0].len() {
-                    l[i] += el[0][i];
-                    r[i] += el[1][i];
-
-                    if looper.record_mode == RecordMode::Overdub {
-                        el[0][i] += in_a_p[i];
-                        el[1][i] += in_b_p[i];
+            let mut time = self.time;
+            if !looper.buffers.is_empty() {
+                for i in 0..l.len() {
+                    for b in &looper.buffers {
+                        l[i] += b[0][time % b[0].len()];
+                        r[i] += b[1][time % b[1].len()];
                     }
+                    time += 1;
                 }
-
-                self.time += 1;
             }
         }
 
         out_a_p.clone_from_slice(&l);
         out_b_p.clone_from_slice(&r);
 
+//        if looper.record_mode == RecordMode::Overdub && !looper.buffers.is_empty() {
+//            let mut time = self.time;
+//            if looper.buffers.len() > 1 {
+//                looper.buffers.push([vec![], vec![]]);
+//            } else {
+//                panic!("entered overdub mode with too few buffers");
+//            }
+//        }
+
         if looper.record_mode == RecordMode::Record {
-            looper.buf.push([l, r]);
+            if looper.buffers.is_empty() {
+                looper.buffers.push([vec![], vec![]]);
+            }
+            looper.buffers[0][0].extend_from_slice(&l);
+            looper.buffers[0][1].extend_from_slice(&r);
         }
+
+        self.time += l.len();
 
         // TODO: make this non-allocating
         let time = self.time;
         let loop_states: Vec<LoopState> = self.loopers.iter().enumerate().map(|(i, l)| {
-            let len = Engine::convert_time(ps,l.buf.get(0).map(|b| b.len() as u64)
-                .unwrap_or(0));
+            let len = l.buffers.get(0).map(|l| l[0].len())
+                .unwrap_or(0);
 
-            let real_time = if len == 0 {
-                0
+            let t = if len > 0 && l.play_mode == PlayMode::Playing {
+                time % len
             } else {
-                Engine::convert_time(ps, ((time % l.buf[0].len()) as u64))
+                0
             };
 
             LoopState {
                 id: l.id,
                 record_mode: l.record_mode as i32,
                 play_mode: l.play_mode as i32,
-                time: real_time,
-                length: len,
+                time: Engine::samples_to_time(t) as i64,
+                length: Engine::samples_to_time(len) as i64,
                 active: i == active,
             }
         }).collect();

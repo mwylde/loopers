@@ -83,7 +83,7 @@ impl Gui {
                     });
                 }
 
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(1000 / 60));
             }
         });
 
