@@ -44,11 +44,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Loopers',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        // See https://github.com/flutter/flutter/wiki/Desktop-shells#fonts
-        fontFamily: 'Roboto',
-      ),
+      theme: ThemeData.dark(),
+//      theme: ThemeData(
+//        primarySwatch: Colors.blue,
+//        // See https://github.com/flutter/flutter/wiki/Desktop-shells#fonts
+//        fontFamily: 'Roboto',
+//      ),
+
       home: MainPage(service: service),
     );
   }
@@ -72,11 +74,8 @@ class MainPageState extends State<MainPage> {
         stream: widget.service.getState(),
         builder: (context, snapshot) {
           return Scaffold(
-            appBar: AppBar(
-              title: Text("Loopers"),
-            ),
             body: Container(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
+              // padding: EdgeInsets.symmetric(vertical: 8.0),
               child: Column(
                   children: snapshot.data.loops.map((f) {
                 return LooperWidget(state: f);
@@ -101,7 +100,8 @@ class LooperButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var color = active || primed ? Colors.red[300] : Colors.black26;
+    var color =
+        active ? Colors.red[400] : primed ? Colors.brown : Colors.black26;
 
     Widget button = FlatButton(
       color: color,
@@ -125,18 +125,31 @@ class LooperWidget extends StatelessWidget {
         ? 0.0
         : state.time.toDouble() / state.length.toDouble();
 
-    var color = state.active ? Colors.orange[100] : Colors.black12;
+    var color = state.active ? Colors.black38 : Theme.of(context).cardColor;
 
     return Container(
-        height: 200,
-        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        //height: 120,
         padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(color: color),
+        decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor)),
+            color: color),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: <Widget>[
-            Text("looper ${state.id}"),
-            LinearProgressIndicator(value: value),
+//            Container(
+//              width: double.infinity,
+//              padding: const EdgeInsets.all(8.0),
+//              child: Text(
+//                state.id.toString(),
+//                textAlign: TextAlign.left,
+//              ),
+//            ),
+            LinearProgressIndicator(
+              value: value,
+              semanticsLabel: "progress",
+              semanticsValue: "$value seconds",
+            ),
             Row(
               children: <Widget>[
                 LooperButton(

@@ -156,8 +156,10 @@ impl Engine {
             if !looper.buffers.is_empty() {
                 for i in 0..l.len() {
                     for b in &looper.buffers {
-                        l[i] += b[0][time % b[0].len()];
-                        r[i] += b[1][time % b[1].len()];
+                        if b[0].len() > 0 {
+                            l[i] += b[0][time % b[0].len()];
+                            r[i] += b[1][time % b[1].len()];
+                        }
                     }
                     time += 1;
                 }
