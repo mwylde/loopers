@@ -4,6 +4,7 @@ package protos;
 
 service Looper {
     rpc GetState(GetStateReq) returns (stream State) {}
+    rpc Command(CommandReq) returns (CommandResp) {}
 }
 
 enum RecordMode {
@@ -23,8 +24,8 @@ message GetStateReq {
 
 message LoopState {
     uint32 id = 1;
-    RecordMode recordMode = 2;
-    PlayMode playMode = 3;
+    RecordMode record_mode = 2;
+    PlayMode play_mode = 3;
     int64 time = 4;
     int64 length = 5;
     bool active = 6;
@@ -34,6 +35,53 @@ message State {
     repeated LoopState loops = 1;
 }
 
-message Command {
+message CommandReq {
+    Command command = 1;
+}
 
+enum CommandStatus {
+    ACCEPTED = 0;
+    FAILED = 1;
+}
+message CommandResp {
+    CommandStatus status = 1;
+}
+
+enum LooperCommandType {
+    ENABLE_RECORD = 0;
+    ENABLE_READY = 10;
+    DISABLE_RECORD = 1;
+
+    ENABLE_OVERDUB = 2;
+    DISABLE_OVERDUB = 3;
+
+    ENABLE_MUTIPLY = 4;
+    DISABLE_MULTIPLY = 5;
+
+    ENABLE_PLAY = 6;
+    DISABLE_PLAY = 7;
+
+    SELECT = 8;
+    DELETE = 9;
+}
+
+message LooperCommand {
+    LooperCommandType command_type = 1;
+    repeated uint32 loopers = 2;
+}
+
+enum GlobalCommandType {
+    RESET_TIME = 0;
+    ADD_LOOPER = 1;
+}
+
+message GlobalCommand {
+    GlobalCommandType command = 1;
+}
+
+message Command {
+    oneof command_oneof {
+        LooperCommand looper_command = 1;
+        GlobalCommand global_command = 2;
+    }
 }

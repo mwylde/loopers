@@ -73,20 +73,50 @@ class MainPageState extends State<MainPage> {
     return new StreamBuilder<protos.State>(
         stream: widget.service.getState(),
         builder: (context, snapshot) {
+          Widget loopers = Text("Could not connect to server");
+
+          if (snapshot.data != null) {
+            loopers = Column(
+                children: snapshot.data.loops.map((f) {
+              return LooperWidget(state: f, service: widget.service);
+            }).toList());
+          }
+
           return Scaffold(
-            body: Container(
-              // padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: Column(
-                  children: snapshot.data.loops.map((f) {
-                return LooperWidget(state: f);
-              }).toList()),
-            ),
+            body: Column(children: [
+              TimeWidget(state: snapshot.data),
+              Container(child: loopers)
+            ]),
             floatingActionButton: FloatingActionButton(
               tooltip: 'New Looper',
               child: Icon(Icons.add),
+              onPressed: () {
+                widget.service
+                    .sendGlobalCommand(protos.GlobalCommandType.ADD_LOOPER);
+              },
             ),
           );
         });
+  }
+}
+
+class TimeWidget extends StatelessWidget {
+  final protos.State state;
+
+  const TimeWidget({Key key, this.state}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    if (state != null) {
+      return Container(
+        height: 100,
+        child: Text("Time"),
+      );
+    } else {
+      return Container(
+        height: 100,
+      );
+    }
   }
 }
 
@@ -94,8 +124,14 @@ class LooperButton extends StatelessWidget {
   final String text;
   final bool active;
   final bool primed;
+  final Null Function() onPressed;
 
-  const LooperButton({Key key, this.text, this.active, this.primed = false})
+  const LooperButton(
+      {Key key,
+      this.text,
+      this.active,
+      this.primed = false,
+      this.onPressed = null})
       : super(key: key);
 
   @override
@@ -105,7 +141,7 @@ class LooperButton extends StatelessWidget {
 
     Widget button = FlatButton(
       color: color,
-      onPressed: () {},
+      onPressed: onPressed,
       child: Text(text),
     );
 
@@ -115,9 +151,10 @@ class LooperButton extends StatelessWidget {
 }
 
 class LooperWidget extends StatelessWidget {
-  LooperWidget({this.state});
+  LooperWidget({this.state, this.service});
 
   final protos.LoopState state;
+  final LooperService service;
 
   @override
   Widget build(BuildContext context) {
@@ -125,18 +162,22 @@ class LooperWidget extends StatelessWidget {
         ? 0.0
         : state.time.toDouble() / state.length.toDouble();
 
-    var color = state.active ? Colors.black38 : Theme.of(context).cardColor;
+    var color = state.active ? Colors.black26 : Theme.of(context).cardColor;
 
-    return Container(
-        //height: 120,
-        padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(
-            border: Border(
-                bottom: BorderSide(color: Theme.of(context).dividerColor)),
-            color: color),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
+    return InkWell(
+        onTap: () {
+          service.sendLooperCommand(state.id, protos.LooperCommandType.SELECT);
+        },
+        child: Container(
+            //height: 120,
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+                border: Border(
+                    bottom: BorderSide(color: Theme.of(context).dividerColor)),
+                color: color),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: <Widget>[
 //            Container(
 //              width: double.infinity,
 //              padding: const EdgeInsets.all(8.0),
@@ -145,29 +186,72 @@ class LooperWidget extends StatelessWidget {
 //                textAlign: TextAlign.left,
 //              ),
 //            ),
-            LinearProgressIndicator(
-              value: value,
-              semanticsLabel: "progress",
-              semanticsValue: "$value seconds",
-            ),
-            Row(
-              children: <Widget>[
-                LooperButton(
-                  text: "RECORD",
-                  active: state.recordMode == protos.RecordMode.RECORD,
-                  primed: state.recordMode == protos.RecordMode.READY,
+                LinearProgressIndicator(
+                  value: value,
+                  semanticsLabel: "progress",
+                  semanticsValue: "$value seconds",
                 ),
-                LooperButton(
-                  text: "OVERDUB",
-                  active: state.recordMode == protos.RecordMode.OVERDUB,
-                ),
-                LooperButton(
-                  text: "PLAY",
-                  active: state.playMode == protos.PlayMode.PLAYING,
+                Row(
+                  children: <Widget>[
+                    LooperButton(
+                        text: "RECORD",
+                        active: state.recordMode == protos.RecordMode.RECORD,
+                        primed: state.recordMode == protos.RecordMode.READY,
+                        onPressed: () {
+                          if (state.recordMode == protos.RecordMode.READY ||
+                              state.recordMode == protos.RecordMode.RECORD) {
+                            service.sendLooperCommand(state.id,
+                                protos.LooperCommandType.DISABLE_RECORD);
+                          } else {
+                            service.sendLooperCommand(state.id,
+                                protos.LooperCommandType.ENABLE_RECORD);
+                          }
+                        }),
+                    LooperButton(
+                      text: "OVERDUB",
+                      active: state.recordMode == protos.RecordMode.OVERDUB,
+                      onPressed: () {
+                        if (state.recordMode == protos.RecordMode.OVERDUB) {
+                          service.sendLooperCommand(state.id,
+                              protos.LooperCommandType.DISABLE_OVERDUB);
+                        } else {
+                          service.sendLooperCommand(state.id,
+                              protos.LooperCommandType.ENABLE_OVERDUB);
+                        }
+                      },
+                    ),
+                    LooperButton(
+                      text: "MULTIPLY",
+                      active: false,
+                    ),
+                    LooperButton(
+                      text: "PLAY",
+                      active: state.playMode == protos.PlayMode.PLAYING,
+                      onPressed: () {
+                        if (state.playMode == protos.PlayMode.PLAYING) {
+                          service.sendLooperCommand(
+                              state.id, protos.LooperCommandType.DISABLE_PLAY);
+                        } else {
+                          service.sendLooperCommand(
+                              state.id, protos.LooperCommandType.ENABLE_PLAY);
+                          if (state.recordMode == protos.RecordMode.RECORD) {
+                            service.sendLooperCommand(state.id,
+                                protos.LooperCommandType.ENABLE_OVERDUB);
+                          }
+                        }
+                      },
+                    ),
+                    Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.delete),
+                      onPressed: () {
+                        service.sendLooperCommand(
+                            state.id, protos.LooperCommandType.DELETE);
+                      },
+                    )
+                  ],
                 )
               ],
-            )
-          ],
-        ));
+            )));
   }
 }

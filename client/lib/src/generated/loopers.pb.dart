@@ -113,8 +113,117 @@ class State extends $pb.GeneratedMessage {
   List<LoopState> get loops => $_getList(0);
 }
 
+class CommandReq extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = new $pb.BuilderInfo('CommandReq', package: const $pb.PackageName('protos'))
+    ..a<Command>(1, 'command', $pb.PbFieldType.OM, Command.getDefault, Command.create)
+    ..hasRequiredFields = false
+  ;
+
+  CommandReq() : super();
+  CommandReq.fromBuffer(List<int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromBuffer(i, r);
+  CommandReq.fromJson(String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromJson(i, r);
+  CommandReq clone() => new CommandReq()..mergeFromMessage(this);
+  CommandReq copyWith(void Function(CommandReq) updates) => super.copyWith((message) => updates(message as CommandReq));
+  $pb.BuilderInfo get info_ => _i;
+  static CommandReq create() => new CommandReq();
+  static $pb.PbList<CommandReq> createRepeated() => new $pb.PbList<CommandReq>();
+  static CommandReq getDefault() => _defaultInstance ??= create()..freeze();
+  static CommandReq _defaultInstance;
+  static void $checkItem(CommandReq v) {
+    if (v is! CommandReq) $pb.checkItemFailed(v, _i.qualifiedMessageName);
+  }
+
+  Command get command => $_getN(0);
+  set command(Command v) { setField(1, v); }
+  bool hasCommand() => $_has(0);
+  void clearCommand() => clearField(1);
+}
+
+class CommandResp extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = new $pb.BuilderInfo('CommandResp', package: const $pb.PackageName('protos'))
+    ..e<CommandStatus>(1, 'status', $pb.PbFieldType.OE, CommandStatus.ACCEPTED, CommandStatus.valueOf, CommandStatus.values)
+    ..hasRequiredFields = false
+  ;
+
+  CommandResp() : super();
+  CommandResp.fromBuffer(List<int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromBuffer(i, r);
+  CommandResp.fromJson(String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromJson(i, r);
+  CommandResp clone() => new CommandResp()..mergeFromMessage(this);
+  CommandResp copyWith(void Function(CommandResp) updates) => super.copyWith((message) => updates(message as CommandResp));
+  $pb.BuilderInfo get info_ => _i;
+  static CommandResp create() => new CommandResp();
+  static $pb.PbList<CommandResp> createRepeated() => new $pb.PbList<CommandResp>();
+  static CommandResp getDefault() => _defaultInstance ??= create()..freeze();
+  static CommandResp _defaultInstance;
+  static void $checkItem(CommandResp v) {
+    if (v is! CommandResp) $pb.checkItemFailed(v, _i.qualifiedMessageName);
+  }
+
+  CommandStatus get status => $_getN(0);
+  set status(CommandStatus v) { setField(1, v); }
+  bool hasStatus() => $_has(0);
+  void clearStatus() => clearField(1);
+}
+
+class LooperCommand extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = new $pb.BuilderInfo('LooperCommand', package: const $pb.PackageName('protos'))
+    ..e<LooperCommandType>(1, 'commandType', $pb.PbFieldType.OE, LooperCommandType.ENABLE_RECORD, LooperCommandType.valueOf, LooperCommandType.values)
+    ..p<int>(2, 'loopers', $pb.PbFieldType.PU3)
+    ..hasRequiredFields = false
+  ;
+
+  LooperCommand() : super();
+  LooperCommand.fromBuffer(List<int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromBuffer(i, r);
+  LooperCommand.fromJson(String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromJson(i, r);
+  LooperCommand clone() => new LooperCommand()..mergeFromMessage(this);
+  LooperCommand copyWith(void Function(LooperCommand) updates) => super.copyWith((message) => updates(message as LooperCommand));
+  $pb.BuilderInfo get info_ => _i;
+  static LooperCommand create() => new LooperCommand();
+  static $pb.PbList<LooperCommand> createRepeated() => new $pb.PbList<LooperCommand>();
+  static LooperCommand getDefault() => _defaultInstance ??= create()..freeze();
+  static LooperCommand _defaultInstance;
+  static void $checkItem(LooperCommand v) {
+    if (v is! LooperCommand) $pb.checkItemFailed(v, _i.qualifiedMessageName);
+  }
+
+  LooperCommandType get commandType => $_getN(0);
+  set commandType(LooperCommandType v) { setField(1, v); }
+  bool hasCommandType() => $_has(0);
+  void clearCommandType() => clearField(1);
+
+  List<int> get loopers => $_getList(1);
+}
+
+class GlobalCommand extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = new $pb.BuilderInfo('GlobalCommand', package: const $pb.PackageName('protos'))
+    ..e<GlobalCommandType>(1, 'command', $pb.PbFieldType.OE, GlobalCommandType.RESET_TIME, GlobalCommandType.valueOf, GlobalCommandType.values)
+    ..hasRequiredFields = false
+  ;
+
+  GlobalCommand() : super();
+  GlobalCommand.fromBuffer(List<int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromBuffer(i, r);
+  GlobalCommand.fromJson(String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) : super.fromJson(i, r);
+  GlobalCommand clone() => new GlobalCommand()..mergeFromMessage(this);
+  GlobalCommand copyWith(void Function(GlobalCommand) updates) => super.copyWith((message) => updates(message as GlobalCommand));
+  $pb.BuilderInfo get info_ => _i;
+  static GlobalCommand create() => new GlobalCommand();
+  static $pb.PbList<GlobalCommand> createRepeated() => new $pb.PbList<GlobalCommand>();
+  static GlobalCommand getDefault() => _defaultInstance ??= create()..freeze();
+  static GlobalCommand _defaultInstance;
+  static void $checkItem(GlobalCommand v) {
+    if (v is! GlobalCommand) $pb.checkItemFailed(v, _i.qualifiedMessageName);
+  }
+
+  GlobalCommandType get command => $_getN(0);
+  set command(GlobalCommandType v) { setField(1, v); }
+  bool hasCommand() => $_has(0);
+  void clearCommand() => clearField(1);
+}
+
 class Command extends $pb.GeneratedMessage {
   static final $pb.BuilderInfo _i = new $pb.BuilderInfo('Command', package: const $pb.PackageName('protos'))
+    ..a<LooperCommand>(1, 'looperCommand', $pb.PbFieldType.OM, LooperCommand.getDefault, LooperCommand.create)
+    ..a<GlobalCommand>(2, 'globalCommand', $pb.PbFieldType.OM, GlobalCommand.getDefault, GlobalCommand.create)
     ..hasRequiredFields = false
   ;
 
@@ -131,5 +240,15 @@ class Command extends $pb.GeneratedMessage {
   static void $checkItem(Command v) {
     if (v is! Command) $pb.checkItemFailed(v, _i.qualifiedMessageName);
   }
+
+  LooperCommand get looperCommand => $_getN(0);
+  set looperCommand(LooperCommand v) { setField(1, v); }
+  bool hasLooperCommand() => $_has(0);
+  void clearLooperCommand() => clearField(1);
+
+  GlobalCommand get globalCommand => $_getN(1);
+  set globalCommand(GlobalCommand v) { setField(2, v); }
+  bool hasGlobalCommand() => $_has(1);
+  void clearGlobalCommand() => clearField(2);
 }
 

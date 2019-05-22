@@ -109,6 +109,7 @@ impl Gui {
 impl server::Looper for GuiState {
     type GetStateStream = Box<Stream<Item = State, Error = tower_grpc::Status> + Send>;
     type GetStateFuture = future::FutureResult<Response<Self::GetStateStream>, tower_grpc::Status>;
+    type CommandFuture = future::FutureResult<Response<CommandResp>, tower_grpc::Status>;
 
     fn get_state(&mut self, request: Request<GetStateReq>) -> Self::GetStateFuture {
         let input = self.input.clone();
@@ -119,5 +120,15 @@ impl server::Looper for GuiState {
 
         let rx = rx.map_err(|_| unimplemented!());
         future::ok(Response::new(Box::new(rx)))
+    }
+
+    fn command(&mut self, request: Request<CommandReq>) -> Self::CommandFuture {
+        if let Some(command) = request.into_inner().command {
+            self.output.push(command);
+        }
+        
+        future::ok(Response::new(CommandResp {
+            status: CommandStatus::Accepted as i32,
+        }))
     }
 }

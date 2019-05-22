@@ -25,4 +25,31 @@ class LooperService {
       return f;
     });
   }
+
+  Future<CommandResp> sendGlobalCommand(GlobalCommandType type) {
+    var globalCommand = GlobalCommand();
+    globalCommand.command = type;
+
+    var command = Command();
+    command.globalCommand = globalCommand;
+
+    return sendCommand(command);
+  }
+
+  Future<CommandResp> sendLooperCommand(int id, LooperCommandType type) {
+    var looperCommand = LooperCommand();
+    looperCommand.commandType = type;
+    looperCommand.loopers.add(id);
+
+    var command = Command();
+    command.looperCommand = looperCommand;
+
+    return sendCommand(command);
+  }
+
+  Future<CommandResp> sendCommand(Command command) {
+    var req = CommandReq();
+    req.command = command;
+    return _stub.command(req);
+  }
 }

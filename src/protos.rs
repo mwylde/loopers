@@ -22,7 +22,40 @@ pub struct State {
     pub loops: ::std::vec::Vec<LoopState>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandReq {
+    #[prost(message, optional, tag="1")]
+    pub command: ::std::option::Option<Command>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandResp {
+    #[prost(enumeration="CommandStatus", tag="1")]
+    pub status: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LooperCommand {
+    #[prost(enumeration="LooperCommandType", tag="1")]
+    pub command_type: i32,
+    #[prost(uint32, repeated, tag="2")]
+    pub loopers: ::std::vec::Vec<u32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GlobalCommand {
+    #[prost(enumeration="GlobalCommandType", tag="1")]
+    pub command: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Command {
+    #[prost(oneof="command::CommandOneof", tags="1, 2")]
+    pub command_oneof: ::std::option::Option<command::CommandOneof>,
+}
+pub mod command {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum CommandOneof {
+        #[prost(message, tag="1")]
+        LooperCommand(super::LooperCommand),
+        #[prost(message, tag="2")]
+        GlobalCommand(super::GlobalCommand),
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -38,9 +71,36 @@ pub enum PlayMode {
     Paused = 0,
     Playing = 1,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CommandStatus {
+    Accepted = 0,
+    Failed = 1,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LooperCommandType {
+    EnableRecord = 0,
+    EnableReady = 10,
+    DisableRecord = 1,
+    EnableOverdub = 2,
+    DisableOverdub = 3,
+    EnableMutiply = 4,
+    DisableMultiply = 5,
+    EnablePlay = 6,
+    DisablePlay = 7,
+    Select = 8,
+    Delete = 9,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum GlobalCommandType {
+    ResetTime = 0,
+    AddLooper = 1,
+}
 pub mod client {
     use ::tower_grpc::codegen::client::*;
-    use super::{GetStateReq, State};
+    use super::{GetStateReq, State, CommandReq, CommandResp};
 
     #[derive(Debug, Clone)]
     pub struct Looper<T> {
@@ -74,12 +134,20 @@ pub mod client {
             let path = http::PathAndQuery::from_static("/protos.Looper/GetState");
             self.inner.server_streaming(request, path)
         }
+
+        pub fn command<R>(&mut self, request: grpc::Request<CommandReq>) -> grpc::unary::ResponseFuture<CommandResp, T::Future, T::ResponseBody>
+        where T: grpc::GrpcService<R>,
+              grpc::unary::Once<CommandReq>: grpc::Encodable<R>,
+        {
+            let path = http::PathAndQuery::from_static("/protos.Looper/Command");
+            self.inner.unary(request, path)
+        }
     }
 }
 
 pub mod server {
     use ::tower_grpc::codegen::server::*;
-    use super::{GetStateReq, State};
+    use super::{GetStateReq, State, CommandReq, CommandResp};
 
     // Redefine the try_ready macro so that it doesn't need to be explicitly
     // imported by the user of this generated code.
@@ -94,8 +162,11 @@ pub mod server {
     pub trait Looper: Clone {
         type GetStateStream: futures::Stream<Item = State, Error = grpc::Status>;
         type GetStateFuture: futures::Future<Item = grpc::Response<Self::GetStateStream>, Error = grpc::Status>;
+        type CommandFuture: futures::Future<Item = grpc::Response<CommandResp>, Error = grpc::Status>;
 
         fn get_state(&mut self, request: grpc::Request<GetStateReq>) -> Self::GetStateFuture;
+
+        fn command(&mut self, request: grpc::Request<CommandReq>) -> Self::CommandFuture;
     }
 
     #[derive(Debug, Clone)]
@@ -130,6 +201,11 @@ pub mod server {
                     let service = looper::methods::GetState(self.looper.clone());
                     let response = grpc::server_streaming(service, request);
                     looper::ResponseFuture { kind: GetState(response) }
+                }
+                "/protos.Looper/Command" => {
+                    let service = looper::methods::Command(self.looper.clone());
+                    let response = grpc::unary(service, request);
+                    looper::ResponseFuture { kind: Command(response) }
                 }
                 _ => {
                     looper::ResponseFuture { kind: __Generated__Unimplemented(grpc::unimplemented(format!("unknown service: {:?}", request.uri().path()))) }
@@ -174,7 +250,7 @@ pub mod server {
     pub mod looper {
         use ::tower_grpc::codegen::server::*;
         use super::Looper;
-        use super::super::GetStateReq;
+        use super::super::{GetStateReq, CommandReq};
 
         pub struct ResponseFuture<T>
         where T: Looper,
@@ -182,6 +258,8 @@ pub mod server {
             pub(super) kind: Kind<
                 // GetState
                 grpc::server_streaming::ResponseFuture<methods::GetState<T>, grpc::BoxBody, GetStateReq>,
+                // Command
+                grpc::unary::ResponseFuture<methods::Command<T>, grpc::BoxBody, CommandReq>,
                 // A generated catch-all for unimplemented service calls
                 grpc::unimplemented::ResponseFuture,
             >,
@@ -204,6 +282,13 @@ pub mod server {
                         });
                         Ok(response.into())
                     }
+                    Command(ref mut fut) => {
+                        let response = try_ready!(fut.poll());
+                        let response = response.map(|body| {
+                            ResponseBody { kind: Command(body) }
+                        });
+                        Ok(response.into())
+                    }
                     __Generated__Unimplemented(ref mut fut) => {
                         let response = try_ready!(fut.poll());
                         let response = response.map(|body| {
@@ -221,6 +306,8 @@ pub mod server {
             pub(super) kind: Kind<
                 // GetState
                 grpc::Encode<<methods::GetState<T> as grpc::ServerStreamingService<GetStateReq>>::ResponseStream>,
+                // Command
+                grpc::Encode<grpc::unary::Once<<methods::Command<T> as grpc::UnaryService<CommandReq>>::Response>>,
                 // A generated catch-all for unimplemented service calls
                 (),
             >,
@@ -237,6 +324,7 @@ pub mod server {
 
                 match self.kind {
                     GetState(ref v) => v.is_end_stream(),
+                    Command(ref v) => v.is_end_stream(),
                     __Generated__Unimplemented(_) => true,
                 }
             }
@@ -246,6 +334,7 @@ pub mod server {
 
                 match self.kind {
                     GetState(ref mut v) => v.poll_data(),
+                    Command(ref mut v) => v.poll_data(),
                     __Generated__Unimplemented(_) => Ok(None.into()),
                 }
             }
@@ -255,6 +344,7 @@ pub mod server {
 
                 match self.kind {
                     GetState(ref mut v) => v.poll_trailers(),
+                    Command(ref mut v) => v.poll_trailers(),
                     __Generated__Unimplemented(_) => Ok(None.into()),
                 }
             }
@@ -262,14 +352,15 @@ pub mod server {
 
         #[allow(non_camel_case_types)]
         #[derive(Debug, Clone)]
-        pub(super) enum Kind<GetState, __Generated__Unimplemented> {
+        pub(super) enum Kind<GetState, Command, __Generated__Unimplemented> {
             GetState(GetState),
+            Command(Command),
             __Generated__Unimplemented(__Generated__Unimplemented),
         }
 
         pub mod methods {
             use ::tower_grpc::codegen::server::*;
-            use super::super::{Looper, GetStateReq};
+            use super::super::{Looper, GetStateReq, CommandReq, CommandResp};
 
             pub struct GetState<T>(pub T);
 
@@ -286,6 +377,24 @@ pub mod server {
 
                 fn call(&mut self, request: grpc::Request<GetStateReq>) -> Self::Future {
                     self.0.get_state(request)
+                }
+            }
+
+            pub struct Command<T>(pub T);
+
+            impl<T> tower::Service<grpc::Request<CommandReq>> for Command<T>
+            where T: Looper,
+            {
+                type Response = grpc::Response<CommandResp>;
+                type Error = grpc::Status;
+                type Future = T::CommandFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
+
+                fn call(&mut self, request: grpc::Request<CommandReq>) -> Self::Future {
+                    self.0.command(request)
                 }
             }
         }

@@ -48,3 +48,75 @@ class PlayMode extends $pb.ProtobufEnum {
   const PlayMode._(int v, String n) : super(v, n);
 }
 
+class CommandStatus extends $pb.ProtobufEnum {
+  static const CommandStatus ACCEPTED = const CommandStatus._(0, 'ACCEPTED');
+  static const CommandStatus FAILED = const CommandStatus._(1, 'FAILED');
+
+  static const List<CommandStatus> values = const <CommandStatus> [
+    ACCEPTED,
+    FAILED,
+  ];
+
+  static final Map<int, CommandStatus> _byValue = $pb.ProtobufEnum.initByValue(values);
+  static CommandStatus valueOf(int value) => _byValue[value];
+  static void $checkItem(CommandStatus v) {
+    if (v is! CommandStatus) $pb.checkItemFailed(v, 'CommandStatus');
+  }
+
+  const CommandStatus._(int v, String n) : super(v, n);
+}
+
+class LooperCommandType extends $pb.ProtobufEnum {
+  static const LooperCommandType ENABLE_RECORD = const LooperCommandType._(0, 'ENABLE_RECORD');
+  static const LooperCommandType ENABLE_READY = const LooperCommandType._(10, 'ENABLE_READY');
+  static const LooperCommandType DISABLE_RECORD = const LooperCommandType._(1, 'DISABLE_RECORD');
+  static const LooperCommandType ENABLE_OVERDUB = const LooperCommandType._(2, 'ENABLE_OVERDUB');
+  static const LooperCommandType DISABLE_OVERDUB = const LooperCommandType._(3, 'DISABLE_OVERDUB');
+  static const LooperCommandType ENABLE_MUTIPLY = const LooperCommandType._(4, 'ENABLE_MUTIPLY');
+  static const LooperCommandType DISABLE_MULTIPLY = const LooperCommandType._(5, 'DISABLE_MULTIPLY');
+  static const LooperCommandType ENABLE_PLAY = const LooperCommandType._(6, 'ENABLE_PLAY');
+  static const LooperCommandType DISABLE_PLAY = const LooperCommandType._(7, 'DISABLE_PLAY');
+  static const LooperCommandType SELECT = const LooperCommandType._(8, 'SELECT');
+  static const LooperCommandType DELETE = const LooperCommandType._(9, 'DELETE');
+
+  static const List<LooperCommandType> values = const <LooperCommandType> [
+    ENABLE_RECORD,
+    ENABLE_READY,
+    DISABLE_RECORD,
+    ENABLE_OVERDUB,
+    DISABLE_OVERDUB,
+    ENABLE_MUTIPLY,
+    DISABLE_MULTIPLY,
+    ENABLE_PLAY,
+    DISABLE_PLAY,
+    SELECT,
+    DELETE,
+  ];
+
+  static final Map<int, LooperCommandType> _byValue = $pb.ProtobufEnum.initByValue(values);
+  static LooperCommandType valueOf(int value) => _byValue[value];
+  static void $checkItem(LooperCommandType v) {
+    if (v is! LooperCommandType) $pb.checkItemFailed(v, 'LooperCommandType');
+  }
+
+  const LooperCommandType._(int v, String n) : super(v, n);
+}
+
+class GlobalCommandType extends $pb.ProtobufEnum {
+  static const GlobalCommandType RESET_TIME = const GlobalCommandType._(0, 'RESET_TIME');
+  static const GlobalCommandType ADD_LOOPER = const GlobalCommandType._(1, 'ADD_LOOPER');
+
+  static const List<GlobalCommandType> values = const <GlobalCommandType> [
+    RESET_TIME,
+    ADD_LOOPER,
+  ];
+
+  static final Map<int, GlobalCommandType> _byValue = $pb.ProtobufEnum.initByValue(values);
+  static GlobalCommandType valueOf(int value) => _byValue[value];
+  static void $checkItem(GlobalCommandType v) {
+    if (v is! GlobalCommandType) $pb.checkItemFailed(v, 'GlobalCommandType');
+  }
+
+  const GlobalCommandType._(int v, String n) : super(v, n);
+}
+

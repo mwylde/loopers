@@ -3,7 +3,11 @@ use crossbeam_queue::SegQueue;
 use std::sync::Arc;
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
-use crate::protos::PlayMode::Playing;
+use crate::protos::PlayMode::{Playing, Paused};
+use crate::protos::command::CommandOneof;
+use crate::protos::LooperCommandType::{EnableRecord, EnableReady, EnableOverdub, DisableRecord, DisablePlay, EnablePlay};
+use crate::protos::GlobalCommandType::{ResetTime, AddLooper};
+use crate::protos::RecordMode::Record;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -49,7 +53,7 @@ pub struct Engine {
     time: usize,
 
     loopers: Vec<Looper>,
-    active: usize,
+    active: u32,
 
     id_counter: u32,
 }
@@ -82,45 +86,139 @@ impl Engine {
         }
     }
 
-    fn update_states(&mut self, ps: &jack::ProcessScope) {
+    fn looper_by_id_mut(&mut self, id: u32) -> Option<&mut Looper> {
+        self.loopers.iter_mut().find(|l| l.id == id)
+    }
+
+    fn looper_by_id(&self, id: u32) -> Option<&Looper> {
+        self.loopers.iter().find(|l| l.id == id)
+    }
+
+    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
         let midi_in = &self.midi_in;
 
+        let looper = self.looper_by_id(self.active).unwrap();
+
+        fn looper_command(id: u32, typ: LooperCommandType) -> Command {
+            Command {
+                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
+                    loopers: vec![id],
+                    command_type: typ as i32,
+                }))
+            }
+        }
+
+        fn global_command(typ: GlobalCommandType) -> Command {
+            Command {
+                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
+                    command: typ as i32,
+                }))
+            }
+        }
+
         for e in midi_in.iter(ps) {
-            println!("Got midi event {:?}", e);
-
-            let time = &mut self.time;
-            let looper = &mut self.loopers[self.active];
-            let gui_output = &mut self.gui_output;
-
             if e.bytes.len() == 3 && e.bytes[0] == 144 {
-                match e.bytes[1]{
+                match e.bytes[1] {
                     60 => {
                         if looper.buffers.is_empty() || looper.play_mode == PlayMode::Paused {
-                            looper.set_record_mode(RecordMode::Ready);
+                            self.gui_input.push(looper_command(looper.id, EnableReady));
                         } else {
-                            looper.set_record_mode(RecordMode::Overdub);
-                            // todo: pre-allocate
-                            looper.buffers.push([vec![], vec![]]);
+                            self.gui_input.push(looper_command(looper.id, EnableOverdub));
                         }
                     }
                     62 => {
-                        looper.set_record_mode(RecordMode::None);
+                        self.gui_input.push(looper_command(looper.id, DisableRecord));
 
                         if looper.play_mode == PlayMode::Paused {
-                            looper.set_play_mode(PlayMode::Playing);
+                            self.gui_input.push(looper_command(looper.id, EnablePlay));
                         } else {
-                            looper.set_play_mode(PlayMode::Paused);
+                            self.gui_input.push(looper_command(looper.id, DisablePlay));
                         }
 
-                        *time = 0;
+                        self.gui_input.push(global_command(ResetTime));
                     },
                     64 => {
-                        // looper.set_play_mode(PlayMode::PAUSED);
-                        self.loopers.push(Looper::new(self.id_counter));
-                        self.id_counter += 1;
-                        self.active = self.loopers.len() - 1;
+                        self.gui_input.push(global_command(AddLooper))
                     }
                     _ => {}
+                }
+            } else {}
+        }
+    }
+
+    fn handle_commands(&mut self) {
+        loop {
+            let c = self.gui_input.pop();
+            if c.is_err() {
+                return;
+            }
+            let c = c.unwrap();
+            if c.command_oneof.is_none() {
+                continue;
+            }
+
+            match c.command_oneof.unwrap() {
+                CommandOneof::LooperCommand(lc) => {
+                    for looper_id in lc.loopers {
+                        if let Some(looper) = self.looper_by_id_mut(looper_id) {
+                            if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
+                                match typ as LooperCommandType {
+                                    LooperCommandType::EnableReady => {
+                                        looper.record_mode = RecordMode::Ready;
+                                    }
+                                    LooperCommandType::EnableRecord => {
+                                        looper.record_mode = RecordMode::Record;
+                                    },
+                                    LooperCommandType::DisableRecord => {
+                                        looper.record_mode = RecordMode::None;
+                                    },
+                                    LooperCommandType::EnableOverdub => {
+                                        looper.record_mode = RecordMode::Overdub;
+                                        looper.buffers.push([vec![], vec![]]);
+                                    },
+                                    LooperCommandType::DisableOverdub => {
+                                        looper.record_mode = RecordMode::None;
+                                    },
+                                    LooperCommandType::EnableMutiply => {
+                                        // TODO
+                                    },
+                                    LooperCommandType::DisableMultiply => {
+                                        // TODO
+                                    },
+                                    LooperCommandType::EnablePlay => {
+                                        looper.play_mode = PlayMode::Playing;
+                                    },
+                                    LooperCommandType::DisablePlay => {
+                                        looper.play_mode = PlayMode::Paused;
+                                    },
+                                    LooperCommandType::Select => {
+                                        self.active = looper_id;
+                                    },
+                                    LooperCommandType::Delete => {
+                                        // TODO
+                                    },
+                                }
+                            } else {
+                                // TODO: log this
+                            }
+                        } else {
+                            // TODO: log this
+                        }
+                    }
+                },
+                CommandOneof::GlobalCommand(gc) => {
+                    if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
+                        match typ as GlobalCommandType {
+                            GlobalCommandType::ResetTime => {
+                                self.time = 0;
+                            },
+                            GlobalCommandType::AddLooper => {
+                                self.loopers.push(Looper::new(self.id_counter));
+                                self.active = self.id_counter;
+                                self.id_counter += 1;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -131,7 +229,9 @@ impl Engine {
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
-        self.update_states(ps);
+        self.commands_from_midi(ps);
+
+        self.handle_commands();
 
         let out_a_p = self.out_a.as_mut_slice(ps);
         let out_b_p = self.out_b.as_mut_slice(ps);
@@ -139,32 +239,35 @@ impl Engine {
         let in_b_p = self.in_b.as_slice(ps);
 
         let active = self.active;
-        let looper = &mut self.loopers[active];
+        let time = self.time;
 
-        let gui_output = &mut self.gui_output;
+        let mut l = in_a_p.to_vec();
+        let mut r = in_b_p.to_vec();
+
+        for looper in &mut self.loopers {
+            if looper.play_mode == PlayMode::Playing {
+                let mut time = self.time;
+                if !looper.buffers.is_empty() {
+                    for i in 0..l.len() {
+                        for b in &looper.buffers {
+                            if b[0].len() > 0 {
+                                l[i] += b[0][time % b[0].len()];
+                                r[i] += b[1][time % b[1].len()];
+                            }
+                        }
+                        time += 1;
+                    }
+                }
+            }
+        }
+
+        let looper =  self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
         if looper.record_mode == RecordMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
             looper.buffers.clear();
             looper.set_record_mode(RecordMode::Record);
         }
 
-        let mut l = in_a_p.to_vec();
-        let mut r = in_b_p.to_vec();
-
-        if looper.play_mode == PlayMode::Playing {
-            let mut time = self.time;
-            if !looper.buffers.is_empty() {
-                for i in 0..l.len() {
-                    for b in &looper.buffers {
-                        if b[0].len() > 0 {
-                            l[i] += b[0][time % b[0].len()];
-                            r[i] += b[1][time % b[1].len()];
-                        }
-                    }
-                    time += 1;
-                }
-            }
-        }
 
         out_a_p.clone_from_slice(&l);
         out_b_p.clone_from_slice(&r);
@@ -189,6 +292,7 @@ impl Engine {
         self.time += l.len();
 
         // TODO: make this non-allocating
+        let gui_output = &mut self.gui_output;
         let time = self.time;
         let loop_states: Vec<LoopState> = self.loopers.iter().enumerate().map(|(i, l)| {
             let len = l.buffers.get(0).map(|l| l[0].len())
@@ -206,7 +310,7 @@ impl Engine {
                 play_mode: l.play_mode as i32,
                 time: Engine::samples_to_time(t) as i64,
                 length: Engine::samples_to_time(len) as i64,
-                active: i == active,
+                active: l.id == active,
             }
         }).collect();
 

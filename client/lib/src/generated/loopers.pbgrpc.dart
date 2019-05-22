@@ -16,6 +16,10 @@ class LooperClient extends Client {
       '/protos.Looper/GetState',
       (GetStateReq value) => value.writeToBuffer(),
       (List<int> value) => new State.fromBuffer(value));
+  static final _$command = new ClientMethod<CommandReq, CommandResp>(
+      '/protos.Looper/Command',
+      (CommandReq value) => value.writeToBuffer(),
+      (List<int> value) => new CommandResp.fromBuffer(value));
 
   LooperClient(ClientChannel channel, {CallOptions options})
       : super(channel, options: options);
@@ -25,6 +29,14 @@ class LooperClient extends Client {
         _$getState, new $async.Stream.fromIterable([request]),
         options: options);
     return new ResponseStream(call);
+  }
+
+  ResponseFuture<CommandResp> command(CommandReq request,
+      {CallOptions options}) {
+    final call = $createCall(
+        _$command, new $async.Stream.fromIterable([request]),
+        options: options);
+    return new ResponseFuture(call);
   }
 }
 
@@ -39,6 +51,13 @@ abstract class LooperServiceBase extends Service {
         true,
         (List<int> value) => new GetStateReq.fromBuffer(value),
         (State value) => value.writeToBuffer()));
+    $addMethod(new ServiceMethod<CommandReq, CommandResp>(
+        'Command',
+        command_Pre,
+        false,
+        false,
+        (List<int> value) => new CommandReq.fromBuffer(value),
+        (CommandResp value) => value.writeToBuffer()));
   }
 
   $async.Stream<State> getState_Pre(
@@ -46,5 +65,11 @@ abstract class LooperServiceBase extends Service {
     yield* getState(call, (await request) as GetStateReq);
   }
 
+  $async.Future<CommandResp> command_Pre(
+      ServiceCall call, $async.Future request) async {
+    return command(call, await request);
+  }
+
   $async.Stream<State> getState(ServiceCall call, GetStateReq request);
+  $async.Future<CommandResp> command(ServiceCall call, CommandReq request);
 }
