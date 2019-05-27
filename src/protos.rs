@@ -20,6 +20,10 @@ pub struct LoopState {
 pub struct State {
     #[prost(message, repeated, tag="1")]
     pub loops: ::std::vec::Vec<LoopState>,
+    #[prost(int64, tag="2")]
+    pub time: i64,
+    #[prost(int64, tag="3")]
+    pub length: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandReq {

@@ -203,8 +203,12 @@ class LooperWidget extends StatelessWidget {
                             service.sendLooperCommand(state.id,
                                 protos.LooperCommandType.DISABLE_RECORD);
                           } else {
+                            if (state.playMode == protos.PlayMode.PLAYING) {
+                              service.sendLooperCommand(state.id,
+                                  protos.LooperCommandType.DISABLE_PLAY);
+                            }
                             service.sendLooperCommand(state.id,
-                                protos.LooperCommandType.ENABLE_RECORD);
+                                protos.LooperCommandType.ENABLE_READY);
                           }
                         }),
                     LooperButton(
@@ -232,6 +236,8 @@ class LooperWidget extends StatelessWidget {
                           service.sendLooperCommand(
                               state.id, protos.LooperCommandType.DISABLE_PLAY);
                         } else {
+                          service.sendGlobalCommand(
+                              protos.GlobalCommandType.RESET_TIME);
                           service.sendLooperCommand(
                               state.id, protos.LooperCommandType.ENABLE_PLAY);
                           if (state.recordMode == protos.RecordMode.RECORD) {

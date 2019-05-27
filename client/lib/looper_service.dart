@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:isolate';
+
 import 'package:grpc/grpc.dart';
 import 'src/generated/loopers.pb.dart';
 import 'src/generated/loopers.pbgrpc.dart';
@@ -9,21 +12,58 @@ class LooperService {
   bool _isShutdown = false;
   ClientChannel _channel;
   LooperClient _stub;
+  ReceivePort _statePort;
 
   LooperService() {
+    _statePort = ReceivePort();
+    Isolate.spawn(_stateIsolate, _statePort.sendPort);
+    reset();
+  }
+
+  reset() {
     _channel = new ClientChannel(ip,
         port: port,
         options: const ChannelOptions(
             credentials: const ChannelCredentials.insecure()));
 
     _stub = new LooperClient(_channel,
-        options: new CallOptions(timeout: new Duration(minutes: 10)));
+        options: new CallOptions(timeout: new Duration(seconds: 5)));
   }
 
   Stream<State> getState() {
-    return _stub.getState(GetStateReq()).map((f) {
-      return f;
+    print("get state called");
+    return _statePort.asBroadcastStream().map((m) {
+      var state = State.fromBuffer(m);
+      return state;
     });
+  }
+
+  static void _stateIsolate(SendPort portReceive) async {
+    ClientChannel channel;
+    do {
+      channel = new ClientChannel(ip,
+          port: port,
+          options: const ChannelOptions(
+              idleTimeout: Duration(seconds: 5),
+              credentials: const ChannelCredentials.insecure()));
+
+      var stub = new LooperClient(channel,
+              options: new CallOptions(timeout: new Duration(days: 1)))
+          .getState(GetStateReq());
+
+      try {
+        await for (var message in stub) {
+          portReceive.send(message.writeToBuffer());
+        }
+      } catch (e) {
+        print("Got error $e");
+        portReceive.send(null);
+        channel.shutdown();
+        channel = null;
+      }
+
+      sleep(Duration(seconds: 1));
+    } while (true);
   }
 
   Future<CommandResp> sendGlobalCommand(GlobalCommandType type) {
@@ -47,9 +87,19 @@ class LooperService {
     return sendCommand(command);
   }
 
-  Future<CommandResp> sendCommand(Command command) {
+  Future<CommandResp> sendCommand(Command command, {int retries = 3}) async {
     var req = CommandReq();
     req.command = command;
-    return _stub.command(req);
+    try {
+      return await _stub.command(req);
+    } catch (e) {
+      if (retries > 0) {
+        _channel.shutdown();
+        reset();
+        return sendCommand(command, retries: retries - 1);
+      } else {
+        return Future.error(e);
+      }
+    }
   }
 }

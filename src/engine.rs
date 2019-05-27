@@ -51,6 +51,7 @@ pub struct Engine {
     gui_input: Arc<SegQueue<Command>>,
 
     time: usize,
+    length: usize,
 
     loopers: Vec<Looper>,
     active: u32,
@@ -80,6 +81,7 @@ impl Engine {
             gui_output,
             gui_input,
             time: 0,
+            length: 0,
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
@@ -167,14 +169,25 @@ impl Engine {
                                         looper.record_mode = RecordMode::Ready;
                                     }
                                     LooperCommandType::EnableRecord => {
-                                        looper.record_mode = RecordMode::Record;
+                                        if looper.record_mode != RecordMode::Record {
+                                            looper.record_mode = RecordMode::Record;
+                                            looper.buffers.clear();
+                                            looper.buffers.push([vec![], vec![]]);
+                                        }
                                     },
                                     LooperCommandType::DisableRecord => {
                                         looper.record_mode = RecordMode::None;
                                     },
                                     LooperCommandType::EnableOverdub => {
-                                        looper.record_mode = RecordMode::Overdub;
-                                        looper.buffers.push([vec![], vec![]]);
+                                        if looper.record_mode != RecordMode::Overdub &&
+                                            !looper.buffers.is_empty() &&
+                                            !looper.buffers[0].is_empty() &&
+                                            looper.buffers[0][0].len() > 0 {
+                                            looper.record_mode = RecordMode::Overdub;
+                                            looper.buffers.push(
+                                                [vec![0.0; looper.buffers[0][0].len()],
+                                                    vec![0.0; looper.buffers[0][1].len()]]);
+                                        }
                                     },
                                     LooperCommandType::DisableOverdub => {
                                         looper.record_mode = RecordMode::None;
@@ -250,6 +263,8 @@ impl Engine {
                 if !looper.buffers.is_empty() {
                     for i in 0..l.len() {
                         for b in &looper.buffers {
+                            assert_eq!(b[0].len(), b[1].len());
+                            assert_eq!(b[0].len(), looper.buffers[0][0].len());
                             if b[0].len() > 0 {
                                 l[i] += b[0][time % b[0].len()];
                                 r[i] += b[1][time % b[1].len()];
@@ -261,30 +276,27 @@ impl Engine {
             }
         }
 
-        let looper =  self.loopers.iter_mut().find(|l| l.id == active).unwrap();
+        let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
         if looper.record_mode == RecordMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
             looper.buffers.clear();
+            looper.buffers.push([vec![], vec![]]);
             looper.set_record_mode(RecordMode::Record);
         }
-
 
         out_a_p.clone_from_slice(&l);
         out_b_p.clone_from_slice(&r);
 
-//        if looper.record_mode == RecordMode::Overdub && !looper.buffers.is_empty() {
-//            let mut time = self.time;
-//            if looper.buffers.len() > 1 {
-//                looper.buffers.push([vec![], vec![]]);
-//            } else {
-//                panic!("entered overdub mode with too few buffers");
-//            }
-//        }
+        if looper.play_mode == PlayMode::Playing && looper.record_mode == RecordMode::Overdub {
+            let len = looper.buffers[0][0].len();
+            for i in 0..l.len() {
+                let time = self.time + i;
+                looper.buffers.last_mut().unwrap()[0][time % len] += in_a_p[i];
+                looper.buffers.last_mut().unwrap()[1][time % len] += in_b_p[i];
+            }
+        }
 
         if looper.record_mode == RecordMode::Record {
-            if looper.buffers.is_empty() {
-                looper.buffers.push([vec![], vec![]]);
-            }
             looper.buffers[0][0].extend_from_slice(&l);
             looper.buffers[0][1].extend_from_slice(&r);
         }
@@ -316,6 +328,8 @@ impl Engine {
 
         gui_output.push(State{
             loops: loop_states,
+            time: 0,
+            length: 0,
         });
 
         jack::Control::Continue
