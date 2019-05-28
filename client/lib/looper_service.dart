@@ -13,10 +13,12 @@ class LooperService {
   ClientChannel _channel;
   LooperClient _stub;
   ReceivePort _statePort;
+  Stream<dynamic> _broadcastStream;
 
   LooperService() {
     _statePort = ReceivePort();
     Isolate.spawn(_stateIsolate, _statePort.sendPort);
+    _broadcastStream = _statePort.asBroadcastStream();
     reset();
   }
 
@@ -32,7 +34,7 @@ class LooperService {
 
   Stream<State> getState() {
     print("get state called");
-    return _statePort.asBroadcastStream().map((m) {
+    return _broadcastStream.map((m) {
       var state = State.fromBuffer(m);
       return state;
     });

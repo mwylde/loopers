@@ -16,6 +16,7 @@ struct Looper {
     buffers: Vec<[Vec<f32>; 2]>,
     play_mode: PlayMode,
     record_mode: RecordMode,
+    time: usize,
 }
 
 impl Looper {
@@ -25,6 +26,7 @@ impl Looper {
             buffers: vec![],
             play_mode: PlayMode::Paused,
             record_mode: RecordMode::None,
+            time: 0,
         };
 
         looper
@@ -49,9 +51,6 @@ pub struct Engine {
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
-
-    time: usize,
-    length: usize,
 
     loopers: Vec<Looper>,
     active: u32,
@@ -80,8 +79,6 @@ impl Engine {
             midi_in,
             gui_output,
             gui_input,
-            time: 0,
-            length: 0,
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
@@ -223,7 +220,9 @@ impl Engine {
                     if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
                         match typ as GlobalCommandType {
                             GlobalCommandType::ResetTime => {
-                                self.time = 0;
+                                for l in &mut self.loopers {
+                                    l.time = 0;
+                                }
                             },
                             GlobalCommandType::AddLooper => {
                                 self.loopers.push(Looper::new(self.id_counter));
@@ -252,14 +251,13 @@ impl Engine {
         let in_b_p = self.in_b.as_slice(ps);
 
         let active = self.active;
-        let time = self.time;
 
         let mut l = in_a_p.to_vec();
         let mut r = in_b_p.to_vec();
 
         for looper in &mut self.loopers {
             if looper.play_mode == PlayMode::Playing {
-                let mut time = self.time;
+                let mut time = looper.time;
                 if !looper.buffers.is_empty() {
                     for i in 0..l.len() {
                         for b in &looper.buffers {
@@ -290,7 +288,7 @@ impl Engine {
         if looper.play_mode == PlayMode::Playing && looper.record_mode == RecordMode::Overdub {
             let len = looper.buffers[0][0].len();
             for i in 0..l.len() {
-                let time = self.time + i;
+                let time = looper.time + i;
                 looper.buffers.last_mut().unwrap()[0][time % len] += in_a_p[i];
                 looper.buffers.last_mut().unwrap()[1][time % len] += in_b_p[i];
             }
@@ -301,12 +299,13 @@ impl Engine {
             looper.buffers[0][1].extend_from_slice(&r);
         }
 
-        self.time += l.len();
+        self.loopers.iter_mut().filter(|l| l.play_mode == PlayMode::Playing)
+            .for_each(|looper| looper.time += l.len());
 
         // TODO: make this non-allocating
         let gui_output = &mut self.gui_output;
-        let time = self.time;
         let loop_states: Vec<LoopState> = self.loopers.iter().enumerate().map(|(i, l)| {
+            let time = l.time;
             let len = l.buffers.get(0).map(|l| l[0].len())
                 .unwrap_or(0);
 
