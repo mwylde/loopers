@@ -17,6 +17,7 @@ struct Looper {
     play_mode: PlayMode,
     record_mode: RecordMode,
     time: usize,
+    deleted: bool,
 }
 
 impl Looper {
@@ -27,6 +28,7 @@ impl Looper {
             play_mode: PlayMode::Paused,
             record_mode: RecordMode::None,
             time: 0,
+            deleted: false,
         };
 
         looper
@@ -58,7 +60,7 @@ pub struct Engine {
     id_counter: u32,
 }
 
-const THRESHOLD: f32 = 0.1;
+const THRESHOLD: f32 = 0.05;
 
 fn max_abs(b: &[f32]) -> f32 {
     b.iter().map(|v| v.abs())
@@ -205,7 +207,7 @@ impl Engine {
                                         self.active = looper_id;
                                     },
                                     LooperCommandType::Delete => {
-                                        // TODO
+                                        looper.deleted = true;
                                     },
                                 }
                             } else {
@@ -250,22 +252,27 @@ impl Engine {
         let in_a_p = self.in_a.as_slice(ps);
         let in_b_p = self.in_b.as_slice(ps);
 
+        let buffer_len = in_a_p.len();
+
         let active = self.active;
 
-        let mut l = in_a_p.to_vec();
-        let mut r = in_b_p.to_vec();
+        let mut l: Vec<f64> = in_a_p.iter().map(|v| *v as f64).collect();
+        let mut r: Vec<f64> = in_b_p.iter().map(|v| *v as f64).collect();
 
         for looper in &mut self.loopers {
+            if looper.deleted {
+                continue;
+            }
             if looper.play_mode == PlayMode::Playing {
                 let mut time = looper.time;
                 if !looper.buffers.is_empty() {
-                    for i in 0..l.len() {
+                    for i in 0..buffer_len {
                         for b in &looper.buffers {
                             assert_eq!(b[0].len(), b[1].len());
                             assert_eq!(b[0].len(), looper.buffers[0][0].len());
                             if b[0].len() > 0 {
-                                l[i] += b[0][time % b[0].len()];
-                                r[i] += b[1][time % b[1].len()];
+                                l[i] += b[0][time % b[0].len()] as f64;
+                                r[i] += b[1][time % b[1].len()] as f64;
                             }
                         }
                         time += 1;
@@ -282,12 +289,14 @@ impl Engine {
             looper.set_record_mode(RecordMode::Record);
         }
 
-        out_a_p.clone_from_slice(&l);
-        out_b_p.clone_from_slice(&r);
+        let l32: Vec<f32> = l.into_iter().map(|f| f as f32).collect();
+        let r32: Vec<f32> = r.into_iter().map(|f| f as f32).collect();
+        out_a_p.clone_from_slice(&l32);
+        out_b_p.clone_from_slice(&r32);
 
         if looper.play_mode == PlayMode::Playing && looper.record_mode == RecordMode::Overdub {
             let len = looper.buffers[0][0].len();
-            for i in 0..l.len() {
+            for i in 0..buffer_len {
                 let time = looper.time + i;
                 looper.buffers.last_mut().unwrap()[0][time % len] += in_a_p[i];
                 looper.buffers.last_mut().unwrap()[1][time % len] += in_b_p[i];
@@ -295,16 +304,18 @@ impl Engine {
         }
 
         if looper.record_mode == RecordMode::Record {
-            looper.buffers[0][0].extend_from_slice(&l);
-            looper.buffers[0][1].extend_from_slice(&r);
+            looper.buffers[0][0].extend_from_slice(&in_a_p);
+            looper.buffers[0][1].extend_from_slice(&in_b_p);
         }
 
         self.loopers.iter_mut().filter(|l| l.play_mode == PlayMode::Playing)
-            .for_each(|looper| looper.time += l.len());
+            .for_each(|looper| looper.time += buffer_len);
 
         // TODO: make this non-allocating
         let gui_output = &mut self.gui_output;
-        let loop_states: Vec<LoopState> = self.loopers.iter().enumerate().map(|(i, l)| {
+        let loop_states: Vec<LoopState> = self.loopers.iter()
+            .filter(|l| !l.deleted)
+            .enumerate().map(|(i, l)| {
             let time = l.time;
             let len = l.buffers.get(0).map(|l| l[0].len())
                 .unwrap_or(0);
