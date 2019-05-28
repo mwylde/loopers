@@ -5,10 +5,11 @@ import 'package:flutter/foundation.dart'
     show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:loopers/looper_service.dart';
+import 'package:loopers/settings.dart';
 import 'src/generated/loopers.pb.dart' as protos;
 import 'src/generated/loopers.pbgrpc.dart' as grpc;
 
-void main() {
+void main() async {
   // See https://github.com/flutter/flutter/wiki/Desktop-shells#target-platform-override
   debugDefaultTargetPlatformOverride = TargetPlatform.fuchsia;
 
@@ -29,8 +30,11 @@ void main() {
   testState.loops.add(l1);
   testState.loops.add(l2);
 
+  var service = LooperService();
+  await service.start();
+
   runApp(new MyApp(
-    service: LooperService(),
+    service: service,
   ));
 }
 
@@ -44,7 +48,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Loopers',
-      theme: ThemeData.dark(),
+      theme: ThemeData.dark().copyWith(
+        buttonTheme: ButtonThemeData(
+          minWidth: 30,
+        )
+      ),
 //      theme: ThemeData(
 //        primarySwatch: Colors.blue,
 //        // See https://github.com/flutter/flutter/wiki/Desktop-shells#fonts
@@ -84,7 +92,20 @@ class MainPageState extends State<MainPage> {
 
           return Scaffold(
             body: Column(children: [
-              TimeWidget(state: snapshot.data),
+              AppBar(
+                title: Text("Loopers"),
+                actions: <Widget>[
+                  IconButton(
+                    icon: Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) {
+                        return SettingsPage();
+                      }));
+                    },
+                  ),
+                ],
+              ),
+              // TimeWidget(state: snapshot.data),
               Container(child: loopers)
             ]),
             floatingActionButton: FloatingActionButton(
@@ -140,9 +161,13 @@ class LooperButton extends StatelessWidget {
         active ? Colors.red[400] : primed ? Colors.brown : Colors.black26;
 
     Widget button = FlatButton(
+
       color: color,
       onPressed: onPressed,
-      child: Text(text),
+      child: Text(text,
+        style: TextStyle(
+          fontSize: 12.0,
+      )),
     );
 
     return Container(

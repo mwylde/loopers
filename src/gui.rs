@@ -11,6 +11,7 @@ use tower_hyper::Server;
 use tower_hyper::server::Http;
 use tokio::net::TcpListener;
 use futures::Future;
+use std::net::{SocketAddrV4, Ipv4Addr, SocketAddr};
 
 #[derive(Clone)]
 pub struct Gui {
@@ -49,7 +50,8 @@ impl Gui {
         let mut server = Server::new(new_service);
         let http = Http::new().http2_only(true).clone();
 
-        let addr = "127.0.0.1:10000".parse().unwrap();
+        // let addr = "0.0.0.0:10000".parse().unwrap();
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 10000));
         let bind = TcpListener::bind(&addr).expect("bind");
 
         println!("listening on {:?}", addr);

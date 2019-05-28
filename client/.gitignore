@@ -3,9 +3,7 @@
 .vscode/
 .packages
 .pub/
-android/
 build/
-ios/
 packages
 .flutter-plugins
 # Since the current expectation is that clients are using Flutter head,

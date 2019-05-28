@@ -4,9 +4,11 @@ import 'dart:isolate';
 import 'package:grpc/grpc.dart';
 import 'src/generated/loopers.pb.dart';
 import 'src/generated/loopers.pbgrpc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-const ip = "127.0.0.1";
-const port = 10000;
+
+//const ip = "10.0.2.2"; // "127.0.0.1";
+//const port = 10000;
 
 class LooperService {
   bool _isShutdown = false;
@@ -14,17 +16,39 @@ class LooperService {
   LooperClient _stub;
   ReceivePort _statePort;
   Stream<dynamic> _broadcastStream;
+  String _host;
+  int _port;
 
   LooperService() {
     _statePort = ReceivePort();
-    Isolate.spawn(_stateIsolate, _statePort.sendPort);
-    _broadcastStream = _statePort.asBroadcastStream();
+  }
+
+  static Future<List> getHostPort() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey("host")) {
+        var cs = prefs.getString("host").split(":");
+        return [cs[0], int.parse(cs[1])];
+      } else {
+        return ["192.168.0.107", 10000];
+      }
+    } else {
+      return ["127.0.0.1", 10000];
+    }
+  }
+
+  Future<void> start() async {
+    var hostPort = await getHostPort();
+    _host = hostPort[0];
+    _port = hostPort[1];
     reset();
+    Isolate.spawn(_stateIsolate, [_statePort.sendPort, hostPort[0], hostPort[1]]);
+    _broadcastStream = _statePort.asBroadcastStream();
   }
 
   reset() {
-    _channel = new ClientChannel(ip,
-        port: port,
+    _channel = new ClientChannel(_host,
+        port: _port,
         options: const ChannelOptions(
             credentials: const ChannelCredentials.insecure()));
 
@@ -40,10 +64,13 @@ class LooperService {
     });
   }
 
-  static void _stateIsolate(SendPort portReceive) async {
+  static void _stateIsolate(List args) async {
+    SendPort portReceive = args[0];
+    String host = args[1];
+    int port = args[2];
     ClientChannel channel;
     do {
-      channel = new ClientChannel(ip,
+      channel = new ClientChannel(host,
           port: port,
           options: const ChannelOptions(
               idleTimeout: Duration(seconds: 5),
