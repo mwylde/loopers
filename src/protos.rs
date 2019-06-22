@@ -5,10 +5,8 @@ pub struct GetStateReq {
 pub struct LoopState {
     #[prost(uint32, tag="1")]
     pub id: u32,
-    #[prost(enumeration="RecordMode", tag="2")]
-    pub record_mode: i32,
-    #[prost(enumeration="PlayMode", tag="3")]
-    pub play_mode: i32,
+    #[prost(enumeration="LooperMode", tag="2")]
+    pub mode: i32,
     #[prost(int64, tag="4")]
     pub time: i64,
     #[prost(int64, tag="5")]
@@ -63,17 +61,12 @@ pub mod command {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum RecordMode {
+pub enum LooperMode {
     None = 0,
     Ready = 1,
     Record = 2,
     Overdub = 3,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum PlayMode {
-    Paused = 0,
-    Playing = 1,
+    Playing = 4,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -84,17 +77,14 @@ pub enum CommandStatus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum LooperCommandType {
-    EnableRecord = 0,
-    EnableReady = 10,
-    DisableRecord = 1,
-    EnableOverdub = 2,
-    DisableOverdub = 3,
+    Stop = 0,
+    EnableRecord = 1,
+    EnableReady = 2,
+    EnableOverdub = 3,
     EnableMutiply = 4,
-    DisableMultiply = 5,
-    EnablePlay = 6,
-    DisablePlay = 7,
-    Select = 8,
-    Delete = 9,
+    EnablePlay = 5,
+    Select = 6,
+    Delete = 7,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
