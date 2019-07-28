@@ -35,6 +35,10 @@ message State {
     repeated LoopState loops = 1;
     int64 time = 2;
     int64 length = 3;
+    uint64 beat = 4;
+    float bpm = 5;
+    uint64 time_signature_upper = 6;
+    uint64 time_signature_lower = 7;
 }
 
 message CommandReq {

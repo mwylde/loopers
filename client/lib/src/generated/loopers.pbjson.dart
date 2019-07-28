@@ -75,6 +75,9 @@ const State$json = const {
   '1': 'State',
   '2': const [
     const {'1': 'loops', '3': 1, '4': 3, '5': 11, '6': '.protos.LoopState', '10': 'loops'},
+    const {'1': 'time', '3': 2, '4': 1, '5': 3, '10': 'time'},
+    const {'1': 'length', '3': 3, '4': 1, '5': 3, '10': 'length'},
+    const {'1': 'beat', '3': 4, '4': 1, '5': 4, '10': 'beat'},
   ],
 };
 

@@ -43,6 +43,36 @@ impl Looper {
     }
 }
 
+pub struct TimeSignature {
+    upper: u8,
+    lower: u8,
+}
+
+impl TimeSignature {
+    pub fn new(upper: u8, lower: u8) -> Option<TimeSignature> {
+        if lower > 0 && (lower & (lower - 1)) == 0 {
+            // lower must be a power of 2
+            return None
+        }
+        Some(TimeSignature { upper, lower })
+    }
+}
+
+pub struct Tempo {
+    mbpm: u64
+}
+
+impl Tempo {
+    pub fn from_bpm(bpm: f32) -> Tempo {
+        Tempo { mbpm: (bpm * 1000f32).round() as u64 }
+    }
+
+    pub fn bpm(&self) -> f32 {
+        (self.mbpm as f32) / 1000f32
+    }
+}
+
+
 pub struct Engine {
     in_a: Port<AudioIn>,
     in_b: Port<AudioIn>,
@@ -50,6 +80,10 @@ pub struct Engine {
     out_b: Port<AudioOut>,
 
     midi_in: Port<MidiIn>,
+
+    time: u64,
+    time_signature: TimeSignature,
+    tempo: Tempo,
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
@@ -79,6 +113,11 @@ impl Engine {
             out_a,
             out_b,
             midi_in,
+
+            time: 0,
+            time_signature: TimeSignature::new(4, 4).unwrap(),
+            tempo: Tempo::from_bpm(120.0),
+
             gui_output,
             gui_input,
             loopers: vec![Looper::new(0)],
@@ -242,7 +281,18 @@ impl Engine {
         ((time as f64) / SAMPLE_RATE) as u64
     }
 
+    fn get_beat(&self) -> u64 {
+        let bps = self.tempo.bpm() / 60.0;
+        (Engine::samples_to_time(self.time as usize) as f32 / bps) as u64
+    }
+
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let prev_beat = self.get_beat();
+        {
+            self.time += ps.n_frames() as u64;
+        }
+        let cur_beat = self.get_beat();
+
         self.commands_from_midi(ps);
 
         self.handle_commands();
@@ -258,6 +308,7 @@ impl Engine {
 
         let mut l: Vec<f64> = in_a_p.iter().map(|v| *v as f64).collect();
         let mut r: Vec<f64> = in_b_p.iter().map(|v| *v as f64).collect();
+
 
         for looper in &mut self.loopers {
             if looper.deleted {
@@ -338,8 +389,12 @@ impl Engine {
 
         gui_output.push(State{
             loops: loop_states,
-            time: 0,
+            time: self.time as i64,
             length: 0,
+            beat: cur_beat,
+            bpm: self.tempo.bpm(),
+            time_signature_upper: self.time_signature.upper as u64,
+            time_signature_lower: self.time_signature.lower as u64,
         });
 
         jack::Control::Continue

@@ -93,6 +93,9 @@ class LoopState extends $pb.GeneratedMessage {
 class State extends $pb.GeneratedMessage {
   static final $pb.BuilderInfo _i = new $pb.BuilderInfo('State', package: const $pb.PackageName('protos'))
     ..pp<LoopState>(1, 'loops', $pb.PbFieldType.PM, LoopState.$checkItem, LoopState.create)
+    ..aInt64(2, 'time')
+    ..aInt64(3, 'length')
+    ..a<Int64>(4, 'beat', $pb.PbFieldType.OU6, Int64.ZERO)
     ..hasRequiredFields = false
   ;
 
@@ -111,6 +114,21 @@ class State extends $pb.GeneratedMessage {
   }
 
   List<LoopState> get loops => $_getList(0);
+
+  Int64 get time => $_getI64(1);
+  set time(Int64 v) { $_setInt64(1, v); }
+  bool hasTime() => $_has(1);
+  void clearTime() => clearField(2);
+
+  Int64 get length => $_getI64(2);
+  set length(Int64 v) { $_setInt64(2, v); }
+  bool hasLength() => $_has(2);
+  void clearLength() => clearField(3);
+
+  Int64 get beat => $_getI64(3);
+  set beat(Int64 v) { $_setInt64(3, v); }
+  bool hasBeat() => $_has(3);
+  void clearBeat() => clearField(4);
 }
 
 class CommandReq extends $pb.GeneratedMessage {
