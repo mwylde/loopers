@@ -9,6 +9,7 @@ extern crate bytes;
 
 use std::{io, thread};
 
+mod sample;
 mod engine;
 mod gui;
 mod protos;

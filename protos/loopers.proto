@@ -7,16 +7,12 @@ service Looper {
     rpc Command(CommandReq) returns (CommandResp) {}
 }
 
-enum RecordMode {
+enum LooperMode {
     NONE = 0;
     READY = 1;
     RECORD = 2;
     OVERDUB = 3;
-}
-
-enum PlayMode {
-    PAUSED = 0;
-    PLAYING = 1;
+    PLAYING = 4;
 }
 
 message GetStateReq {
@@ -24,8 +20,7 @@ message GetStateReq {
 
 message LoopState {
     uint32 id = 1;
-    RecordMode record_mode = 2;
-    PlayMode play_mode = 3;
+    LooperMode mode = 2;
     int64 time = 4;
     int64 length = 5;
     bool active = 6;
@@ -54,21 +49,15 @@ message CommandResp {
 }
 
 enum LooperCommandType {
-    ENABLE_RECORD = 0;
-    ENABLE_READY = 10;
-    DISABLE_RECORD = 1;
-
-    ENABLE_OVERDUB = 2;
-    DISABLE_OVERDUB = 3;
-
+    STOP = 0;
+    ENABLE_RECORD = 1;
+    ENABLE_READY = 2;
+    ENABLE_OVERDUB = 3;
     ENABLE_MUTIPLY = 4;
-    DISABLE_MULTIPLY = 5;
+    ENABLE_PLAY = 5;
 
-    ENABLE_PLAY = 6;
-    DISABLE_PLAY = 7;
-
-    SELECT = 8;
-    DELETE = 9;
+    SELECT = 6;
+    DELETE = 7;
 }
 
 message LooperCommand {

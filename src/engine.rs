@@ -3,19 +3,18 @@ use crossbeam_queue::SegQueue;
 use std::sync::Arc;
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
-use crate::protos::PlayMode::{Playing, Paused};
 use crate::protos::command::CommandOneof;
-use crate::protos::LooperCommandType::{EnableRecord, EnableReady, EnableOverdub, DisableRecord, DisablePlay, EnablePlay};
+use crate::protos::LooperCommandType::{EnableRecord, EnableReady, EnableOverdub, EnablePlay};
 use crate::protos::GlobalCommandType::{ResetTime, AddLooper};
-use crate::protos::RecordMode::Record;
+use crate::sample::Sample;
+use crate::protos::LooperMode::Playing;
 
 const SAMPLE_RATE: f64 = 44.100;
 
 struct Looper {
     id: u32,
-    buffers: Vec<[Vec<f32>; 2]>,
-    play_mode: PlayMode,
-    record_mode: RecordMode,
+    samples: Vec<Sample>,
+    mode: LooperMode,
     time: usize,
     deleted: bool,
 }
@@ -24,22 +23,67 @@ impl Looper {
     fn new(id: u32) -> Looper {
         let looper = Looper {
             id,
-            buffers: vec![],
-            play_mode: PlayMode::Paused,
-            record_mode: RecordMode::None,
+            samples: vec![],
+            mode: LooperMode::None,
             time: 0,
             deleted: false,
         };
 
         looper
     }
+}
 
-    fn set_record_mode(&mut self, mode: RecordMode) {
-        self.record_mode = mode;
+impl Looper {
+    fn transition_to(&mut self, mode: LooperMode) {
+        match (self.mode, mode) {
+            (x, y) if x == y => {},
+            (_, LooperMode::None) => {},
+            (_, LooperMode::Ready) => {},
+            (_, LooperMode::Record) => {
+                self.samples.clear();
+                self.samples.push(Sample::new());
+            },
+            (_, LooperMode::Overdub) => {
+                self.samples.push(Sample::new());
+            },
+            (_, LooperMode::Playing) => {},
+        }
+
+        self.mode = mode;
     }
 
-    fn set_play_mode(&mut self, mode: PlayMode) {
-        self.play_mode = mode;
+    fn process_event(&mut self, looper_event: LooperCommand) {
+        if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
+            match typ as LooperCommandType {
+                LooperCommandType::EnableReady => {
+                    self.transition_to(LooperMode::Ready);
+                }
+                LooperCommandType::EnableRecord => {
+                    self.transition_to(LooperMode::Record);
+                },
+                LooperCommandType::EnableOverdub => {
+                    self.transition_to(LooperMode::Overdub);
+                },
+                LooperCommandType::EnableMutiply => {
+                    // TODO
+                },
+                LooperCommandType::Stop => {
+                    self.transition_to(LooperMode::None);
+                }
+
+                LooperCommandType::EnablePlay => {
+                    self.transition_to(LooperMode::Playing);
+                },
+                LooperCommandType::Select => {
+                    self.active = self_id;
+                },
+                LooperCommandType::Delete => {
+                    self.deleted = true;
+                },
+            }
+        } else {
+            // TODO: log this
+        }        
     }
 }
 
@@ -91,6 +135,8 @@ pub struct Engine {
     loopers: Vec<Looper>,
     active: u32,
 
+    meter: Meter,
+
     id_counter: u32,
 }
 
@@ -122,6 +168,11 @@ impl Engine {
             gui_input,
             loopers: vec![Looper::new(0)],
             active: 0,
+            meter: Meter {
+                tempo: Tempo(1200),
+                top: 4,
+                bottom: 4,
+            },
             id_counter: 1,
         }
     }
@@ -134,57 +185,57 @@ impl Engine {
         self.loopers.iter().find(|l| l.id == id)
     }
 
-    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
-        let midi_in = &self.midi_in;
-
-        let looper = self.looper_by_id(self.active).unwrap();
-
-        fn looper_command(id: u32, typ: LooperCommandType) -> Command {
-            Command {
-                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
-                    loopers: vec![id],
-                    command_type: typ as i32,
-                }))
-            }
-        }
-
-        fn global_command(typ: GlobalCommandType) -> Command {
-            Command {
-                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
-                    command: typ as i32,
-                }))
-            }
-        }
-
-        for e in midi_in.iter(ps) {
-            if e.bytes.len() == 3 && e.bytes[0] == 144 {
-                match e.bytes[1] {
-                    60 => {
-                        if looper.buffers.is_empty() || looper.play_mode == PlayMode::Paused {
-                            self.gui_input.push(looper_command(looper.id, EnableReady));
-                        } else {
-                            self.gui_input.push(looper_command(looper.id, EnableOverdub));
-                        }
-                    }
-                    62 => {
-                        self.gui_input.push(looper_command(looper.id, DisableRecord));
-
-                        if looper.play_mode == PlayMode::Paused {
-                            self.gui_input.push(looper_command(looper.id, EnablePlay));
-                        } else {
-                            self.gui_input.push(looper_command(looper.id, DisablePlay));
-                        }
-
-                        self.gui_input.push(global_command(ResetTime));
-                    },
-                    64 => {
-                        self.gui_input.push(global_command(AddLooper))
-                    }
-                    _ => {}
-                }
-            } else {}
-        }
-    }
+//    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
+//        let midi_in = &self.midi_in;
+//
+//        let looper = self.looper_by_id(self.active).unwrap();
+//
+//        fn looper_command(id: u32, typ: LooperCommandType) -> Command {
+//            Command {
+//                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
+//                    loopers: vec![id],
+//                    command_type: typ as i32,
+//                }))
+//            }
+//        }
+//
+//        fn global_command(typ: GlobalCommandType) -> Command {
+//            Command {
+//                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
+//                    command: typ as i32,
+//                }))
+//            }
+//        }
+//
+//        for e in midi_in.iter(ps) {
+//            if e.bytes.len() == 3 && e.bytes[0] == 144 {
+//                match e.bytes[1] {
+//                    60 => {
+//                        if looper.buffers.is_empty() || looper.play_mode == PlayMode::Paused {
+//                            self.gui_input.push(looper_command(looper.id, EnableReady));
+//                        } else {
+//                            self.gui_input.push(looper_command(looper.id, EnableOverdub));
+//                        }
+//                    }
+//                    62 => {
+//                        self.gui_input.push(looper_command(looper.id, DisableRecord));
+//
+//                        if looper.play_mode == PlayMode::Paused {
+//                            self.gui_input.push(looper_command(looper.id, EnablePlay));
+//                        } else {
+//                            self.gui_input.push(looper_command(looper.id, DisablePlay));
+//                        }
+//
+//                        self.gui_input.push(global_command(ResetTime));
+//                    },
+//                    64 => {
+//                        self.gui_input.push(global_command(AddLooper))
+//                    }
+//                    _ => {}
+//                }
+//            } else {}
+//        }
+//    }
 
     fn handle_commands(&mut self) {
         loop {
@@ -201,57 +252,7 @@ impl Engine {
                 CommandOneof::LooperCommand(lc) => {
                     for looper_id in lc.loopers {
                         if let Some(looper) = self.looper_by_id_mut(looper_id) {
-                            if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
-                                match typ as LooperCommandType {
-                                    LooperCommandType::EnableReady => {
-                                        looper.record_mode = RecordMode::Ready;
-                                    }
-                                    LooperCommandType::EnableRecord => {
-                                        if looper.record_mode != RecordMode::Record {
-                                            looper.record_mode = RecordMode::Record;
-                                            looper.buffers.clear();
-                                            looper.buffers.push([vec![], vec![]]);
-                                        }
-                                    },
-                                    LooperCommandType::DisableRecord => {
-                                        looper.record_mode = RecordMode::None;
-                                    },
-                                    LooperCommandType::EnableOverdub => {
-                                        if looper.record_mode != RecordMode::Overdub &&
-                                            !looper.buffers.is_empty() &&
-                                            !looper.buffers[0].is_empty() &&
-                                            looper.buffers[0][0].len() > 0 {
-                                            looper.record_mode = RecordMode::Overdub;
-                                            looper.buffers.push(
-                                                [vec![0.0; looper.buffers[0][0].len()],
-                                                    vec![0.0; looper.buffers[0][1].len()]]);
-                                        }
-                                    },
-                                    LooperCommandType::DisableOverdub => {
-                                        looper.record_mode = RecordMode::None;
-                                    },
-                                    LooperCommandType::EnableMutiply => {
-                                        // TODO
-                                    },
-                                    LooperCommandType::DisableMultiply => {
-                                        // TODO
-                                    },
-                                    LooperCommandType::EnablePlay => {
-                                        looper.play_mode = PlayMode::Playing;
-                                    },
-                                    LooperCommandType::DisablePlay => {
-                                        looper.play_mode = PlayMode::Paused;
-                                    },
-                                    LooperCommandType::Select => {
-                                        self.active = looper_id;
-                                    },
-                                    LooperCommandType::Delete => {
-                                        looper.deleted = true;
-                                    },
-                                }
-                            } else {
-                                // TODO: log this
-                            }
+                            looper.process_event(lc);
                         } else {
                             // TODO: log this
                         }
@@ -294,7 +295,7 @@ impl Engine {
         }
         let cur_beat = self.get_beat();
 
-        self.commands_from_midi(ps);
+        // self.commands_from_midi(ps);
 
         self.handle_commands();
 
@@ -315,7 +316,7 @@ impl Engine {
             if looper.deleted {
                 continue;
             }
-            if looper.play_mode == PlayMode::Playing {
+            if looper.mode == LooperMode::Playing {
                 let mut time = looper.time;
                 if !looper.buffers.is_empty() {
                     for i in 0..buffer_len {
@@ -380,8 +381,7 @@ impl Engine {
 
             LoopState {
                 id: l.id,
-                record_mode: l.record_mode as i32,
-                play_mode: l.play_mode as i32,
+                mode: l.mode as i32,
                 time: Engine::samples_to_time(t) as i64,
                 length: Engine::samples_to_time(len) as i64,
                 active: l.id == active,
