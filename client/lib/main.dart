@@ -49,10 +49,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Loopers',
       theme: ThemeData.dark().copyWith(
-        buttonTheme: ButtonThemeData(
-          minWidth: 30,
-        )
-      ),
+          buttonTheme: ButtonThemeData(
+        minWidth: 30,
+      )),
 //      theme: ThemeData(
 //        primarySwatch: Colors.blue,
 //        // See https://github.com/flutter/flutter/wiki/Desktop-shells#fonts
@@ -98,14 +97,15 @@ class MainPageState extends State<MainPage> {
                   IconButton(
                     icon: Icon(Icons.settings),
                     onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) {
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (context) {
                         return SettingsPage();
                       }));
                     },
                   ),
                 ],
               ),
-              // TimeWidget(state: snapshot.data),
+              TimeWidget(state: snapshot.data),
               Container(child: loopers)
             ]),
             floatingActionButton: FloatingActionButton(
@@ -121,6 +121,33 @@ class MainPageState extends State<MainPage> {
   }
 }
 
+class Metronome extends StatelessWidget {
+  final protos.State state;
+
+  const Metronome({Key key, this.state}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    var children = <Widget>[];
+    for (var i = 0; i < state.timeSignatureUpper.toInt(); i++) {
+      var selected = state.beat % state.timeSignatureUpper.toInt() == i;
+      var color = selected && i == 0
+          ? Colors.blue
+          : (selected ? Colors.white30 : Colors.black12);
+
+      children.add(FlatButton(
+        color: color,
+        child: Text(i.toString()),
+        onPressed: () => null,
+      ));
+    }
+
+    return Row(
+      children: children,
+    );
+  }
+}
+
 class TimeWidget extends StatelessWidget {
   final protos.State state;
 
@@ -129,10 +156,25 @@ class TimeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state != null) {
+      var time = state.time.toInt() ~/ 1000;
+      var hours = time ~/ 60 ~/ 60;
+      time -= hours * 60 * 60;
+      var minutes = time ~/ 60;
+      time -= minutes * 60;
+      var seconds = time;
+
+      var r = (d) => d < 10 ? "0" + d.toString() : d.toString();
+
       return Container(
-        height: 100,
-        child: Text("Time"),
-      );
+          height: 50,
+          child: Row(
+            children: <Widget>[
+              Text("${r(hours)}:${r(minutes)}:${r(seconds)}"),
+              Metronome(
+                state: state,
+              )
+            ],
+          ));
     } else {
       return Container(
         height: 100,
@@ -161,13 +203,12 @@ class LooperButton extends StatelessWidget {
         active ? Colors.red[400] : primed ? Colors.brown : Colors.black26;
 
     Widget button = FlatButton(
-
       color: color,
       onPressed: onPressed,
       child: Text(text,
-        style: TextStyle(
-          fontSize: 12.0,
-      )),
+          style: TextStyle(
+            fontSize: 12.0,
+          )),
     );
 
     return Container(

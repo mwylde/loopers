@@ -50,7 +50,7 @@ pub struct TimeSignature {
 
 impl TimeSignature {
     pub fn new(upper: u8, lower: u8) -> Option<TimeSignature> {
-        if lower > 0 && (lower & (lower - 1)) == 0 {
+        if lower == 0 || (lower & (lower - 1)) != 0 {
             // lower must be a power of 2
             return None
         }
@@ -282,8 +282,9 @@ impl Engine {
     }
 
     fn get_beat(&self) -> u64 {
-        let bps = self.tempo.bpm() / 60.0;
-        (Engine::samples_to_time(self.time as usize) as f32 / bps) as u64
+        let bps = self.tempo.bpm() as f32 / 60.0;
+        let mspb = 1000.0 / bps;
+        (Engine::samples_to_time(self.time as usize) as f32 / mspb) as u64
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -389,7 +390,7 @@ impl Engine {
 
         gui_output.push(State{
             loops: loop_states,
-            time: self.time as i64,
+            time: Engine::samples_to_time(self.time as usize) as i64,
             length: 0,
             beat: cur_beat,
             bpm: self.tempo.bpm(),

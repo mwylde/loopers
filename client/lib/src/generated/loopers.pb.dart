@@ -96,6 +96,9 @@ class State extends $pb.GeneratedMessage {
     ..aInt64(2, 'time')
     ..aInt64(3, 'length')
     ..a<Int64>(4, 'beat', $pb.PbFieldType.OU6, Int64.ZERO)
+    ..a<double>(5, 'bpm', $pb.PbFieldType.OF)
+    ..a<Int64>(6, 'timeSignatureUpper', $pb.PbFieldType.OU6, Int64.ZERO)
+    ..a<Int64>(7, 'timeSignatureLower', $pb.PbFieldType.OU6, Int64.ZERO)
     ..hasRequiredFields = false
   ;
 
@@ -129,6 +132,21 @@ class State extends $pb.GeneratedMessage {
   set beat(Int64 v) { $_setInt64(3, v); }
   bool hasBeat() => $_has(3);
   void clearBeat() => clearField(4);
+
+  double get bpm => $_getN(4);
+  set bpm(double v) { $_setFloat(4, v); }
+  bool hasBpm() => $_has(4);
+  void clearBpm() => clearField(5);
+
+  Int64 get timeSignatureUpper => $_getI64(5);
+  set timeSignatureUpper(Int64 v) { $_setInt64(5, v); }
+  bool hasTimeSignatureUpper() => $_has(5);
+  void clearTimeSignatureUpper() => clearField(6);
+
+  Int64 get timeSignatureLower => $_getI64(6);
+  set timeSignatureLower(Int64 v) { $_setInt64(6, v); }
+  bool hasTimeSignatureLower() => $_has(6);
+  void clearTimeSignatureLower() => clearField(7);
 }
 
 class CommandReq extends $pb.GeneratedMessage {

@@ -78,6 +78,9 @@ const State$json = const {
     const {'1': 'time', '3': 2, '4': 1, '5': 3, '10': 'time'},
     const {'1': 'length', '3': 3, '4': 1, '5': 3, '10': 'length'},
     const {'1': 'beat', '3': 4, '4': 1, '5': 4, '10': 'beat'},
+    const {'1': 'bpm', '3': 5, '4': 1, '5': 2, '10': 'bpm'},
+    const {'1': 'time_signature_upper', '3': 6, '4': 1, '5': 4, '10': 'timeSignatureUpper'},
+    const {'1': 'time_signature_lower', '3': 7, '4': 1, '5': 4, '10': 'timeSignatureLower'},
   ],
 };
 
