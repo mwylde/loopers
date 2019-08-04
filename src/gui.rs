@@ -1,7 +1,6 @@
 use std::time::Duration;
 use crossbeam_queue::SegQueue;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use futures::{Stream, future};
 use tower_grpc::{Response, Request};
 use futures::sync::mpsc;

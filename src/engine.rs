@@ -4,10 +4,7 @@ use std::sync::Arc;
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
-use crate::protos::LooperCommandType::{EnableRecord, EnableReady, EnableOverdub, EnablePlay};
-use crate::protos::GlobalCommandType::{ResetTime, AddLooper};
 use crate::sample::Sample;
-use crate::protos::LooperMode::Playing;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -52,8 +49,8 @@ impl Looper {
         self.mode = mode;
     }
 
-    fn process_event(&mut self, looper_event: LooperCommand) {
-        if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
+    fn process_event(&mut self, engine: &mut Engine, looper_event: LooperCommand) {
+        if let Some(typ) = LooperCommandType::from_i32(looper_event.command_type) {
             match typ as LooperCommandType {
                 LooperCommandType::EnableReady => {
                     self.transition_to(LooperMode::Ready);
@@ -75,7 +72,7 @@ impl Looper {
                     self.transition_to(LooperMode::Playing);
                 },
                 LooperCommandType::Select => {
-                    self.active = self_id;
+                    engine.active = self.id;
                 },
                 LooperCommandType::Delete => {
                     self.deleted = true;
@@ -135,8 +132,6 @@ pub struct Engine {
     loopers: Vec<Looper>,
     active: u32,
 
-    meter: Meter,
-
     id_counter: u32,
 }
 
@@ -168,11 +163,6 @@ impl Engine {
             gui_input,
             loopers: vec![Looper::new(0)],
             active: 0,
-            meter: Meter {
-                tempo: Tempo(1200),
-                top: 4,
-                bottom: 4,
-            },
             id_counter: 1,
         }
     }
@@ -252,7 +242,7 @@ impl Engine {
                 CommandOneof::LooperCommand(lc) => {
                     for looper_id in lc.loopers {
                         if let Some(looper) = self.looper_by_id_mut(looper_id) {
-                            looper.process_event(lc);
+                            looper.process_event(self, lc);
                         } else {
                             // TODO: log this
                         }
@@ -318,7 +308,7 @@ impl Engine {
             }
             if looper.mode == LooperMode::Playing {
                 let mut time = looper.time;
-                if !looper.buffers.is_empty() {
+                if !looper.samples.is_empty() {
                     for i in 0..buffer_len {
                         for b in &looper.buffers {
                             assert_eq!(b[0].len(), b[1].len());
@@ -336,10 +326,10 @@ impl Engine {
 
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
-        if looper.record_mode == RecordMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
+        if looper.mode == LooperMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
             looper.buffers.clear();
             looper.buffers.push([vec![], vec![]]);
-            looper.set_record_mode(RecordMode::Record);
+            looper.transition_to(LooperMode::Record);
         }
 
         let l32: Vec<f32> = l.into_iter().map(|f| f as f32).collect();
@@ -347,7 +337,8 @@ impl Engine {
         out_a_p.clone_from_slice(&l32);
         out_b_p.clone_from_slice(&r32);
 
-        if looper.play_mode == PlayMode::Playing && looper.record_mode == RecordMode::Overdub {
+        // in overdub mode, we add the new samples to our existing buffer
+        if looper.mode == LooperMode::Overdub {
             let len = looper.buffers[0][0].len();
             for i in 0..buffer_len {
                 let time = looper.time + i;
@@ -356,12 +347,14 @@ impl Engine {
             }
         }
 
-        if looper.record_mode == RecordMode::Record {
+        // in record mode, we extend the current buffer with the new samples
+        if looper.mode == LooperMode::Record {
             looper.buffers[0][0].extend_from_slice(&in_a_p);
             looper.buffers[0][1].extend_from_slice(&in_b_p);
         }
 
-        self.loopers.iter_mut().filter(|l| l.play_mode == PlayMode::Playing)
+        self.loopers.iter_mut().filter(|l|
+            l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub)
             .for_each(|looper| looper.time += buffer_len);
 
         // TODO: make this non-allocating
@@ -373,7 +366,7 @@ impl Engine {
             let len = l.buffers.get(0).map(|l| l[0].len())
                 .unwrap_or(0);
 
-            let t = if len > 0 && l.play_mode == PlayMode::Playing {
+            let t = if len > 0 && l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub {
                 time % len
             } else {
                 0
