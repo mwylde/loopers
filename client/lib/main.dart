@@ -18,13 +18,13 @@ void main() async {
   l1.id = 0;
   l1.length = Int64(120 * 1000);
   l1.time = Int64(50 * 1000);
-  l1.recordMode = protos.RecordMode.READY;
+  l1.mode = protos.LooperMode.READY;
 
   var l2 = protos.LoopState();
   l2.id = 1;
   l2.length = Int64(60 * 1000);
   l2.time = Int64(50 * 1000);
-  l2.playMode = protos.PlayMode.PLAYING;
+  l2.mode = protos.LooperMode.PLAYING;
   l2.active = true;
 
   testState.loops.add(l1);
@@ -261,17 +261,17 @@ class LooperWidget extends StatelessWidget {
                   children: <Widget>[
                     LooperButton(
                         text: "RECORD",
-                        active: state.recordMode == protos.RecordMode.RECORD,
-                        primed: state.recordMode == protos.RecordMode.READY,
+                        active: state.mode == protos.LooperMode.RECORD,
+                        primed: state.mode == protos.LooperMode.READY,
                         onPressed: () {
-                          if (state.recordMode == protos.RecordMode.READY ||
-                              state.recordMode == protos.RecordMode.RECORD) {
-                            service.sendLooperCommand(state.id,
-                                protos.LooperCommandType.DISABLE_RECORD);
+                          if (state.mode == protos.LooperMode.READY ||
+                              state.mode == protos.LooperMode.RECORD) {
+                            service.sendLooperCommand(
+                                state.id, protos.LooperCommandType.ENABLE_PLAY);
                           } else {
-                            if (state.playMode == protos.PlayMode.PLAYING) {
+                            if (state.mode == protos.LooperMode.PLAYING) {
                               service.sendLooperCommand(state.id,
-                                  protos.LooperCommandType.DISABLE_PLAY);
+                                  protos.LooperCommandType.ENABLE_OVERDUB);
                             }
                             service.sendLooperCommand(state.id,
                                 protos.LooperCommandType.ENABLE_READY);
@@ -279,11 +279,11 @@ class LooperWidget extends StatelessWidget {
                         }),
                     LooperButton(
                       text: "OVERDUB",
-                      active: state.recordMode == protos.RecordMode.OVERDUB,
+                      active: state.mode == protos.LooperMode.OVERDUB,
                       onPressed: () {
-                        if (state.recordMode == protos.RecordMode.OVERDUB) {
-                          service.sendLooperCommand(state.id,
-                              protos.LooperCommandType.DISABLE_OVERDUB);
+                        if (state.mode == protos.LooperMode.OVERDUB) {
+                          service.sendLooperCommand(
+                              state.id, protos.LooperCommandType.ENABLE_PLAY);
                         } else {
                           service.sendLooperCommand(state.id,
                               protos.LooperCommandType.ENABLE_OVERDUB);
@@ -296,17 +296,17 @@ class LooperWidget extends StatelessWidget {
                     ),
                     LooperButton(
                       text: "PLAY",
-                      active: state.playMode == protos.PlayMode.PLAYING,
+                      active: state.mode == protos.LooperMode.PLAYING,
                       onPressed: () {
-                        if (state.playMode == protos.PlayMode.PLAYING) {
+                        if (state.mode == protos.LooperMode.PLAYING) {
                           service.sendLooperCommand(
-                              state.id, protos.LooperCommandType.DISABLE_PLAY);
+                              state.id, protos.LooperCommandType.STOP);
                         } else {
                           service.sendGlobalCommand(
                               protos.GlobalCommandType.RESET_TIME);
                           service.sendLooperCommand(
                               state.id, protos.LooperCommandType.ENABLE_PLAY);
-                          if (state.recordMode == protos.RecordMode.RECORD) {
+                          if (state.mode == protos.LooperMode.RECORD) {
                             service.sendLooperCommand(state.id,
                                 protos.LooperCommandType.ENABLE_OVERDUB);
                           }

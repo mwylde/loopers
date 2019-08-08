@@ -8,44 +8,28 @@
 import 'dart:core' show int, dynamic, String, List, Map;
 import 'package:protobuf/protobuf.dart' as $pb;
 
-class RecordMode extends $pb.ProtobufEnum {
-  static const RecordMode NONE = const RecordMode._(0, 'NONE');
-  static const RecordMode READY = const RecordMode._(1, 'READY');
-  static const RecordMode RECORD = const RecordMode._(2, 'RECORD');
-  static const RecordMode OVERDUB = const RecordMode._(3, 'OVERDUB');
+class LooperMode extends $pb.ProtobufEnum {
+  static const LooperMode NONE = const LooperMode._(0, 'NONE');
+  static const LooperMode READY = const LooperMode._(1, 'READY');
+  static const LooperMode RECORD = const LooperMode._(2, 'RECORD');
+  static const LooperMode OVERDUB = const LooperMode._(3, 'OVERDUB');
+  static const LooperMode PLAYING = const LooperMode._(4, 'PLAYING');
 
-  static const List<RecordMode> values = const <RecordMode> [
+  static const List<LooperMode> values = const <LooperMode> [
     NONE,
     READY,
     RECORD,
     OVERDUB,
-  ];
-
-  static final Map<int, RecordMode> _byValue = $pb.ProtobufEnum.initByValue(values);
-  static RecordMode valueOf(int value) => _byValue[value];
-  static void $checkItem(RecordMode v) {
-    if (v is! RecordMode) $pb.checkItemFailed(v, 'RecordMode');
-  }
-
-  const RecordMode._(int v, String n) : super(v, n);
-}
-
-class PlayMode extends $pb.ProtobufEnum {
-  static const PlayMode PAUSED = const PlayMode._(0, 'PAUSED');
-  static const PlayMode PLAYING = const PlayMode._(1, 'PLAYING');
-
-  static const List<PlayMode> values = const <PlayMode> [
-    PAUSED,
     PLAYING,
   ];
 
-  static final Map<int, PlayMode> _byValue = $pb.ProtobufEnum.initByValue(values);
-  static PlayMode valueOf(int value) => _byValue[value];
-  static void $checkItem(PlayMode v) {
-    if (v is! PlayMode) $pb.checkItemFailed(v, 'PlayMode');
+  static final Map<int, LooperMode> _byValue = $pb.ProtobufEnum.initByValue(values);
+  static LooperMode valueOf(int value) => _byValue[value];
+  static void $checkItem(LooperMode v) {
+    if (v is! LooperMode) $pb.checkItemFailed(v, 'LooperMode');
   }
 
-  const PlayMode._(int v, String n) : super(v, n);
+  const LooperMode._(int v, String n) : super(v, n);
 }
 
 class CommandStatus extends $pb.ProtobufEnum {
@@ -67,28 +51,22 @@ class CommandStatus extends $pb.ProtobufEnum {
 }
 
 class LooperCommandType extends $pb.ProtobufEnum {
-  static const LooperCommandType ENABLE_RECORD = const LooperCommandType._(0, 'ENABLE_RECORD');
-  static const LooperCommandType ENABLE_READY = const LooperCommandType._(10, 'ENABLE_READY');
-  static const LooperCommandType DISABLE_RECORD = const LooperCommandType._(1, 'DISABLE_RECORD');
-  static const LooperCommandType ENABLE_OVERDUB = const LooperCommandType._(2, 'ENABLE_OVERDUB');
-  static const LooperCommandType DISABLE_OVERDUB = const LooperCommandType._(3, 'DISABLE_OVERDUB');
+  static const LooperCommandType STOP = const LooperCommandType._(0, 'STOP');
+  static const LooperCommandType ENABLE_RECORD = const LooperCommandType._(1, 'ENABLE_RECORD');
+  static const LooperCommandType ENABLE_READY = const LooperCommandType._(2, 'ENABLE_READY');
+  static const LooperCommandType ENABLE_OVERDUB = const LooperCommandType._(3, 'ENABLE_OVERDUB');
   static const LooperCommandType ENABLE_MUTIPLY = const LooperCommandType._(4, 'ENABLE_MUTIPLY');
-  static const LooperCommandType DISABLE_MULTIPLY = const LooperCommandType._(5, 'DISABLE_MULTIPLY');
-  static const LooperCommandType ENABLE_PLAY = const LooperCommandType._(6, 'ENABLE_PLAY');
-  static const LooperCommandType DISABLE_PLAY = const LooperCommandType._(7, 'DISABLE_PLAY');
-  static const LooperCommandType SELECT = const LooperCommandType._(8, 'SELECT');
-  static const LooperCommandType DELETE = const LooperCommandType._(9, 'DELETE');
+  static const LooperCommandType ENABLE_PLAY = const LooperCommandType._(5, 'ENABLE_PLAY');
+  static const LooperCommandType SELECT = const LooperCommandType._(6, 'SELECT');
+  static const LooperCommandType DELETE = const LooperCommandType._(7, 'DELETE');
 
   static const List<LooperCommandType> values = const <LooperCommandType> [
+    STOP,
     ENABLE_RECORD,
     ENABLE_READY,
-    DISABLE_RECORD,
     ENABLE_OVERDUB,
-    DISABLE_OVERDUB,
     ENABLE_MUTIPLY,
-    DISABLE_MULTIPLY,
     ENABLE_PLAY,
-    DISABLE_PLAY,
     SELECT,
     DELETE,
   ];

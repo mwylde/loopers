@@ -4,21 +4,14 @@
 ///
 // ignore_for_file: non_constant_identifier_names,library_prefixes,unused_import
 
-const RecordMode$json = const {
-  '1': 'RecordMode',
+const LooperMode$json = const {
+  '1': 'LooperMode',
   '2': const [
     const {'1': 'NONE', '2': 0},
     const {'1': 'READY', '2': 1},
     const {'1': 'RECORD', '2': 2},
     const {'1': 'OVERDUB', '2': 3},
-  ],
-};
-
-const PlayMode$json = const {
-  '1': 'PlayMode',
-  '2': const [
-    const {'1': 'PAUSED', '2': 0},
-    const {'1': 'PLAYING', '2': 1},
+    const {'1': 'PLAYING', '2': 4},
   ],
 };
 
@@ -33,17 +26,14 @@ const CommandStatus$json = const {
 const LooperCommandType$json = const {
   '1': 'LooperCommandType',
   '2': const [
-    const {'1': 'ENABLE_RECORD', '2': 0},
-    const {'1': 'ENABLE_READY', '2': 10},
-    const {'1': 'DISABLE_RECORD', '2': 1},
-    const {'1': 'ENABLE_OVERDUB', '2': 2},
-    const {'1': 'DISABLE_OVERDUB', '2': 3},
+    const {'1': 'STOP', '2': 0},
+    const {'1': 'ENABLE_RECORD', '2': 1},
+    const {'1': 'ENABLE_READY', '2': 2},
+    const {'1': 'ENABLE_OVERDUB', '2': 3},
     const {'1': 'ENABLE_MUTIPLY', '2': 4},
-    const {'1': 'DISABLE_MULTIPLY', '2': 5},
-    const {'1': 'ENABLE_PLAY', '2': 6},
-    const {'1': 'DISABLE_PLAY', '2': 7},
-    const {'1': 'SELECT', '2': 8},
-    const {'1': 'DELETE', '2': 9},
+    const {'1': 'ENABLE_PLAY', '2': 5},
+    const {'1': 'SELECT', '2': 6},
+    const {'1': 'DELETE', '2': 7},
   ],
 };
 
@@ -63,8 +53,7 @@ const LoopState$json = const {
   '1': 'LoopState',
   '2': const [
     const {'1': 'id', '3': 1, '4': 1, '5': 13, '10': 'id'},
-    const {'1': 'record_mode', '3': 2, '4': 1, '5': 14, '6': '.protos.RecordMode', '10': 'recordMode'},
-    const {'1': 'play_mode', '3': 3, '4': 1, '5': 14, '6': '.protos.PlayMode', '10': 'playMode'},
+    const {'1': 'mode', '3': 2, '4': 1, '5': 14, '6': '.protos.LooperMode', '10': 'mode'},
     const {'1': 'time', '3': 4, '4': 1, '5': 3, '10': 'time'},
     const {'1': 'length', '3': 5, '4': 1, '5': 3, '10': 'length'},
     const {'1': 'active', '3': 6, '4': 1, '5': 8, '10': 'active'},

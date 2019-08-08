@@ -12,7 +12,6 @@ struct Looper {
     id: u32,
     samples: Vec<Sample>,
     mode: LooperMode,
-    time: usize,
     deleted: bool,
 }
 
@@ -22,7 +21,6 @@ impl Looper {
             id,
             samples: vec![],
             mode: LooperMode::None,
-            time: 0,
             deleted: false,
         };
 
@@ -49,7 +47,7 @@ impl Looper {
         self.mode = mode;
     }
 
-    fn process_event(&mut self, engine: &mut Engine, looper_event: LooperCommand) {
+    fn process_event(&mut self, looper_event: &LooperCommand) {
         if let Some(typ) = LooperCommandType::from_i32(looper_event.command_type) {
             match typ as LooperCommandType {
                 LooperCommandType::EnableReady => {
@@ -72,7 +70,7 @@ impl Looper {
                     self.transition_to(LooperMode::Playing);
                 },
                 LooperCommandType::Select => {
-                    engine.active = self.id;
+                    // TODO: handle
                 },
                 LooperCommandType::Delete => {
                     self.deleted = true;
@@ -81,6 +79,10 @@ impl Looper {
         } else {
             // TODO: log this
         }        
+    }
+
+    fn length_in_samples(&self) -> u64 {
+        self.samples.get(0).map(|s| s.length()).unwrap_or(0)
     }
 }
 
@@ -238,11 +240,11 @@ impl Engine {
                 continue;
             }
 
-            match c.command_oneof.unwrap() {
+            match &c.command_oneof.unwrap() {
                 CommandOneof::LooperCommand(lc) => {
-                    for looper_id in lc.loopers {
-                        if let Some(looper) = self.looper_by_id_mut(looper_id) {
-                            looper.process_event(self, lc);
+                    for looper_id in &lc.loopers {
+                        if let Some(looper) = self.looper_by_id_mut(*looper_id) {
+                            looper.process_event(lc);
                         } else {
                             // TODO: log this
                         }
@@ -252,9 +254,7 @@ impl Engine {
                     if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
                         match typ as GlobalCommandType {
                             GlobalCommandType::ResetTime => {
-                                for l in &mut self.loopers {
-                                    l.time = 0;
-                                }
+                                self.time = 0;
                             },
                             GlobalCommandType::AddLooper => {
                                 self.loopers.push(Looper::new(self.id_counter));
@@ -281,7 +281,11 @@ impl Engine {
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let prev_beat = self.get_beat();
         {
-            self.time += ps.n_frames() as u64;
+            if !self.loopers.iter().all(|l| l.mode == LooperMode::None || l.mode == LooperMode::Ready) {
+                self.time += ps.n_frames() as u64;
+            } else {
+                self.time = 0;
+            }
         }
         let cur_beat = self.get_beat();
 
@@ -306,13 +310,13 @@ impl Engine {
             if looper.deleted {
                 continue;
             }
-            if looper.mode == LooperMode::Playing {
-                let mut time = looper.time;
+            if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
+                let mut time = self.time as usize;
                 if !looper.samples.is_empty() {
                     for i in 0..buffer_len {
-                        for b in &looper.buffers {
+                        for sample in &looper.samples {
+                            let b = &sample.buffer;
                             assert_eq!(b[0].len(), b[1].len());
-                            assert_eq!(b[0].len(), looper.buffers[0][0].len());
                             if b[0].len() > 0 {
                                 l[i] += b[0][time % b[0].len()] as f64;
                                 r[i] += b[1][time % b[1].len()] as f64;
@@ -327,8 +331,6 @@ impl Engine {
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
         if looper.mode == LooperMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
-            looper.buffers.clear();
-            looper.buffers.push([vec![], vec![]]);
             looper.transition_to(LooperMode::Record);
         }
 
@@ -339,32 +341,26 @@ impl Engine {
 
         // in overdub mode, we add the new samples to our existing buffer
         if looper.mode == LooperMode::Overdub {
-            let len = looper.buffers[0][0].len();
-            for i in 0..buffer_len {
-                let time = looper.time + i;
-                looper.buffers.last_mut().unwrap()[0][time % len] += in_a_p[i];
-                looper.buffers.last_mut().unwrap()[1][time % len] += in_b_p[i];
-            }
+            let length = looper.length_in_samples();
+
+            looper.samples.iter_mut().last().unwrap().record(
+                self.time % length, &[in_a_p, in_b_p]);
         }
 
         // in record mode, we extend the current buffer with the new samples
         if looper.mode == LooperMode::Record {
-            looper.buffers[0][0].extend_from_slice(&in_a_p);
-            looper.buffers[0][1].extend_from_slice(&in_b_p);
+            let len = looper.length_in_samples();
+            looper.samples.iter_mut().last().unwrap().record(
+                len, &[in_a_p, &in_b_p])
         }
-
-        self.loopers.iter_mut().filter(|l|
-            l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub)
-            .for_each(|looper| looper.time += buffer_len);
 
         // TODO: make this non-allocating
         let gui_output = &mut self.gui_output;
+        let time = self.time as usize;
         let loop_states: Vec<LoopState> = self.loopers.iter()
             .filter(|l| !l.deleted)
-            .enumerate().map(|(i, l)| {
-            let time = l.time;
-            let len = l.buffers.get(0).map(|l| l[0].len())
-                .unwrap_or(0);
+            .map(|l| {
+            let len = l.length_in_samples() as usize;
 
             let t = if len > 0 && l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub {
                 time % len

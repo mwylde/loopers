@@ -37,8 +37,7 @@ class GetStateReq extends $pb.GeneratedMessage {
 class LoopState extends $pb.GeneratedMessage {
   static final $pb.BuilderInfo _i = new $pb.BuilderInfo('LoopState', package: const $pb.PackageName('protos'))
     ..a<int>(1, 'id', $pb.PbFieldType.OU3)
-    ..e<RecordMode>(2, 'recordMode', $pb.PbFieldType.OE, RecordMode.NONE, RecordMode.valueOf, RecordMode.values)
-    ..e<PlayMode>(3, 'playMode', $pb.PbFieldType.OE, PlayMode.PAUSED, PlayMode.valueOf, PlayMode.values)
+    ..e<LooperMode>(2, 'mode', $pb.PbFieldType.OE, LooperMode.NONE, LooperMode.valueOf, LooperMode.values)
     ..aInt64(4, 'time')
     ..aInt64(5, 'length')
     ..aOB(6, 'active')
@@ -64,29 +63,24 @@ class LoopState extends $pb.GeneratedMessage {
   bool hasId() => $_has(0);
   void clearId() => clearField(1);
 
-  RecordMode get recordMode => $_getN(1);
-  set recordMode(RecordMode v) { setField(2, v); }
-  bool hasRecordMode() => $_has(1);
-  void clearRecordMode() => clearField(2);
+  LooperMode get mode => $_getN(1);
+  set mode(LooperMode v) { setField(2, v); }
+  bool hasMode() => $_has(1);
+  void clearMode() => clearField(2);
 
-  PlayMode get playMode => $_getN(2);
-  set playMode(PlayMode v) { setField(3, v); }
-  bool hasPlayMode() => $_has(2);
-  void clearPlayMode() => clearField(3);
-
-  Int64 get time => $_getI64(3);
-  set time(Int64 v) { $_setInt64(3, v); }
-  bool hasTime() => $_has(3);
+  Int64 get time => $_getI64(2);
+  set time(Int64 v) { $_setInt64(2, v); }
+  bool hasTime() => $_has(2);
   void clearTime() => clearField(4);
 
-  Int64 get length => $_getI64(4);
-  set length(Int64 v) { $_setInt64(4, v); }
-  bool hasLength() => $_has(4);
+  Int64 get length => $_getI64(3);
+  set length(Int64 v) { $_setInt64(3, v); }
+  bool hasLength() => $_has(3);
   void clearLength() => clearField(5);
 
-  bool get active => $_get(5, false);
-  set active(bool v) { $_setBool(5, v); }
-  bool hasActive() => $_has(5);
+  bool get active => $_get(4, false);
+  set active(bool v) { $_setBool(4, v); }
+  bool hasActive() => $_has(4);
   void clearActive() => clearField(6);
 }
 
@@ -203,7 +197,7 @@ class CommandResp extends $pb.GeneratedMessage {
 
 class LooperCommand extends $pb.GeneratedMessage {
   static final $pb.BuilderInfo _i = new $pb.BuilderInfo('LooperCommand', package: const $pb.PackageName('protos'))
-    ..e<LooperCommandType>(1, 'commandType', $pb.PbFieldType.OE, LooperCommandType.ENABLE_RECORD, LooperCommandType.valueOf, LooperCommandType.values)
+    ..e<LooperCommandType>(1, 'commandType', $pb.PbFieldType.OE, LooperCommandType.STOP, LooperCommandType.valueOf, LooperCommandType.values)
     ..p<int>(2, 'loopers', $pb.PbFieldType.PU3)
     ..hasRequiredFields = false
   ;
