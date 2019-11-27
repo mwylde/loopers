@@ -5,6 +5,7 @@
 .pub/
 build/
 packages
+.dart_tool
 .flutter-plugins
 # Since the current expectation is that clients are using Flutter head,
 # and Dart SDK changes unlock dependencies, pubspec.lock isn't useful.
