@@ -172,7 +172,8 @@ class TimeWidget extends StatelessWidget {
               Text("${r(hours)}:${r(minutes)}:${r(seconds)}"),
               Metronome(
                 state: state,
-              )
+              ),
+              Text("${state.bpm} bpm")
             ],
           ));
     } else {

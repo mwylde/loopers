@@ -75,6 +75,7 @@ pub enum LooperMode {
     Record = 2,
     Overdub = 3,
     Playing = 4,
+    Stopping = 5,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

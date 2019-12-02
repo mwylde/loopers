@@ -8,6 +8,7 @@ extern crate futures;
 extern crate bytes;
 
 use std::{io, thread};
+use std::fs::File;
 
 mod sample;
 mod engine;
@@ -21,6 +22,15 @@ fn main() {
         println!("window exited... shutting down");
         std::process::exit(0);
     });
+
+    // read wav files
+    let mut reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
+    let beat_normal: Vec<f32> = reader.into_samples().into_iter()
+        .map(|x| x.unwrap()).collect();
+
+    let mut reader = hound::WavReader::open("resources/sine_emphasis.wav").unwrap();
+    let beat_empahsis: Vec<f32> = reader.into_samples().into_iter()
+        .map(|x| x.unwrap()).collect();
 
     // Create client
     let (client, _status) =
@@ -37,12 +47,18 @@ fn main() {
     let mut out_b = client
         .register_port("rust_out_r", jack::AudioOut::default()).unwrap();
 
+    let mut met_out_a = client
+        .register_port("metronome_out_l",jack::AudioOut::default()).unwrap();
+    let mut met_out_b = client
+        .register_port("metronome_out_r", jack::AudioOut::default()).unwrap();
+
     let controller = client
         .register_port("rust_midi_in", jack::MidiIn::default()).unwrap();
 
 
-    let mut engine = engine::Engine::new(in_a, in_b, out_a, out_b, controller,
-                                     output, input);
+    let mut engine = engine::Engine::new(
+        in_a, in_b, out_a, out_b, met_out_a, met_out_b, controller,
+        output, input, beat_normal, beat_empahsis);
 
     let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         engine.process(client, ps)

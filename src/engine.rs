@@ -5,6 +5,9 @@ use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
 use crate::sample::Sample;
+use std::f64::consts::PI as PI64;
+use std::ops::Add;
+use futures::future::Loop;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -42,6 +45,7 @@ impl Looper {
                 self.samples.push(Sample::new());
             },
             (_, LooperMode::Playing) => {},
+            (_, LooperMode::Stopping) => {},
         }
 
         self.mode = mode;
@@ -67,7 +71,11 @@ impl Looper {
                 }
 
                 LooperCommandType::EnablePlay => {
-                    self.transition_to(LooperMode::Playing);
+                    if self.mode == LooperMode::Record {
+                        self.transition_to(LooperMode::Stopping);
+                    } else {
+                        self.transition_to(LooperMode::Playing);
+                    }
                 },
                 LooperCommandType::Select => {
                     // TODO: handle
@@ -122,6 +130,9 @@ pub struct Engine {
     out_a: Port<AudioOut>,
     out_b: Port<AudioOut>,
 
+    met_out_a: Port<AudioOut>,
+    met_out_b: Port<AudioOut>,
+
     midi_in: Port<MidiIn>,
 
     time: u64,
@@ -133,6 +144,10 @@ pub struct Engine {
 
     loopers: Vec<Looper>,
     active: u32,
+
+    beat_normal: Vec<f32>,
+    beat_emphasis: Vec<f32>,
+    metronome_time: usize,
 
     id_counter: u32,
 }
@@ -146,15 +161,20 @@ fn max_abs(b: &[f32]) -> f32 {
 
 impl Engine {
     pub fn new(in_a: Port<AudioIn>, in_b: Port<AudioIn>,
-           out_a: Port<AudioOut>, out_b: Port<AudioOut>,
-           midi_in: Port<MidiIn>,
-           gui_output: Arc<SegQueue<State>>,
-           gui_input: Arc<SegQueue<Command>>) -> Engine {
+               out_a: Port<AudioOut>, out_b: Port<AudioOut>,
+               met_out_a: Port<AudioOut>, met_out_b: Port<AudioOut>,
+               midi_in: Port<MidiIn>,
+               gui_output: Arc<SegQueue<State>>,
+               gui_input: Arc<SegQueue<Command>>,
+               beat_normal: Vec<f32>,
+               beat_emphasis: Vec<f32>) -> Engine {
         Engine {
             in_a,
             in_b,
             out_a,
             out_b,
+            met_out_a,
+            met_out_b,
             midi_in,
 
             time: 0,
@@ -166,6 +186,9 @@ impl Engine {
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
+            metronome_time: beat_emphasis.len(),
+            beat_normal,
+            beat_emphasis,
         }
     }
 
@@ -272,16 +295,28 @@ impl Engine {
         ((time as f64) / SAMPLE_RATE) as u64
     }
 
+    fn play_sample(sample: &[f32], sample_time: usize, left: &mut [f32], right: &mut [f32]) {
+        for i in 0..left.len() {
+            let t = sample_time + i;
+            if t >= sample.len() {
+                return;
+            }
+            left[i] += sample[t] / 2f32;
+            right[i] += sample[t] / 2f32;
+        }
+    }
+
     fn get_beat(&self) -> u64 {
         let bps = self.tempo.bpm() as f32 / 60.0;
         let mspb = 1000.0 / bps;
-        (Engine::samples_to_time(self.time as usize) as f32 / mspb) as u64
+        (Engine::samples_to_time(self.time as usize) as f32 / mspb) as u64 -
+            self.time_signature.upper as u64
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let prev_beat = self.get_beat();
         {
-            if !self.loopers.iter().all(|l| l.mode == LooperMode::None || l.mode == LooperMode::Ready) {
+            if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
                 self.time += ps.n_frames() as u64;
             } else {
                 self.time = 0;
@@ -295,6 +330,8 @@ impl Engine {
 
         let out_a_p = self.out_a.as_mut_slice(ps);
         let out_b_p = self.out_b.as_mut_slice(ps);
+        let met_a_p = self.met_out_a.as_mut_slice(ps);
+        let met_b_p = self.met_out_b.as_mut_slice(ps);
         let in_a_p = self.in_a.as_slice(ps);
         let in_b_p = self.in_b.as_slice(ps);
 
@@ -305,6 +342,8 @@ impl Engine {
         let mut l: Vec<f64> = in_a_p.iter().map(|v| *v as f64).collect();
         let mut r: Vec<f64> = in_b_p.iter().map(|v| *v as f64).collect();
 
+        let mut met_l: Vec<f32> = out_a_p.to_vec();
+        let mut met_r: Vec<f32> = out_b_p.to_vec();
 
         for looper in &mut self.loopers {
             if looper.deleted {
@@ -328,9 +367,33 @@ impl Engine {
             }
         }
 
+        if prev_beat != cur_beat {
+            self.metronome_time = 0;
+        }
+
+        let sample = if cur_beat % self.time_signature.lower as u64 == 0 {
+            &self.beat_emphasis
+        } else {
+            &self.beat_normal
+        };
+
+//        let met_l = self.met_out_a.as_mut_slice(ps);
+//        let met_r = self.met_out_b.as_mut_slice(ps);
+
+        Engine::play_sample(sample, self.metronome_time, &mut met_l, &mut met_r);
+        self.metronome_time += met_l.len();
+
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
-        if looper.mode == LooperMode::Ready && (max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD) {
+        if prev_beat != cur_beat &&
+            cur_beat % self.time_signature.lower as u64 == 0 &&
+            looper.mode == LooperMode::Stopping{
+            looper.transition_to(LooperMode::Playing);
+        }
+
+        if looper.mode == LooperMode::Ready &&
+            //(max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD
+            cur_beat == 0 {
             looper.transition_to(LooperMode::Record);
         }
 
@@ -338,6 +401,9 @@ impl Engine {
         let r32: Vec<f32> = r.into_iter().map(|f| f as f32).collect();
         out_a_p.clone_from_slice(&l32);
         out_b_p.clone_from_slice(&r32);
+
+        met_a_p.clone_from_slice(&met_l);
+        met_b_p.clone_from_slice(&met_r);
 
         // in overdub mode, we add the new samples to our existing buffer
         if looper.mode == LooperMode::Overdub {
@@ -348,7 +414,7 @@ impl Engine {
         }
 
         // in record mode, we extend the current buffer with the new samples
-        if looper.mode == LooperMode::Record {
+        if looper.mode == LooperMode::Record || looper.mode == LooperMode::Stopping {
             let len = looper.length_in_samples();
             looper.samples.iter_mut().last().unwrap().record(
                 len, &[in_a_p, &in_b_p])
