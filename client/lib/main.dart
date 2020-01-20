@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:loopers/looper_service.dart';
 import 'package:loopers/settings.dart';
+import 'config.dart';
 import 'src/generated/loopers.pb.dart' as protos;
 import 'src/generated/loopers.pbgrpc.dart' as grpc;
 
@@ -81,11 +82,12 @@ class MainPageState extends State<MainPage> {
         stream: widget.service.getState(),
         builder: (context, snapshot) {
           Widget loopers = Text("Could not connect to server");
-
           if (snapshot.data != null) {
+            var i = -1;
             loopers = Column(
                 children: snapshot.data.loops.map((f) {
-              return LooperWidget(state: f, service: widget.service);
+              i++;
+              return LooperWidget(state: f, index: i, service: widget.service);
             }).toList());
           }
 
@@ -94,6 +96,20 @@ class MainPageState extends State<MainPage> {
               AppBar(
                 title: Text("Loopers"),
                 actions: <Widget>[
+                  IconButton(
+                      icon: Icon(Icons.offline_bolt),
+                      color: snapshot.data != null && snapshot.data.learnMode
+                          ? Colors.blue
+                          : Colors.white70,
+                      onPressed: () {
+                        Navigator.push(context,
+                            MaterialPageRoute(builder: (context) {
+                          return ConfigPage();
+                        }));
+                        widget.service.sendGlobalCommand(snapshot.data.learnMode
+                            ? protos.GlobalCommandType.DISABLE_LEARN_MODE
+                            : protos.GlobalCommandType.ENABLE_LEARN_MODE);
+                      }),
                   IconButton(
                     icon: Icon(Icons.settings),
                     onPressed: () {
@@ -218,8 +234,9 @@ class LooperButton extends StatelessWidget {
 }
 
 class LooperWidget extends StatelessWidget {
-  LooperWidget({this.state, this.service});
+  LooperWidget({this.state, this.index, this.service});
 
+  final int index;
   final protos.LoopState state;
   final LooperService service;
 
@@ -233,7 +250,8 @@ class LooperWidget extends StatelessWidget {
 
     return InkWell(
         onTap: () {
-          service.sendLooperCommand(state.id, protos.LooperCommandType.SELECT);
+          service.sendLooperCommand(
+              this.index, protos.LooperCommandType.SELECT);
         },
         child: Container(
             //height: 120,
@@ -249,7 +267,7 @@ class LooperWidget extends StatelessWidget {
 //              width: double.infinity,
 //              padding: const EdgeInsets.all(8.0),
 //              child: Text(
-//                state.id.toString(),
+//                this.index.toString(),
 //                textAlign: TextAlign.left,
 //              ),
 //            ),
@@ -267,14 +285,14 @@ class LooperWidget extends StatelessWidget {
                         onPressed: () {
                           if (state.mode == protos.LooperMode.READY ||
                               state.mode == protos.LooperMode.RECORD) {
-                            service.sendLooperCommand(
-                                state.id, protos.LooperCommandType.ENABLE_PLAY);
+                            service.sendLooperCommand(this.index,
+                                protos.LooperCommandType.ENABLE_PLAY);
                           } else {
                             if (state.mode == protos.LooperMode.PLAYING) {
-                              service.sendLooperCommand(state.id,
+                              service.sendLooperCommand(this.index,
                                   protos.LooperCommandType.ENABLE_OVERDUB);
                             }
-                            service.sendLooperCommand(state.id,
+                            service.sendLooperCommand(this.index,
                                 protos.LooperCommandType.ENABLE_READY);
                           }
                         }),
@@ -284,9 +302,9 @@ class LooperWidget extends StatelessWidget {
                       onPressed: () {
                         if (state.mode == protos.LooperMode.OVERDUB) {
                           service.sendLooperCommand(
-                              state.id, protos.LooperCommandType.ENABLE_PLAY);
+                              this.index, protos.LooperCommandType.ENABLE_PLAY);
                         } else {
-                          service.sendLooperCommand(state.id,
+                          service.sendLooperCommand(this.index,
                               protos.LooperCommandType.ENABLE_OVERDUB);
                         }
                       },
@@ -301,14 +319,14 @@ class LooperWidget extends StatelessWidget {
                       onPressed: () {
                         if (state.mode == protos.LooperMode.PLAYING) {
                           service.sendLooperCommand(
-                              state.id, protos.LooperCommandType.STOP);
+                              this.index, protos.LooperCommandType.STOP);
                         } else {
                           service.sendGlobalCommand(
                               protos.GlobalCommandType.RESET_TIME);
                           service.sendLooperCommand(
-                              state.id, protos.LooperCommandType.ENABLE_PLAY);
+                              this.index, protos.LooperCommandType.ENABLE_PLAY);
                           if (state.mode == protos.LooperMode.RECORD) {
-                            service.sendLooperCommand(state.id,
+                            service.sendLooperCommand(this.index,
                                 protos.LooperCommandType.ENABLE_OVERDUB);
                           }
                         }
@@ -319,7 +337,7 @@ class LooperWidget extends StatelessWidget {
                       icon: Icon(Icons.delete),
                       onPressed: () {
                         service.sendLooperCommand(
-                            state.id, protos.LooperCommandType.DELETE);
+                            this.index, protos.LooperCommandType.DELETE);
                       },
                     )
                   ],

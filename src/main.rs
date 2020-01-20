@@ -6,14 +6,21 @@ extern crate tower_grpc;
 extern crate tower_hyper;
 extern crate futures;
 extern crate bytes;
+extern crate serde;
+extern crate serde_yaml;
 
-use std::{io, thread};
+use std::{io, thread, fs};
 use std::fs::File;
+use crate::protos::{Config, MidiMapping, LooperCommand, LooperCommandType, TargetNumber, Command, GlobalCommandType};
+use crate::protos::command::CommandOneof;
+use crate::protos::looper_command::TargetOneof;
+use crate::config::LooperCommandTarget;
 
 mod sample;
 mod engine;
 mod gui;
 mod protos;
+mod config;
 
 fn main() {
     let (gui, output, input) = gui::Gui::new();
@@ -22,6 +29,30 @@ fn main() {
         println!("window exited... shutting down");
         std::process::exit(0);
     });
+
+    // read config
+    let mut config_path = std::env::home_dir().unwrap();
+    config_path.push(".config/loopers/config.yaml");
+    let mut config : config::Config = fs::read_to_string(config_path)
+        .map(|s| serde_yaml::from_str(&s).expect("Failed to parse config file"))
+        .unwrap_or(config::Config { midi_mappings: vec![] });
+
+    let mut mapping_path = std::env::home_dir().unwrap();
+    mapping_path.push(".config/loopers/midi_mappings.tsv");
+    let mappings = fs::read_to_string(mapping_path)
+        .map(|s| {
+            s.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(config::MidiMapping::from_line)
+                .map(|m| m.expect("Failed to map line"))
+                .collect::<Vec<config::MidiMapping>>()
+        });
+
+    if let Ok(mappings) = mappings {
+        config.midi_mappings.extend(&mappings);
+    }
+
+    println!("Config: {:#?}", config);
 
     // read wav files
     let mut reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
@@ -57,6 +88,7 @@ fn main() {
 
 
     let mut engine = engine::Engine::new(
+        config.to_config(),
         in_a, in_b, out_a, out_b, met_out_a, met_out_b, controller,
         output, input, beat_normal, beat_empahsis);
 

@@ -1,13 +1,12 @@
 use jack::{AudioIn, Port, AudioOut, MidiIn};
 use crossbeam_queue::SegQueue;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
 use crate::sample::Sample;
 use std::f64::consts::PI as PI64;
-use std::ops::Add;
-use futures::future::Loop;
+use crate::protos::looper_command::TargetOneof;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -83,6 +82,16 @@ impl Looper {
                 LooperCommandType::Delete => {
                     self.deleted = true;
                 },
+
+                LooperCommandType::ReadyOverdubPlay => {
+                    if self.samples.is_empty() {
+                        self.transition_to(LooperMode::Ready);
+                    } else if self.mode == LooperMode::Record || self.mode == LooperMode::Playing {
+                        self.transition_to(LooperMode::Overdub);
+                    } else {
+                        self.transition_to(LooperMode::Playing);
+                    }
+                }
             }
         } else {
             // TODO: log this
@@ -125,6 +134,8 @@ impl Tempo {
 
 
 pub struct Engine {
+    config: Config,
+
     in_a: Port<AudioIn>,
     in_b: Port<AudioIn>,
     out_a: Port<AudioOut>,
@@ -148,8 +159,10 @@ pub struct Engine {
     beat_normal: Vec<f32>,
     beat_emphasis: Vec<f32>,
     metronome_time: usize,
-
     id_counter: u32,
+
+    is_learning: bool,
+    last_midi: Option<Vec<u8>>,
 }
 
 const THRESHOLD: f32 = 0.05;
@@ -160,7 +173,8 @@ fn max_abs(b: &[f32]) -> f32 {
 }
 
 impl Engine {
-    pub fn new(in_a: Port<AudioIn>, in_b: Port<AudioIn>,
+    pub fn new(config: Config,
+               in_a: Port<AudioIn>, in_b: Port<AudioIn>,
                out_a: Port<AudioOut>, out_b: Port<AudioOut>,
                met_out_a: Port<AudioOut>, met_out_b: Port<AudioOut>,
                midi_in: Port<MidiIn>,
@@ -169,6 +183,8 @@ impl Engine {
                beat_normal: Vec<f32>,
                beat_emphasis: Vec<f32>) -> Engine {
         Engine {
+            config,
+
             in_a,
             in_b,
             out_a,
@@ -189,6 +205,9 @@ impl Engine {
             metronome_time: beat_emphasis.len(),
             beat_normal,
             beat_emphasis,
+
+            is_learning: false,
+            last_midi: None,
         }
     }
 
@@ -200,57 +219,23 @@ impl Engine {
         self.loopers.iter().find(|l| l.id == id)
     }
 
-//    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
-//        let midi_in = &self.midi_in;
-//
-//        let looper = self.looper_by_id(self.active).unwrap();
-//
-//        fn looper_command(id: u32, typ: LooperCommandType) -> Command {
-//            Command {
-//                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
-//                    loopers: vec![id],
-//                    command_type: typ as i32,
-//                }))
-//            }
-//        }
-//
-//        fn global_command(typ: GlobalCommandType) -> Command {
-//            Command {
-//                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
-//                    command: typ as i32,
-//                }))
-//            }
-//        }
-//
-//        for e in midi_in.iter(ps) {
-//            if e.bytes.len() == 3 && e.bytes[0] == 144 {
-//                match e.bytes[1] {
-//                    60 => {
-//                        if looper.buffers.is_empty() || looper.play_mode == PlayMode::Paused {
-//                            self.gui_input.push(looper_command(looper.id, EnableReady));
-//                        } else {
-//                            self.gui_input.push(looper_command(looper.id, EnableOverdub));
-//                        }
-//                    }
-//                    62 => {
-//                        self.gui_input.push(looper_command(looper.id, DisableRecord));
-//
-//                        if looper.play_mode == PlayMode::Paused {
-//                            self.gui_input.push(looper_command(looper.id, EnablePlay));
-//                        } else {
-//                            self.gui_input.push(looper_command(looper.id, DisablePlay));
-//                        }
-//
-//                        self.gui_input.push(global_command(ResetTime));
-//                    },
-//                    64 => {
-//                        self.gui_input.push(global_command(AddLooper))
-//                    }
-//                    _ => {}
-//                }
-//            } else {}
-//        }
-//    }
+
+    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
+        let midi_in = &self.midi_in;
+
+        for e in midi_in.iter(ps) {
+            println!("midi {:?}", e);
+
+            for m in &self.config.midi_mappings {
+                if e.bytes.get(1).map(|b| *b as u32 == m.controller_number).unwrap_or(false) &&
+                    e.bytes.get(2).map(|b| *b as u32 == m.data).unwrap_or(false) {
+                    if let Some(c) = &m.command {
+                        self.gui_input.push(c.clone());
+                    }
+                }
+            }
+        }
+    }
 
     fn handle_commands(&mut self) {
         loop {
@@ -265,11 +250,29 @@ impl Engine {
 
             match &c.command_oneof.unwrap() {
                 CommandOneof::LooperCommand(lc) => {
-                    for looper_id in &lc.loopers {
-                        if let Some(looper) = self.looper_by_id_mut(*looper_id) {
-                            looper.process_event(lc);
-                        } else {
-                            // TODO: log this
+                    match lc.target_oneof.as_ref().unwrap() {
+                        TargetOneof::TargetAll(_) => {
+                            for looper in &mut self.loopers {
+                                looper.process_event(lc);
+                            }
+                        }
+                        TargetOneof::TargetSelected(_) => {
+                            if let Some(looper) = self.looper_by_id_mut(self.active) {
+                                looper.process_event(lc);
+                            } else {
+                                // TODO: log this
+                            }
+                        }
+                        TargetOneof::TargetNumber(t) => {
+                            if let Some(looper) = self.loopers.get_mut(t.looper_number as usize) {
+                                if lc.command_type == LooperCommandType::Select as i32 {
+                                    self.active = looper.id;
+                                } else {
+                                    looper.process_event(lc);
+                                }
+                            } else {
+                                // TODO: log this
+                            }
                         }
                     }
                 },
@@ -283,6 +286,12 @@ impl Engine {
                                 self.loopers.push(Looper::new(self.id_counter));
                                 self.active = self.id_counter;
                                 self.id_counter += 1;
+                            }
+                            GlobalCommandType::EnableLearnMode => {
+                                self.is_learning = true;
+                            }
+                            GlobalCommandType::DisableLearnMode => {
+                                self.is_learning = false;
                             }
                         }
                     }
@@ -314,6 +323,17 @@ impl Engine {
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        if !self.is_learning {
+            self.commands_from_midi(ps);
+            self.last_midi = None;
+        } else {
+            let midi_in = &self.midi_in;
+            let new_last = midi_in.iter(ps).last().map(|m| m.bytes.to_vec());
+            if new_last.is_some() {
+                self.last_midi = new_last;
+            }
+        }
+
         let prev_beat = self.get_beat();
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
@@ -428,7 +448,7 @@ impl Engine {
             .map(|l| {
             let len = l.length_in_samples() as usize;
 
-            let t = if len > 0 && l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub {
+            let t = if len > 0 && (l.mode == LooperMode::Playing || l.mode == LooperMode::Overdub) {
                 time % len
             } else {
                 0
@@ -451,6 +471,8 @@ impl Engine {
             bpm: self.tempo.bpm(),
             time_signature_upper: self.time_signature.upper as u64,
             time_signature_lower: self.time_signature.lower as u64,
+            learn_mode: self.is_learning,
+            last_midi: self.last_midi.as_ref().map(|b| b.clone()).unwrap_or_else(|| vec![]),
         });
 
         jack::Control::Continue

@@ -1,5 +1,6 @@
 extern crate tower_grpc_build;
 extern crate prost_build;
+extern crate serde;
 
 use std::{env, fs};
 use std::path::PathBuf;
@@ -9,6 +10,8 @@ fn main() {
     path.push("src");
 
     let mut prost_config = prost_build::Config::new();
+
+    prost_config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
     prost_config.out_dir(path);
 
     tower_grpc_build::Config::from_prost(prost_config)

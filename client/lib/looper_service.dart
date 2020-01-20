@@ -6,7 +6,6 @@ import 'src/generated/loopers.pb.dart';
 import 'src/generated/loopers.pbgrpc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 //const ip = "10.0.2.2"; // "127.0.0.1";
 //const port = 10000;
 
@@ -18,6 +17,8 @@ class LooperService {
   Stream<dynamic> _broadcastStream;
   String _host;
   int _port;
+
+  bool _isLearning = false;
 
   LooperService() {
     _statePort = ReceivePort();
@@ -42,8 +43,13 @@ class LooperService {
     _host = hostPort[0];
     _port = hostPort[1];
     reset();
-    Isolate.spawn(_stateIsolate, [_statePort.sendPort, hostPort[0], hostPort[1]]);
+    Isolate.spawn(
+        _stateIsolate, [_statePort.sendPort, hostPort[0], hostPort[1]]);
     _broadcastStream = _statePort.asBroadcastStream();
+  }
+
+  setLearning(bool enabled) {
+    this._isLearning = enabled;
   }
 
   reset() {
@@ -105,10 +111,11 @@ class LooperService {
     return sendCommand(command);
   }
 
-  Future<CommandResp> sendLooperCommand(int id, LooperCommandType type) {
+  Future<CommandResp> sendLooperCommand(int index, LooperCommandType type) {
     var looperCommand = LooperCommand();
     looperCommand.commandType = type;
-    looperCommand.loopers.add(id);
+    looperCommand.targetNumber = TargetNumber();
+    looperCommand.targetNumber.looperNumber = index;
 
     var command = Command();
     command.looperCommand = looperCommand;

@@ -2,17 +2,17 @@ name: loopers
 description: GUI for loopers
 
 environment:
-  sdk: '>=2.0.0 <3.0.0'
+  sdk: '>=2.7.0 <3.0.0'
   # The example interacts with build scripts on the Flutter side that are not
   # yet stable, so it requires a very recent version of Flutter.
   # This version will increase regularly as the build scripts change.
-  flutter: '>=1.10.2-pre.54'
+  flutter: '>=1.14.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  grpc: ^1.0.2
-  protobuf: ^0.10.1
+  grpc: ^2.1.3
+  protobuf: ^1.0.1
   cupertino_icons: ^0.1.0
   shared_preferences: ^0.5.2+1
 

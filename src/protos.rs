@@ -1,7 +1,9 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GetStateReq {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LoopState {
     #[prost(uint32, tag="1")]
     pub id: u32,
@@ -15,6 +17,7 @@ pub struct LoopState {
     pub active: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct State {
     #[prost(message, repeated, tag="1")]
     pub loops: ::std::vec::Vec<LoopState>,
@@ -30,36 +33,72 @@ pub struct State {
     pub time_signature_upper: u64,
     #[prost(uint64, tag="7")]
     pub time_signature_lower: u64,
+    #[prost(bool, tag="8")]
+    pub learn_mode: bool,
+    #[prost(bytes, tag="9")]
+    pub last_midi: std::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CommandReq {
     #[prost(message, optional, tag="1")]
     pub command: ::std::option::Option<Command>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CommandResp {
     #[prost(enumeration="CommandStatus", tag="1")]
     pub status: i32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TargetAll {
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TargetSelected {
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TargetNumber {
+    #[prost(uint32, tag="1")]
+    pub looper_number: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LooperCommand {
     #[prost(enumeration="LooperCommandType", tag="1")]
     pub command_type: i32,
-    #[prost(uint32, repeated, tag="2")]
-    pub loopers: ::std::vec::Vec<u32>,
+    #[prost(oneof="looper_command::TargetOneof", tags="2, 3, 4")]
+    pub target_oneof: ::std::option::Option<looper_command::TargetOneof>,
+}
+pub mod looper_command {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub enum TargetOneof {
+        #[prost(message, tag="2")]
+        TargetAll(super::TargetAll),
+        #[prost(message, tag="3")]
+        TargetSelected(super::TargetSelected),
+        #[prost(message, tag="4")]
+        TargetNumber(super::TargetNumber),
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GlobalCommand {
     #[prost(enumeration="GlobalCommandType", tag="1")]
     pub command: i32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Command {
     #[prost(oneof="command::CommandOneof", tags="1, 2")]
     pub command_oneof: ::std::option::Option<command::CommandOneof>,
 }
 pub mod command {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(serde::Serialize, serde::Deserialize)]
     pub enum CommandOneof {
         #[prost(message, tag="1")]
         LooperCommand(super::LooperCommand),
@@ -67,8 +106,25 @@ pub mod command {
         GlobalCommand(super::GlobalCommand),
     }
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MidiMapping {
+    #[prost(uint32, tag="1")]
+    pub controller_number: u32,
+    #[prost(uint32, tag="2")]
+    pub data: u32,
+    #[prost(message, optional, tag="3")]
+    pub command: ::std::option::Option<Command>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Config {
+    #[prost(message, repeated, tag="1")]
+    pub midi_mappings: ::std::vec::Vec<MidiMapping>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum LooperMode {
     None = 0,
     Ready = 1,
@@ -79,12 +135,14 @@ pub enum LooperMode {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum CommandStatus {
     Accepted = 0,
     Failed = 1,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum LooperCommandType {
     Stop = 0,
     EnableRecord = 1,
@@ -94,12 +152,16 @@ pub enum LooperCommandType {
     EnablePlay = 5,
     Select = 6,
     Delete = 7,
+    ReadyOverdubPlay = 8,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum GlobalCommandType {
     ResetTime = 0,
     AddLooper = 1,
+    EnableLearnMode = 2,
+    DisableLearnMode = 3,
 }
 pub mod client {
     use ::tower_grpc::codegen::client::*;
