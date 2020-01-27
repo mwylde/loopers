@@ -172,7 +172,13 @@ class TimeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state != null) {
-      var time = state.time.toInt() ~/ 1000;
+      var time = state.time.toInt();
+      var negative = "";
+      if (time < 0) {
+         negative = "-";
+         time = -time;
+      }
+      time = time.toInt() ~/ 1000;
       var hours = time ~/ 60 ~/ 60;
       time -= hours * 60 * 60;
       var minutes = time ~/ 60;
@@ -185,7 +191,7 @@ class TimeWidget extends StatelessWidget {
           height: 50,
           child: Row(
             children: <Widget>[
-              Text("${r(hours)}:${r(minutes)}:${r(seconds)}"),
+              Text("${negative}${r(hours)}:${r(minutes)}:${r(seconds)}"),
               Metronome(
                 state: state,
               ),

@@ -25,8 +25,8 @@ pub struct State {
     pub time: i64,
     #[prost(int64, tag="3")]
     pub length: i64,
-    #[prost(uint64, tag="4")]
-    pub beat: u64,
+    #[prost(int64, tag="4")]
+    pub beat: i64,
     #[prost(float, tag="5")]
     pub bpm: f32,
     #[prost(uint64, tag="6")]

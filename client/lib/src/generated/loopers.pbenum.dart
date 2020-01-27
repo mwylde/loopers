@@ -56,6 +56,7 @@ class LooperCommandType extends $pb.ProtobufEnum {
   static const LooperCommandType ENABLE_PLAY = LooperCommandType._(5, 'ENABLE_PLAY');
   static const LooperCommandType SELECT = LooperCommandType._(6, 'SELECT');
   static const LooperCommandType DELETE = LooperCommandType._(7, 'DELETE');
+  static const LooperCommandType READY_OVERDUB_PLAY = LooperCommandType._(8, 'READY_OVERDUB_PLAY');
 
   static const $core.List<LooperCommandType> values = <LooperCommandType> [
     STOP,
@@ -66,6 +67,7 @@ class LooperCommandType extends $pb.ProtobufEnum {
     ENABLE_PLAY,
     SELECT,
     DELETE,
+    READY_OVERDUB_PLAY,
   ];
 
   static final $core.Map<$core.int, LooperCommandType> _byValue = $pb.ProtobufEnum.initByValue(values);

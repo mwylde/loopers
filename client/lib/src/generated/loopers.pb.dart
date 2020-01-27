@@ -111,7 +111,7 @@ class State extends $pb.GeneratedMessage {
     ..pc<LoopState>(1, 'loops', $pb.PbFieldType.PM, subBuilder: LoopState.create)
     ..aInt64(2, 'time')
     ..aInt64(3, 'length')
-    ..a<$fixnum.Int64>(4, 'beat', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aInt64(4, 'beat')
     ..a<$core.double>(5, 'bpm', $pb.PbFieldType.OF)
     ..a<$fixnum.Int64>(6, 'timeSignatureUpper', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
     ..a<$fixnum.Int64>(7, 'timeSignatureLower', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)

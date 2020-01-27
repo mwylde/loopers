@@ -7,6 +7,7 @@ use crate::protos::command::CommandOneof;
 use crate::sample::Sample;
 use std::f64::consts::PI as PI64;
 use crate::protos::looper_command::TargetOneof;
+use std::ops::Rem;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -32,16 +33,19 @@ impl Looper {
 
 impl Looper {
     fn transition_to(&mut self, mode: LooperMode) {
+        println!("Transition {:?} to {:?}", self.mode, mode);
         match (self.mode, mode) {
             (x, y) if x == y => {},
             (_, LooperMode::None) => {},
             (_, LooperMode::Ready) => {},
             (_, LooperMode::Record) => {
                 self.samples.clear();
-                self.samples.push(Sample::new());
+                self.samples.push(Sample::new(0));
             },
             (_, LooperMode::Overdub) => {
-                self.samples.push(Sample::new());
+                let len = self.length_in_samples();
+                self.samples.push(Sample::new(self.samples.last().unwrap().length() as usize));
+                println!("len: {}\t{}", len, self.length_in_samples());
             },
             (_, LooperMode::Playing) => {},
             (_, LooperMode::Stopping) => {},
@@ -146,7 +150,7 @@ pub struct Engine {
 
     midi_in: Port<MidiIn>,
 
-    time: u64,
+    time: i64,
     time_signature: TimeSignature,
     tempo: Tempo,
 
@@ -300,8 +304,12 @@ impl Engine {
         }
     }
 
-    fn samples_to_time(time: usize) -> u64 {
-        ((time as f64) / SAMPLE_RATE) as u64
+    fn samples_to_time(samples: isize) -> i64 {
+        ((samples as f64) / SAMPLE_RATE) as i64
+    }
+
+    fn time_to_samples(time_ms: f64) -> u64 {
+        (time_ms * SAMPLE_RATE) as u64
     }
 
     fn play_sample(sample: &[f32], sample_time: usize, left: &mut [f32], right: &mut [f32]) {
@@ -315,11 +323,19 @@ impl Engine {
         }
     }
 
-    fn get_beat(&self) -> u64 {
+    fn get_beat(&self) -> i64 {
         let bps = self.tempo.bpm() as f32 / 60.0;
         let mspb = 1000.0 / bps;
-        (Engine::samples_to_time(self.time as usize) as f32 / mspb) as u64 -
-            self.time_signature.upper as u64
+        (Engine::samples_to_time(self.time as isize) as f32 / mspb) as i64
+    }
+
+    fn measure_len(&self) -> u64 {
+        let bps = self.tempo.bpm() as f32 / 60.0;
+        let mspb = 1000.0 / bps;
+
+        let mspm = mspb * self.time_signature.upper as f32;
+
+        Engine::time_to_samples(mspm as f64)
     }
 
     pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -334,16 +350,17 @@ impl Engine {
             }
         }
 
-        let prev_beat = self.get_beat();
+        let measure_len = self.measure_len();
+        let prev_beat = self.get_beat().rem_euclid(self.time_signature.upper as i64);
+        let prev_time = self.time;
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
-                self.time += ps.n_frames() as u64;
+                self.time += ps.n_frames() as i64;
             } else {
-                self.time = 0;
+                self.time = -(measure_len as i64);
             }
         }
-        let cur_beat = self.get_beat();
-
+        let cur_beat = self.get_beat().rem_euclid(self.time_signature.upper as i64);
         // self.commands_from_midi(ps);
 
         self.handle_commands();
@@ -365,33 +382,35 @@ impl Engine {
         let mut met_l: Vec<f32> = out_a_p.to_vec();
         let mut met_r: Vec<f32> = out_b_p.to_vec();
 
-        for looper in &mut self.loopers {
-            if looper.deleted {
-                continue;
-            }
-            if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
-                let mut time = self.time as usize;
-                if !looper.samples.is_empty() {
-                    for i in 0..buffer_len {
-                        for sample in &looper.samples {
-                            let b = &sample.buffer;
-                            assert_eq!(b[0].len(), b[1].len());
-                            if b[0].len() > 0 {
-                                l[i] += b[0][time % b[0].len()] as f64;
-                                r[i] += b[1][time % b[1].len()] as f64;
+        if self.time >= 0 {
+            for looper in &mut self.loopers {
+                if looper.deleted {
+                    continue;
+                }
+                if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
+                    let mut time = self.time as usize;
+                    if !looper.samples.is_empty() {
+                        for i in 0..buffer_len {
+                            for sample in &looper.samples {
+                                let b = &sample.buffer;
+                                assert_eq!(b[0].len(), b[1].len());
+                                if b[0].len() > 0 {
+                                    l[i] += b[0][time % b[0].len()] as f64;
+                                    r[i] += b[1][time % b[1].len()] as f64;
+                                }
                             }
+                            time += 1;
                         }
-                        time += 1;
                     }
                 }
             }
         }
 
-        if prev_beat != cur_beat {
+        if prev_beat != cur_beat || (prev_time == -(measure_len as i64) && self.time != prev_time) {
             self.metronome_time = 0;
         }
 
-        let sample = if cur_beat % self.time_signature.lower as u64 == 0 {
+        let sample = if cur_beat == 0 {
             &self.beat_emphasis
         } else {
             &self.beat_normal
@@ -406,14 +425,14 @@ impl Engine {
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
         if prev_beat != cur_beat &&
-            cur_beat % self.time_signature.lower as u64 == 0 &&
+            cur_beat == 0 &&
             looper.mode == LooperMode::Stopping{
             looper.transition_to(LooperMode::Playing);
         }
 
         if looper.mode == LooperMode::Ready &&
             //(max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD
-            cur_beat == 0 {
+            self.time >= 0 {
             looper.transition_to(LooperMode::Record);
         }
 
@@ -426,18 +445,17 @@ impl Engine {
         met_b_p.clone_from_slice(&met_r);
 
         // in overdub mode, we add the new samples to our existing buffer
-        if looper.mode == LooperMode::Overdub {
+        if looper.mode == LooperMode::Overdub && self.time >= 0 {
             let length = looper.length_in_samples();
-
             looper.samples.iter_mut().last().unwrap().record(
-                self.time % length, &[in_a_p, in_b_p]);
+                measure_len, (self.time as u64) % length, &[in_a_p, in_b_p]);
         }
 
         // in record mode, we extend the current buffer with the new samples
-        if looper.mode == LooperMode::Record || looper.mode == LooperMode::Stopping {
+        if (looper.mode == LooperMode::Record || looper.mode == LooperMode::Stopping) && self.time >= 0 {
             let len = looper.length_in_samples();
             looper.samples.iter_mut().last().unwrap().record(
-                len, &[in_a_p, &in_b_p])
+                measure_len, len, &[in_a_p, &in_b_p])
         }
 
         // TODO: make this non-allocating
@@ -457,15 +475,15 @@ impl Engine {
             LoopState {
                 id: l.id,
                 mode: l.mode as i32,
-                time: Engine::samples_to_time(t) as i64,
-                length: Engine::samples_to_time(len) as i64,
+                time: Engine::samples_to_time(t as isize) as i64,
+                length: Engine::samples_to_time(len as isize) as i64,
                 active: l.id == active,
             }
         }).collect();
 
         gui_output.push(State{
             loops: loop_states,
-            time: Engine::samples_to_time(self.time as usize) as i64,
+            time: Engine::samples_to_time(self.time as isize) as i64,
             length: 0,
             beat: cur_beat,
             bpm: self.tempo.bpm(),
