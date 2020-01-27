@@ -8,13 +8,10 @@ extern crate futures;
 extern crate bytes;
 extern crate serde;
 extern crate serde_yaml;
+extern crate dirs;
+extern crate num;
 
 use std::{io, thread, fs};
-use std::fs::File;
-use crate::protos::{Config, MidiMapping, LooperCommand, LooperCommandType, TargetNumber, Command, GlobalCommandType};
-use crate::protos::command::CommandOneof;
-use crate::protos::looper_command::TargetOneof;
-use crate::config::LooperCommandTarget;
 
 mod sample;
 mod engine;
@@ -31,14 +28,14 @@ fn main() {
     });
 
     // read config
-    let mut config_path = std::env::home_dir().unwrap();
-    config_path.push(".config/loopers/config.yaml");
+    let mut config_path = dirs::config_dir().unwrap();
+    config_path.push("loopers/config.yaml");
     let mut config : config::Config = fs::read_to_string(config_path)
         .map(|s| serde_yaml::from_str(&s).expect("Failed to parse config file"))
         .unwrap_or(config::Config { midi_mappings: vec![] });
 
-    let mut mapping_path = std::env::home_dir().unwrap();
-    mapping_path.push(".config/loopers/midi_mappings.tsv");
+    let mut mapping_path = dirs::config_dir().unwrap();
+    mapping_path.push("loopers/midi_mappings.tsv");
     let mappings = fs::read_to_string(mapping_path)
         .map(|s| {
             s.lines()
@@ -83,17 +80,17 @@ fn main() {
     let mut met_out_b = client
         .register_port("metronome_out_r", jack::AudioOut::default()).unwrap();
 
-    let controller = client
+    let midi_in = client
         .register_port("rust_midi_in", jack::MidiIn::default()).unwrap();
 
-
     let mut engine = engine::Engine::new(
-        config.to_config(),
-        in_a, in_b, out_a, out_b, met_out_a, met_out_b, controller,
-        output, input, beat_normal, beat_empahsis);
+        config.to_config(), output,  input, beat_normal, beat_empahsis);
 
     let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        engine.process(client, ps)
+        let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
+        let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
+        let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
+        engine.process(client, ps, in_bufs, &mut out_bufs, &mut met_bufs, &midi_in)
     };
     let process = jack::ClosureProcessHandler::new(process_callback);
 

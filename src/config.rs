@@ -1,11 +1,8 @@
-use crate::protos::{LooperCommandType, GlobalCommandType, LooperCommand};
+use crate::protos::{LooperCommandType, GlobalCommandType};
 use serde::{Serialize, Deserialize};
 use crate::protos;
-use crate::protos::command::CommandOneof;
 use std::io;
 use std::str::FromStr;
-use std::convert::TryFrom;
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Config {

@@ -1,13 +1,32 @@
-pub struct Sample {
-    pub buffer: [Vec<f32>; 2],
+use num::Float;
+
+pub struct Sample<T : Float> {
+    pub buffer: [Vec<T>; 2],
     len: u64,
 }
 
-impl Sample {
-    pub fn new(len: usize) -> Sample {
+impl <T : Float> Sample<T> {
+    pub fn new(len: usize) -> Sample<T> {
         Sample {
-            buffer: [vec![0f32; len], vec![0f32; len]],
+            buffer: [vec![T::zero(); len], vec![T::zero(); len]],
             len: len as u64
+        }
+    }
+
+    pub fn from_buf(buffer: [Vec<T>; 2]) -> Sample<T> {
+        assert_eq!(buffer[0].len(), buffer[1].len());
+        Sample {
+            buffer,
+            len: buffer[0].len() as u64,
+        }
+    }
+
+    pub fn from_mono_f32(buffer: &[f32]) -> Sample<f32> {
+        let half: Vec<f32> = buffer.iter().map(|x|  *x / 2f32).collect();
+        let len = half.len() as u64;
+        Sample {
+            buffer: [half.clone(), half],
+            len,
         }
     }
 
@@ -15,7 +34,7 @@ impl Sample {
         self.len
     }
 
-    pub fn record(&mut self, window_size: u64, time_in_samples: u64, data: &[&[f32]]) {
+    pub fn record(&mut self, window_size: u64, time_in_samples: u64, data: &[&[T]]) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
 
@@ -24,7 +43,7 @@ impl Sample {
             println!("window_size: {}, size: {}, time: {} last_idx: {}", window_size, self.length(), time_in_samples, new_len);
 
             for b in &mut self.buffer {
-                b.resize((time_in_samples + window_size) as usize, 0f32);
+                b.resize((time_in_samples + window_size) as usize, T::zero());
             }
         }
 

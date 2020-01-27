@@ -1,19 +1,20 @@
 use jack::{AudioIn, Port, AudioOut, MidiIn};
 use crossbeam_queue::SegQueue;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
 use crate::sample::Sample;
-use std::f64::consts::PI as PI64;
 use crate::protos::looper_command::TargetOneof;
-use std::ops::Rem;
+use num::Float;
+use crate::protos::LooperMode::Playing;
+use crate::engine::PlayOutput::Done;
 
 const SAMPLE_RATE: f64 = 44.100;
 
 struct Looper {
     id: u32,
-    samples: Vec<Sample>,
+    samples: Vec<Sample<f64>>,
     mode: LooperMode,
     deleted: bool,
 }
@@ -137,18 +138,33 @@ impl Tempo {
 }
 
 
+struct SamplePlayer<T: Float> {
+    pub sample: Sample<T>,
+    pub time: usize,
+}
+
+enum PlayOutput {
+    Done, NotDone
+}
+
+impl <T: Float> SamplePlayer<T> {
+    pub fn play(&mut self, out: &mut [[T]; 2]) -> PlayOutput {
+        for i in 0..out[0].len() {
+            let t = self.time + i;
+            if t >= self.sample.len() {
+                return PlayOutput::Done;
+            }
+
+            out[0][i] += self.sample.buffer[0][t];
+            out[1][i] += self.sample.buffer[0][t];
+        }
+
+        PlayOutput::Done
+    }
+}
+
 pub struct Engine {
     config: Config,
-
-    in_a: Port<AudioIn>,
-    in_b: Port<AudioIn>,
-    out_a: Port<AudioOut>,
-    out_b: Port<AudioOut>,
-
-    met_out_a: Port<AudioOut>,
-    met_out_b: Port<AudioOut>,
-
-    midi_in: Port<MidiIn>,
 
     time: i64,
     time_signature: TimeSignature,
@@ -160,9 +176,9 @@ pub struct Engine {
     loopers: Vec<Looper>,
     active: u32,
 
-    beat_normal: Vec<f32>,
-    beat_emphasis: Vec<f32>,
-    metronome_time: usize,
+    beat_normal: Sample<f32>,
+    beat_emphasis: Sample<f32>,
+    metronome_player: Option<SamplePlayer<f32>>,
     id_counter: u32,
 
     is_learning: bool,
@@ -178,24 +194,12 @@ fn max_abs(b: &[f32]) -> f32 {
 
 impl Engine {
     pub fn new(config: Config,
-               in_a: Port<AudioIn>, in_b: Port<AudioIn>,
-               out_a: Port<AudioOut>, out_b: Port<AudioOut>,
-               met_out_a: Port<AudioOut>, met_out_b: Port<AudioOut>,
-               midi_in: Port<MidiIn>,
                gui_output: Arc<SegQueue<State>>,
                gui_input: Arc<SegQueue<Command>>,
                beat_normal: Vec<f32>,
                beat_emphasis: Vec<f32>) -> Engine {
         Engine {
             config,
-
-            in_a,
-            in_b,
-            out_a,
-            out_b,
-            met_out_a,
-            met_out_b,
-            midi_in,
 
             time: 0,
             time_signature: TimeSignature::new(4, 4).unwrap(),
@@ -206,9 +210,12 @@ impl Engine {
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
-            metronome_time: beat_emphasis.len(),
-            beat_normal,
-            beat_emphasis,
+            beat_normal: Sample::from_buf([beat_normal
+                .iter().m
+                .clone(), beat_normal.clone()]),
+            beat_emphasis: Sample::from_buf([beat_emphasis.clone(), beat_emphasis.clone()]),
+
+            metronome_player: None,
 
             is_learning: false,
             last_midi: None,
@@ -224,9 +231,7 @@ impl Engine {
     }
 
 
-    fn commands_from_midi(&self, ps: &jack::ProcessScope) {
-        let midi_in = &self.midi_in;
-
+    fn commands_from_midi(&self, ps: &jack::ProcessScope, midi_in: &Port<MidiIn>) {
         for e in midi_in.iter(ps) {
             println!("midi {:?}", e);
 
@@ -312,17 +317,6 @@ impl Engine {
         (time_ms * SAMPLE_RATE) as u64
     }
 
-    fn play_sample(sample: &[f32], sample_time: usize, left: &mut [f32], right: &mut [f32]) {
-        for i in 0..left.len() {
-            let t = sample_time + i;
-            if t >= sample.len() {
-                return;
-            }
-            left[i] += sample[t] / 2f32;
-            right[i] += sample[t] / 2f32;
-        }
-    }
-
     fn get_beat(&self) -> i64 {
         let bps = self.tempo.bpm() as f32 / 60.0;
         let mspb = 1000.0 / bps;
@@ -338,9 +332,64 @@ impl Engine {
         Engine::time_to_samples(mspm as f64)
     }
 
-    pub fn process(&mut self, _ : &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+    // Step 1: Convert midi events to commands
+    // Step 2: Handle commands
+    // Step 3: Play current samples
+    // Step 4: Record
+    // Step 5: (async) Update GUI
+
+    fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
+        if self.time >= 0 {
+            for looper in &self.loopers {
+                if looper.deleted {
+                    continue;
+                }
+                if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
+                    let mut time = self.time as usize;
+                    if !looper.samples.is_empty() {
+                        for i in 0..outputs[0].len() {
+                            for sample in &looper.samples {
+                                let b = &sample.buffer;
+                                assert_eq!(b[0].len(), b[1].len());
+                                if b[0].len() > 0 {
+                                    for (j, o) in outputs.iter_mut().enumerate() {
+                                        o[i] += b[j][time & b[j].len()] as f64;
+                                    }
+                                }
+                            }
+                            time += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn play_metronome(&mut self, outputs: &mut [&mut[f32]; 2]) {
+        if prev_beat != cur_beat || (prev_time == -(measure_len as i64) && self.time != prev_time) {
+            self.metronome_time = 0;
+        }
+
+        let sample = if cur_beat == 0 {
+            &self.beat_emphasis
+        } else {
+            &self.beat_normal
+        };
+
+        Engine::play_sample(sample, self.metronome_time, outputs[0], outputs[1]);
+        self.metronome_time += met_l.len();
+
+    }
+
+    pub fn process(&mut self, _ : &jack::Client,
+                   ps: &jack::ProcessScope,
+                   in_bufs: [&[f32]; 2],
+                   out_bufs: &mut [&mut[f32]; 2],
+                   met_bufs: &mut [&mut[f32]; 2],
+                   midi_in: &Port<MidiIn>,
+    ) -> jack::Control {
         if !self.is_learning {
-            self.commands_from_midi(ps);
+            self.commands_from_midi(ps, midi_in);
             self.last_midi = None;
         } else {
             let midi_in = &self.midi_in;
@@ -361,66 +410,18 @@ impl Engine {
             }
         }
         let cur_beat = self.get_beat().rem_euclid(self.time_signature.upper as i64);
-        // self.commands_from_midi(ps);
 
         self.handle_commands();
 
-        let out_a_p = self.out_a.as_mut_slice(ps);
-        let out_b_p = self.out_b.as_mut_slice(ps);
-        let met_a_p = self.met_out_a.as_mut_slice(ps);
-        let met_b_p = self.met_out_b.as_mut_slice(ps);
-        let in_a_p = self.in_a.as_slice(ps);
-        let in_b_p = self.in_b.as_slice(ps);
-
-        let buffer_len = in_a_p.len();
 
         let active = self.active;
 
-        let mut l: Vec<f64> = in_a_p.iter().map(|v| *v as f64).collect();
-        let mut r: Vec<f64> = in_b_p.iter().map(|v| *v as f64).collect();
+        let buf_len = out_bufs[0].len();
+        let mut out_64_vec: [Vec<f64>; 2] = [vec![0f64; buf_len], vec![0f64; buf_len]];
 
-        let mut met_l: Vec<f32> = out_a_p.to_vec();
-        let mut met_r: Vec<f32> = out_b_p.to_vec();
+        self.play_loops(&mut out_64_vec);
+        self.play_metronome(met_bufs);
 
-        if self.time >= 0 {
-            for looper in &mut self.loopers {
-                if looper.deleted {
-                    continue;
-                }
-                if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
-                    let mut time = self.time as usize;
-                    if !looper.samples.is_empty() {
-                        for i in 0..buffer_len {
-                            for sample in &looper.samples {
-                                let b = &sample.buffer;
-                                assert_eq!(b[0].len(), b[1].len());
-                                if b[0].len() > 0 {
-                                    l[i] += b[0][time % b[0].len()] as f64;
-                                    r[i] += b[1][time % b[1].len()] as f64;
-                                }
-                            }
-                            time += 1;
-                        }
-                    }
-                }
-            }
-        }
-
-        if prev_beat != cur_beat || (prev_time == -(measure_len as i64) && self.time != prev_time) {
-            self.metronome_time = 0;
-        }
-
-        let sample = if cur_beat == 0 {
-            &self.beat_emphasis
-        } else {
-            &self.beat_normal
-        };
-
-//        let met_l = self.met_out_a.as_mut_slice(ps);
-//        let met_r = self.met_out_b.as_mut_slice(ps);
-
-        Engine::play_sample(sample, self.metronome_time, &mut met_l, &mut met_r);
-        self.metronome_time += met_l.len();
 
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 

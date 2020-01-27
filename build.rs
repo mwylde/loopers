@@ -26,7 +26,11 @@ fn main() {
     // copy audio files
     let mut out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     out_dir.push("resources");
-    fs::create_dir(&out_dir);
+    if let Err(err) = fs::create_dir(&out_dir) {
+        if err.kind() != std::io::ErrorKind::AlreadyExists {
+            panic!("Failed to create resource directory: {}", err);
+        }
+    }
 
     let mut resources = env::current_dir().unwrap();
     resources.push("resources");
