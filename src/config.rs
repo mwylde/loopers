@@ -23,11 +23,11 @@ impl MidiMapping {
         let mut cs  = line.split_ascii_whitespace();
         let controller = cs.next().ok_or(err("No controller field"))
             .and_then(|c| u8::from_str(c)
-                .map_err(|e| err("Channel is not a number")))?;
+                .map_err(|_| err("Channel is not a number")))?;
 
         let data = cs.next().ok_or(err("No data field"))
             .and_then(|c| u8::from_str(c)
-                .map_err(|e| err("Data is not a number")))?;
+                .map_err(|_| err("Data is not a number")))?;
 
         let command_name = cs.next().ok_or(err("No command field"))?;
 

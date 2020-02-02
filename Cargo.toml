@@ -21,7 +21,6 @@ tower-grpc = { git = "https://github.com/tower-rs/tower-grpc", features = ["towe
 tower-service = "0.2"
 tower-util = "0.1"
 dirs = "2.0.2"
-num = "0.2.1"
 
 futures = "0.1"
 bytes = "0.4"

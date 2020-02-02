@@ -1,4 +1,4 @@
-use jack::{AudioIn, Port, AudioOut, MidiIn};
+use jack::{Port, MidiIn};
 use crossbeam_queue::SegQueue;
 use std::sync::Arc;
 use std::f32::NEG_INFINITY;
@@ -6,140 +6,36 @@ use crate::protos::*;
 use crate::protos::command::CommandOneof;
 use crate::sample::Sample;
 use crate::protos::looper_command::TargetOneof;
-use num::Float;
-use crate::protos::LooperMode::Playing;
-use crate::engine::PlayOutput::Done;
+use crate::music::*;
+use crate::looper::Looper;
 
 const SAMPLE_RATE: f64 = 44.100;
 
-struct Looper {
-    id: u32,
-    samples: Vec<Sample<f64>>,
-    mode: LooperMode,
-    deleted: bool,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Looper {
-    fn new(id: u32) -> Looper {
-        let looper = Looper {
-            id,
-            samples: vec![],
-            mode: LooperMode::None,
-            deleted: false,
-        };
-
-        looper
-    }
-}
-
-impl Looper {
-    fn transition_to(&mut self, mode: LooperMode) {
-        println!("Transition {:?} to {:?}", self.mode, mode);
-        match (self.mode, mode) {
-            (x, y) if x == y => {},
-            (_, LooperMode::None) => {},
-            (_, LooperMode::Ready) => {},
-            (_, LooperMode::Record) => {
-                self.samples.clear();
-                self.samples.push(Sample::new(0));
-            },
-            (_, LooperMode::Overdub) => {
-                let len = self.length_in_samples();
-                self.samples.push(Sample::new(self.samples.last().unwrap().length() as usize));
-                println!("len: {}\t{}", len, self.length_in_samples());
-            },
-            (_, LooperMode::Playing) => {},
-            (_, LooperMode::Stopping) => {},
-        }
-
-        self.mode = mode;
+    #[test]
+    fn test_get_beat() {
+        assert_eq!(0, Engine::get_beat(120f32, 0));
+        assert_eq!(1, Engine::get_beat(120f32, 22500));
+        assert_eq!(-1, Engine::get_beat(120f32, -22500));
     }
 
-    fn process_event(&mut self, looper_event: &LooperCommand) {
-        if let Some(typ) = LooperCommandType::from_i32(looper_event.command_type) {
-            match typ as LooperCommandType {
-                LooperCommandType::EnableReady => {
-                    self.transition_to(LooperMode::Ready);
-                }
-                LooperCommandType::EnableRecord => {
-                    self.transition_to(LooperMode::Record);
-                },
-                LooperCommandType::EnableOverdub => {
-                    self.transition_to(LooperMode::Overdub);
-                },
-                LooperCommandType::EnableMutiply => {
-                    // TODO
-                },
-                LooperCommandType::Stop => {
-                    self.transition_to(LooperMode::None);
-                }
-
-                LooperCommandType::EnablePlay => {
-                    if self.mode == LooperMode::Record {
-                        self.transition_to(LooperMode::Stopping);
-                    } else {
-                        self.transition_to(LooperMode::Playing);
-                    }
-                },
-                LooperCommandType::Select => {
-                    // TODO: handle
-                },
-                LooperCommandType::Delete => {
-                    self.deleted = true;
-                },
-
-                LooperCommandType::ReadyOverdubPlay => {
-                    if self.samples.is_empty() {
-                        self.transition_to(LooperMode::Ready);
-                    } else if self.mode == LooperMode::Record || self.mode == LooperMode::Playing {
-                        self.transition_to(LooperMode::Overdub);
-                    } else {
-                        self.transition_to(LooperMode::Playing);
-                    }
-                }
-            }
-        } else {
-            // TODO: log this
-        }        
-    }
-
-    fn length_in_samples(&self) -> u64 {
-        self.samples.get(0).map(|s| s.length()).unwrap_or(0)
-    }
-}
-
-pub struct TimeSignature {
-    upper: u8,
-    lower: u8,
-}
-
-impl TimeSignature {
-    pub fn new(upper: u8, lower: u8) -> Option<TimeSignature> {
-        if lower == 0 || (lower & (lower - 1)) != 0 {
-            // lower must be a power of 2
-            return None
-        }
-        Some(TimeSignature { upper, lower })
-    }
-}
-
-pub struct Tempo {
-    mbpm: u64
-}
-
-impl Tempo {
-    pub fn from_bpm(bpm: f32) -> Tempo {
-        Tempo { mbpm: (bpm * 1000f32).round() as u64 }
-    }
-
-    pub fn bpm(&self) -> f32 {
-        (self.mbpm as f32) / 1000f32
+    #[test]
+    fn test_beat_normalization() {
+        let ts = TimeSignature::new(3, 4).unwrap();
+        assert_eq!(0, Engine::normalize_beat(0, ts));
+        assert_eq!(1, Engine::normalize_beat(1, ts));
+        assert_eq!(0, Engine::normalize_beat(3, ts));
+        assert_eq!(0, Engine::normalize_beat(-3, ts));
+        assert_eq!(1, Engine::normalize_beat(-2, ts));
     }
 }
 
 
-struct SamplePlayer<T: Float> {
-    pub sample: Sample<T>,
+struct SamplePlayer {
+    pub sample: Sample,
     pub time: usize,
 }
 
@@ -147,11 +43,11 @@ enum PlayOutput {
     Done, NotDone
 }
 
-impl <T: Float> SamplePlayer<T> {
-    pub fn play(&mut self, out: &mut [[T]; 2]) -> PlayOutput {
+impl SamplePlayer {
+    pub fn play(&mut self, out: &mut [&mut [f32]; 2]) -> PlayOutput {
         for i in 0..out[0].len() {
             let t = self.time + i;
-            if t >= self.sample.len() {
+            if t >= self.sample.length() as usize {
                 return PlayOutput::Done;
             }
 
@@ -176,9 +72,9 @@ pub struct Engine {
     loopers: Vec<Looper>,
     active: u32,
 
-    beat_normal: Sample<f32>,
-    beat_emphasis: Sample<f32>,
-    metronome_player: Option<SamplePlayer<f32>>,
+    beat_normal: Sample,
+    beat_emphasis: Sample,
+    metronome_player: Option<SamplePlayer>,
     id_counter: u32,
 
     is_learning: bool,
@@ -210,10 +106,8 @@ impl Engine {
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
-            beat_normal: Sample::from_buf([beat_normal
-                .iter().m
-                .clone(), beat_normal.clone()]),
-            beat_emphasis: Sample::from_buf([beat_emphasis.clone(), beat_emphasis.clone()]),
+            beat_normal: Sample::from_mono(&beat_normal),
+            beat_emphasis: Sample::from_mono(&beat_emphasis),
 
             metronome_player: None,
 
@@ -317,10 +211,15 @@ impl Engine {
         (time_ms * SAMPLE_RATE) as u64
     }
 
-    fn get_beat(&self) -> i64 {
-        let bps = self.tempo.bpm() as f32 / 60.0;
+    fn get_beat(tempo_bpm: f32, time: i64) -> i64 {
+        let bps = tempo_bpm / 60.0;
         let mspb = 1000.0 / bps;
-        (Engine::samples_to_time(self.time as isize) as f32 / mspb) as i64
+        (Engine::samples_to_time(time as isize) as f32 / mspb) as i64
+    }
+
+    // converts from (possibly negative) beat-of-song to always positive beat-of-measure
+    fn normalize_beat(beat: i64, time_signature: TimeSignature) -> u64 {
+        beat.rem_euclid(time_signature.upper as i64) as u64
     }
 
     fn measure_len(&self) -> u64 {
@@ -331,12 +230,6 @@ impl Engine {
 
         Engine::time_to_samples(mspm as f64)
     }
-
-    // Step 1: Convert midi events to commands
-    // Step 2: Handle commands
-    // Step 3: Play current samples
-    // Step 4: Record
-    // Step 5: (async) Update GUI
 
     fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
         if self.time >= 0 {
@@ -365,22 +258,28 @@ impl Engine {
         }
     }
 
-    fn play_metronome(&mut self, outputs: &mut [&mut[f32]; 2]) {
-        if prev_beat != cur_beat || (prev_time == -(measure_len as i64) && self.time != prev_time) {
-            self.metronome_time = 0;
-        }
-
-        let sample = if cur_beat == 0 {
-            &self.beat_emphasis
+    fn metronome_sample(&self, prev_time: i64) -> Option<&Sample> {
+        let prev_beat = Engine::normalize_beat(Engine::get_beat(
+            self.tempo.bpm(), prev_time), self.time_signature);
+        let cur_beat = Engine::normalize_beat(Engine::get_beat(
+            self.tempo.bpm(), self.time), self.time_signature);
+        // TODO: solve the problem of first beat missing
+        if prev_beat != cur_beat {
+            if cur_beat == 0 {
+                Some(&self.beat_emphasis)
+            } else {
+                Some(&self.beat_normal)
+            }
         } else {
-            &self.beat_normal
-        };
-
-        Engine::play_sample(sample, self.metronome_time, outputs[0], outputs[1]);
-        self.metronome_time += met_l.len();
-
+            None
+        }
     }
 
+    // Step 1: Convert midi events to commands
+    // Step 2: Handle commands
+    // Step 3: Play current samples
+    // Step 4: Record
+    // Step 5: (async) Update GUI
     pub fn process(&mut self, _ : &jack::Client,
                    ps: &jack::ProcessScope,
                    in_bufs: [&[f32]; 2],
@@ -392,7 +291,6 @@ impl Engine {
             self.commands_from_midi(ps, midi_in);
             self.last_midi = None;
         } else {
-            let midi_in = &self.midi_in;
             let new_last = midi_in.iter(ps).last().map(|m| m.bytes.to_vec());
             if new_last.is_some() {
                 self.last_midi = new_last;
@@ -400,7 +298,9 @@ impl Engine {
         }
 
         let measure_len = self.measure_len();
-        let prev_beat = self.get_beat().rem_euclid(self.time_signature.upper as i64);
+        let prev_beat = Engine::normalize_beat(
+            Engine::get_beat(self.tempo.bpm(), self.time),
+            self.time_signature);
         let prev_time = self.time;
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
@@ -409,19 +309,32 @@ impl Engine {
                 self.time = -(measure_len as i64);
             }
         }
-        let cur_beat = self.get_beat().rem_euclid(self.time_signature.upper as i64);
+
+        let cur_beat = Engine::normalize_beat(
+            Engine::get_beat(self.tempo.bpm(), self.time),
+            self.time_signature);
 
         self.handle_commands();
 
+        if let Some(metronome_sample) = self.metronome_sample(prev_time) {
+            self.metronome_player = Some(SamplePlayer {
+                sample: metronome_sample.clone(),
+                time: 0,
+            })
+        }
 
         let active = self.active;
 
         let buf_len = out_bufs[0].len();
-        let mut out_64_vec: [Vec<f64>; 2] = [vec![0f64; buf_len], vec![0f64; buf_len]];
+        let mut out_64_vec: [Vec<f64>; 2] = [
+            in_bufs[0].iter().map(|v| *v as f64).collect(),
+            in_bufs[1].iter().map(|v| *v as f64).collect(),
+        ];
 
         self.play_loops(&mut out_64_vec);
-        self.play_metronome(met_bufs);
-
+        if let Some(player) = &mut self.metronome_player {
+            // player.play(met_bufs);
+        }
 
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
@@ -437,26 +350,28 @@ impl Engine {
             looper.transition_to(LooperMode::Record);
         }
 
-        let l32: Vec<f32> = l.into_iter().map(|f| f as f32).collect();
-        let r32: Vec<f32> = r.into_iter().map(|f| f as f32).collect();
-        out_a_p.clone_from_slice(&l32);
-        out_b_p.clone_from_slice(&r32);
+        for i in 0..buf_len {
+            for j in 0..out_64_vec.len() {
+                out_bufs[j][i] = out_64_vec[j][i] as f32
+            }
+        }
 
-        met_a_p.clone_from_slice(&met_l);
-        met_b_p.clone_from_slice(&met_r);
+//        met_bufs[0].clone_from_slice(&met_l);
+//        met_bufs[1].clone_from_slice(&met_r);
 
         // in overdub mode, we add the new samples to our existing buffer
         if looper.mode == LooperMode::Overdub && self.time >= 0 {
             let length = looper.length_in_samples();
             looper.samples.iter_mut().last().unwrap().record(
-                measure_len, (self.time as u64) % length, &[in_a_p, in_b_p]);
+                measure_len, (self.time as u64) % length,
+                &[in_bufs[0], in_bufs[1]]);
         }
 
         // in record mode, we extend the current buffer with the new samples
         if (looper.mode == LooperMode::Record || looper.mode == LooperMode::Stopping) && self.time >= 0 {
             let len = looper.length_in_samples();
             looper.samples.iter_mut().last().unwrap().record(
-                measure_len, len, &[in_a_p, &in_b_p])
+                measure_len, len, &[in_bufs[0], &in_bufs[1]])
         }
 
         // TODO: make this non-allocating
@@ -486,7 +401,7 @@ impl Engine {
             loops: loop_states,
             time: Engine::samples_to_time(self.time as isize) as i64,
             length: 0,
-            beat: cur_beat,
+            beat: cur_beat as i64,
             bpm: self.tempo.bpm(),
             time_signature_upper: self.time_signature.upper as u64,
             time_signature_lower: self.time_signature.lower as u64,

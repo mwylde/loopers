@@ -112,8 +112,8 @@ impl server::Looper for GuiState {
     type GetStateFuture = future::FutureResult<Response<Self::GetStateStream>, tower_grpc::Status>;
     type CommandFuture = future::FutureResult<Response<CommandResp>, tower_grpc::Status>;
 
-    fn get_state(&mut self, request: Request<GetStateReq>) -> Self::GetStateFuture {
-        let input = self.input.clone();
+    fn get_state(&mut self, _request: Request<GetStateReq>) -> Self::GetStateFuture {
+        //let input = self.input.clone();
 
         let (tx, rx) = mpsc::channel(4);
 

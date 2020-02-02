@@ -9,11 +9,12 @@ extern crate bytes;
 extern crate serde;
 extern crate serde_yaml;
 extern crate dirs;
-extern crate num;
 
 use std::{io, thread, fs};
 
+mod looper;
 mod sample;
+mod music;
 mod engine;
 mod gui;
 mod protos;
@@ -52,11 +53,11 @@ fn main() {
     println!("Config: {:#?}", config);
 
     // read wav files
-    let mut reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
+    let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
     let beat_normal: Vec<f32> = reader.into_samples().into_iter()
         .map(|x| x.unwrap()).collect();
 
-    let mut reader = hound::WavReader::open("resources/sine_emphasis.wav").unwrap();
+    let reader = hound::WavReader::open("resources/sine_emphasis.wav").unwrap();
     let beat_empahsis: Vec<f32> = reader.into_samples().into_iter()
         .map(|x| x.unwrap()).collect();
 
