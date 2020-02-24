@@ -1,4 +1,3 @@
-use jack::{Port, MidiIn};
 use crossbeam_queue::SegQueue;
 use std::sync::Arc;
 use std::f32::NEG_INFINITY;
@@ -8,6 +7,7 @@ use crate::sample::Sample;
 use crate::protos::looper_command::TargetOneof;
 use crate::music::*;
 use crate::looper::Looper;
+use crate::midi::MidiEvent;
 
 const SAMPLE_RATE: f64 = 44.100;
 
@@ -120,13 +120,8 @@ impl Engine {
         self.loopers.iter_mut().find(|l| l.id == id)
     }
 
-    fn looper_by_id(&self, id: u32) -> Option<&Looper> {
-        self.loopers.iter().find(|l| l.id == id)
-    }
-
-
-    fn commands_from_midi(&self, ps: &jack::ProcessScope, midi_in: &Port<MidiIn>) {
-        for e in midi_in.iter(ps) {
+    fn commands_from_midi(&self, events: &[MidiEvent]) {
+        for e in events {
             println!("midi {:?}", e);
 
             for m in &self.config.midi_mappings {
@@ -140,61 +135,107 @@ impl Engine {
         }
     }
 
-    fn handle_commands(&mut self) {
-        loop {
-            let c = self.gui_input.pop();
-            if c.is_err() {
-                return;
+    fn handle_loop_command(&mut self, lc: &LooperCommand) {
+        let loopers: Vec<&mut Looper> = match lc.target_oneof.as_ref().unwrap() {
+            TargetOneof::TargetAll(_) => {
+                self.loopers.iter_mut().collect()
             }
-            let c = c.unwrap();
-            if c.command_oneof.is_none() {
-                continue;
+            TargetOneof::TargetSelected(_) => {
+                if let Some(l) = self.looper_by_id_mut(self.active) {
+                    vec![l]
+                } else {
+                    vec![]
+                }
             }
+            TargetOneof::TargetNumber(t) => {
+                if let Some(l) = self.loopers.get_mut(t.looper_number as usize) {
+                    vec![l]
+                } else {
+                    vec![]
+                }
+            }
+        };
 
-            match &c.command_oneof.unwrap() {
-                CommandOneof::LooperCommand(lc) => {
-                    match lc.target_oneof.as_ref().unwrap() {
-                        TargetOneof::TargetAll(_) => {
-                            for looper in &mut self.loopers {
-                                looper.process_event(lc);
-                            }
+        let mut selected = None;
+
+        // TODO: warn if loopers is empty (indicating an invalid selection)
+        for l in loopers {
+            if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
+                match typ as LooperCommandType {
+                    LooperCommandType::EnableReady => {
+                        l.transition_to(LooperMode::Ready);
+                    }
+                    LooperCommandType::EnableRecord => {
+                        l.transition_to(LooperMode::Record);
+                    },
+                    LooperCommandType::EnableOverdub => {
+                        l.transition_to(LooperMode::Overdub);
+                    },
+                    LooperCommandType::EnableMutiply => {
+                        // TODO
+                    },
+                    LooperCommandType::Stop => {
+                        l.transition_to(LooperMode::None);
+                    }
+
+                    LooperCommandType::EnablePlay => {
+                        if l.mode == LooperMode::Record {
+                            l.transition_to(LooperMode::Stopping);
+                        } else {
+                            l.transition_to(LooperMode::Playing);
                         }
-                        TargetOneof::TargetSelected(_) => {
-                            if let Some(looper) = self.looper_by_id_mut(self.active) {
-                                looper.process_event(lc);
-                            } else {
-                                // TODO: log this
-                            }
-                        }
-                        TargetOneof::TargetNumber(t) => {
-                            if let Some(looper) = self.loopers.get_mut(t.looper_number as usize) {
-                                if lc.command_type == LooperCommandType::Select as i32 {
-                                    self.active = looper.id;
-                                } else {
-                                    looper.process_event(lc);
-                                }
-                            } else {
-                                // TODO: log this
-                            }
+                    },
+                    LooperCommandType::Select => {
+                        selected = Some(l.id);
+                    },
+                    LooperCommandType::Delete => {
+                        l.deleted = true;
+                    },
+
+                    LooperCommandType::ReadyOverdubPlay => {
+                        if l.samples.is_empty() {
+                            l.transition_to(LooperMode::Ready);
+                        } else if l.mode == LooperMode::Record || l.mode == LooperMode::Playing {
+                            l.transition_to(LooperMode::Overdub);
+                        } else {
+                            l.transition_to(LooperMode::Playing);
                         }
                     }
-                },
-                CommandOneof::GlobalCommand(gc) => {
-                    if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
-                        match typ as GlobalCommandType {
-                            GlobalCommandType::ResetTime => {
-                                self.time = 0;
-                            },
-                            GlobalCommandType::AddLooper => {
-                                self.loopers.push(Looper::new(self.id_counter));
-                                self.active = self.id_counter;
-                                self.id_counter += 1;
-                            }
-                            GlobalCommandType::EnableLearnMode => {
-                                self.is_learning = true;
-                            }
-                            GlobalCommandType::DisableLearnMode => {
-                                self.is_learning = false;
+                }
+            } else {
+                // TODO: log this
+            }
+        }
+
+        if let Some(id) = selected {
+            self.active = id;
+        }
+    }
+
+    fn handle_commands(&mut self, commands: &[&Command]) {
+        for c in commands {
+            if let Some(oneof) = &c.command_oneof {
+                match oneof {
+                    CommandOneof::LooperCommand(lc) => {
+                        self.handle_loop_command(lc);
+                    },
+                    CommandOneof::GlobalCommand(gc) => {
+                        if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
+                            match typ as GlobalCommandType {
+                                GlobalCommandType::ResetTime => {
+                                    self.time = 0;
+                                },
+                                GlobalCommandType::AddLooper => {
+                                    self.loopers.push(Looper::new(self.id_counter));
+                                    self.active = self.id_counter;
+                                    self.id_counter += 1;
+                                }
+                                GlobalCommandType::EnableLearnMode => {
+                                    self.is_learning = true;
+                                }
+                                GlobalCommandType::DisableLearnMode => {
+                                    self.is_learning = false;
+                                }
                             }
                         }
                     }
@@ -263,18 +304,18 @@ impl Engine {
     // Step 3: Play current samples
     // Step 4: Record
     // Step 5: (async) Update GUI
-    pub fn process(&mut self, _ : &jack::Client,
-                   ps: &jack::ProcessScope,
+    pub fn process(&mut self,
                    in_bufs: [&[f32]; 2],
                    out_bufs: &mut [&mut[f32]; 2],
-                   met_bufs: &mut [&mut[f32]; 2],
-                   midi_in: &Port<MidiIn>,
-    ) -> jack::Control {
+                   _met_bufs: &mut [&mut[f32]; 2],
+                   frames: u64,
+                   midi_events: &[MidiEvent],
+    ) {
         if !self.is_learning {
-            self.commands_from_midi(ps, midi_in);
+            self.commands_from_midi(midi_events);
             self.last_midi = None;
         } else {
-            let new_last = midi_in.iter(ps).last().map(|m| m.bytes.to_vec());
+            let new_last = midi_events.last().map(|m| m.bytes.to_vec());
             if new_last.is_some() {
                 self.last_midi = new_last;
             }
@@ -287,7 +328,7 @@ impl Engine {
         let prev_time = self.time;
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
-                self.time += ps.n_frames() as i64;
+                self.time += frames as i64;
             } else {
                 self.time = -(measure_len as i64);
             }
@@ -297,7 +338,7 @@ impl Engine {
             Engine::get_beat(self.tempo.bpm(), self.time),
             self.time_signature);
 
-        self.handle_commands();
+        // self.handle_commands();
 
         if let Some(metronome_sample) = self.metronome_sample(prev_time) {
             self.metronome_player = Some(SamplePlayer {
@@ -315,7 +356,7 @@ impl Engine {
         ];
 
         self.play_loops(&mut out_64_vec);
-        if let Some(player) = &mut self.metronome_player {
+        if let Some(_player) = &mut self.metronome_player {
             // player.play(met_bufs);
         }
 
@@ -378,7 +419,5 @@ impl Engine {
             learn_mode: self.is_learning,
             last_midi: self.last_midi.as_ref().map(|b| b.clone()).unwrap_or_else(|| vec![]),
         });
-
-        jack::Control::Continue
     }
 }

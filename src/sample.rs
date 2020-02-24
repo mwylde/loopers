@@ -76,7 +76,6 @@ impl Sample {
 
     pub fn from_mono(buffer: &[f32]) -> Sample {
         let half: Vec<f32> = buffer.iter().map(|x|  *x / 2f32).collect();
-        let len = half.len() as u64;
         Sample {
             buffer: [half.clone(), half],
         }

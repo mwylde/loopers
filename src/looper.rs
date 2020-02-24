@@ -1,5 +1,5 @@
 use crate::sample::Sample;
-use crate::protos::{LooperMode, LooperCommand, LooperCommandType};
+use crate::protos::LooperMode;
 
 #[cfg(test)]
 mod tests {
@@ -125,54 +125,6 @@ impl Looper {
             // in record mode, we extend the current buffer with the new samples
             let s = self.samples.last_mut().expect("No samples for looper in record mode");
             s.record(inputs);
-        }
-    }
-
-    pub fn process_event(&mut self, looper_event: &LooperCommand) {
-        if let Some(typ) = LooperCommandType::from_i32(looper_event.command_type) {
-            match typ as LooperCommandType {
-                LooperCommandType::EnableReady => {
-                    self.transition_to(LooperMode::Ready);
-                }
-                LooperCommandType::EnableRecord => {
-                    self.transition_to(LooperMode::Record);
-                },
-                LooperCommandType::EnableOverdub => {
-                    self.transition_to(LooperMode::Overdub);
-                },
-                LooperCommandType::EnableMutiply => {
-                    // TODO
-                },
-                LooperCommandType::Stop => {
-                    self.transition_to(LooperMode::None);
-                }
-
-                LooperCommandType::EnablePlay => {
-                    if self.mode == LooperMode::Record {
-                        self.transition_to(LooperMode::Stopping);
-                    } else {
-                        self.transition_to(LooperMode::Playing);
-                    }
-                },
-                LooperCommandType::Select => {
-                    // TODO: handle
-                },
-                LooperCommandType::Delete => {
-                    self.deleted = true;
-                },
-
-                LooperCommandType::ReadyOverdubPlay => {
-                    if self.samples.is_empty() {
-                        self.transition_to(LooperMode::Ready);
-                    } else if self.mode == LooperMode::Record || self.mode == LooperMode::Playing {
-                        self.transition_to(LooperMode::Overdub);
-                    } else {
-                        self.transition_to(LooperMode::Playing);
-                    }
-                }
-            }
-        } else {
-            // TODO: log this
         }
     }
 

@@ -11,6 +11,7 @@ extern crate serde_yaml;
 extern crate dirs;
 
 use std::{io, thread, fs};
+use crate::midi::MidiEvent;
 
 mod looper;
 mod sample;
@@ -19,6 +20,7 @@ mod engine;
 mod gui;
 mod protos;
 mod config;
+mod midi;
 
 fn main() {
     let (gui, output, input) = gui::Gui::new();
@@ -87,11 +89,20 @@ fn main() {
     let mut engine = engine::Engine::new(
         config.to_config(), output,  input, beat_normal, beat_empahsis);
 
-    let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+    let process_callback = move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
         let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
         let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
-        engine.process(client, ps, in_bufs, &mut out_bufs, &mut met_bufs, &midi_in)
+
+        let midi_events: Vec<MidiEvent> = midi_in.iter(ps)
+            .map(|e| MidiEvent { bytes: e.bytes.to_vec() })
+            .collect();
+
+        engine.process(in_bufs, &mut out_bufs,
+                       &mut met_bufs, ps.n_frames() as u64,
+                       &midi_events);
+
+        jack::Control::Continue
     };
     let process = jack::ClosureProcessHandler::new(process_callback);
 
