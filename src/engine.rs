@@ -234,25 +234,8 @@ impl Engine {
     fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
         if self.time >= 0 {
             for looper in &self.loopers {
-                if looper.deleted {
-                    continue;
-                }
-                if looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub {
-                    let mut time = self.time as usize;
-                    if !looper.samples.is_empty() {
-                        for i in 0..outputs[0].len() {
-                            for sample in &looper.samples {
-                                let b = &sample.buffer;
-                                assert_eq!(b[0].len(), b[1].len());
-                                if b[0].len() > 0 {
-                                    for (j, o) in outputs.iter_mut().enumerate() {
-                                        o[i] += b[j][time & b[j].len()] as f64;
-                                    }
-                                }
-                            }
-                            time += 1;
-                        }
-                    }
+                if !looper.deleted && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub) {
+                    looper.process_output(self.time as u64, outputs)
                 }
             }
         }
@@ -359,20 +342,7 @@ impl Engine {
 //        met_bufs[0].clone_from_slice(&met_l);
 //        met_bufs[1].clone_from_slice(&met_r);
 
-        // in overdub mode, we add the new samples to our existing buffer
-        if looper.mode == LooperMode::Overdub && self.time >= 0 {
-            let length = looper.length_in_samples();
-            looper.samples.iter_mut().last().unwrap().record(
-                measure_len, (self.time as u64) % length,
-                &[in_bufs[0], in_bufs[1]]);
-        }
-
-        // in record mode, we extend the current buffer with the new samples
-        if (looper.mode == LooperMode::Record || looper.mode == LooperMode::Stopping) && self.time >= 0 {
-            let len = looper.length_in_samples();
-            looper.samples.iter_mut().last().unwrap().record(
-                measure_len, len, &[in_bufs[0], &in_bufs[1]])
-        }
+        looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
 
         // TODO: make this non-allocating
         let gui_output = &mut self.gui_output;
