@@ -1,4 +1,6 @@
 use std::rc::Rc;
+use std::sync::Arc;
+use crate::protos::LooperMode::Playing;
 
 #[cfg(test)]
 mod tests {
@@ -111,8 +113,8 @@ impl Sample {
 }
 
 
-pub struct SamplePlayer<'a> {
-    pub sample: Rc<Sample>,
+pub struct SamplePlayer {
+    pub sample: Arc<Sample>,
     pub time: usize,
 }
 
@@ -121,8 +123,8 @@ pub enum PlayOutput {
     Done, NotDone
 }
 
-impl <'a> SamplePlayer<'a> {
-    pub fn new(sample: Rc<Sample>) -> SamplePlayer {
+impl SamplePlayer {
+    pub fn new(sample: Arc<Sample>) -> SamplePlayer {
         SamplePlayer { sample, time: 0}
     }
 
@@ -134,9 +136,15 @@ impl <'a> SamplePlayer<'a> {
             }
 
             out[0][i] += self.sample.buffer[0][t];
-            out[1][i] += self.sample.buffer[0][t];
+            out[1][i] += self.sample.buffer[1][t];
         }
 
-        PlayOutput::Done
+        self.time += out[0].len();
+
+        if self.sample.length() <= self.time as u64 {
+            PlayOutput::Done
+        } else {
+            PlayOutput::NotDone
+        }
     }
 }

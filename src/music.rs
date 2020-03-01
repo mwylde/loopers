@@ -37,7 +37,7 @@ mod tests {
 }
 
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone)]
 pub struct FrameTime(pub i64);
 
 impl FrameTime {
