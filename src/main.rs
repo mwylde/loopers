@@ -13,12 +13,14 @@ extern crate dirs;
 use std::{io, thread, fs};
 use crate::midi::MidiEvent;
 
+#[allow(dead_code)]
+mod protos;
+
 mod looper;
 mod sample;
 mod music;
 mod engine;
 mod gui;
-mod protos;
 mod config;
 mod midi;
 mod metronome;

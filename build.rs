@@ -10,7 +10,6 @@ fn main() {
     path.push("src");
 
     let mut prost_config = prost_build::Config::new();
-
     prost_config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
     //prost_config.out_dir(path);
 

@@ -2,7 +2,6 @@ use crate::sample::{Sample, SamplePlayer};
 use crate::sample::PlayOutput::Done;
 use crate::music::{Tempo, TimeSignature, FrameTime};
 use std::sync::Arc;
-use rand::seq::index::sample;
 
 #[cfg(test)]
 mod tests {
@@ -66,7 +65,7 @@ mod tests {
         assert_eq!(12, met.time.0);
 
         // play nothing twice
-        for i in 0..2 {
+        for _ in 0..2 {
             met.advance(&mut [&mut l, &mut r]);
             assert_eq!(vec![ 7f32,  7.0], l);
             assert_eq!(vec![-7f32, -7.0], r);
@@ -86,7 +85,7 @@ mod tests {
         assert_eq!(20, met.time.0);
 
         // play nothing twice
-        for i in 0..2 {
+        for _ in 0..2 {
             met.advance(&mut [&mut l, &mut r]);
             assert_eq!(vec![ 9f32,  9.0], l);
             assert_eq!(vec![-9f32, -9.0], r);

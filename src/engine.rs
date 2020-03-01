@@ -1,14 +1,14 @@
 use crossbeam_queue::SegQueue;
 use std::sync::Arc;
-use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
-use crate::sample::{Sample, SamplePlayer};
+use crate::sample::Sample;
 use crate::protos::looper_command::TargetOneof;
 use crate::music::*;
 use crate::looper::Looper;
 use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
+use std::f32::NEG_INFINITY;
 
 pub struct Engine {
     config: Config,
@@ -23,9 +23,6 @@ pub struct Engine {
     loopers: Vec<Looper>,
     active: u32,
 
-    beat_normal: Sample,
-    beat_emphasis: Sample,
-
     metronome: Option<Metronome>,
 
     id_counter: u32,
@@ -34,8 +31,10 @@ pub struct Engine {
     last_midi: Option<Vec<u8>>,
 }
 
+#[allow(dead_code)]
 const THRESHOLD: f32 = 0.05;
 
+#[allow(dead_code)]
 fn max_abs(b: &[f32]) -> f32 {
     b.iter().map(|v| v.abs())
         .fold(NEG_INFINITY, |a, b| a.max(b))
@@ -62,8 +61,6 @@ impl Engine {
             loopers: vec![Looper::new(0)],
             active: 0,
             id_counter: 1,
-            beat_normal: Sample::from_mono(&beat_normal),
-            beat_emphasis: Sample::from_mono(&beat_emphasis),
 
             metronome: Some(Metronome::new(tempo, time_signature,
                                            Sample::from_mono(&beat_normal),
