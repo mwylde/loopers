@@ -3,61 +3,19 @@ use std::sync::Arc;
 use std::f32::NEG_INFINITY;
 use crate::protos::*;
 use crate::protos::command::CommandOneof;
-use crate::sample::Sample;
+use crate::sample::{Sample, SamplePlayer};
 use crate::protos::looper_command::TargetOneof;
 use crate::music::*;
 use crate::looper::Looper;
 use crate::midi::MidiEvent;
-
-const SAMPLE_RATE: f64 = 44.100;
+use crate::metronome::Metronome;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_get_beat() {
-        assert_eq!(0, Engine::get_beat(120f32, 0));
-        assert_eq!(1, Engine::get_beat(120f32, 22500));
-        assert_eq!(-1, Engine::get_beat(120f32, -22500));
-    }
-
-    #[test]
-    fn test_beat_normalization() {
-        let ts = TimeSignature::new(3, 4).unwrap();
-        assert_eq!(0, Engine::normalize_beat(0, ts));
-        assert_eq!(1, Engine::normalize_beat(1, ts));
-        assert_eq!(0, Engine::normalize_beat(3, ts));
-        assert_eq!(0, Engine::normalize_beat(-3, ts));
-        assert_eq!(1, Engine::normalize_beat(-2, ts));
-    }
 }
 
-
-struct SamplePlayer {
-    pub sample: Sample,
-    pub time: usize,
-}
-
-enum PlayOutput {
-    Done, NotDone
-}
-
-impl SamplePlayer {
-    pub fn play(&mut self, out: &mut [&mut [f32]; 2]) -> PlayOutput {
-        for i in 0..out[0].len() {
-            let t = self.time + i;
-            if t >= self.sample.length() as usize {
-                return PlayOutput::Done;
-            }
-
-            out[0][i] += self.sample.buffer[0][t];
-            out[1][i] += self.sample.buffer[0][t];
-        }
-
-        PlayOutput::Done
-    }
-}
 
 pub struct Engine {
     config: Config,
@@ -74,7 +32,9 @@ pub struct Engine {
 
     beat_normal: Sample,
     beat_emphasis: Sample,
-    metronome_player: Option<SamplePlayer>,
+
+    metronome: Option<Metronome>,
+
     id_counter: u32,
 
     is_learning: bool,
@@ -109,7 +69,7 @@ impl Engine {
             beat_normal: Sample::from_mono(&beat_normal),
             beat_emphasis: Sample::from_mono(&beat_emphasis),
 
-            metronome_player: None,
+            metronome: None,
 
             is_learning: false,
             last_midi: None,
@@ -244,33 +204,6 @@ impl Engine {
         }
     }
 
-    fn samples_to_time(samples: isize) -> i64 {
-        ((samples as f64) / SAMPLE_RATE) as i64
-    }
-
-    fn time_to_samples(time_ms: f64) -> u64 {
-        (time_ms * SAMPLE_RATE) as u64
-    }
-
-    fn get_beat(tempo_bpm: f32, time: i64) -> i64 {
-        let bps = tempo_bpm / 60.0;
-        let mspb = 1000.0 / bps;
-        (Engine::samples_to_time(time as isize) as f32 / mspb) as i64
-    }
-
-    // converts from (possibly negative) beat-of-song to always positive beat-of-measure
-    fn normalize_beat(beat: i64, time_signature: TimeSignature) -> u64 {
-        beat.rem_euclid(time_signature.upper as i64) as u64
-    }
-
-    fn measure_len(&self) -> u64 {
-        let bps = self.tempo.bpm() as f32 / 60.0;
-        let mspb = 1000.0 / bps;
-
-        let mspm = mspb * self.time_signature.upper as f32;
-
-        Engine::time_to_samples(mspm as f64)
-    }
 
     fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
         if self.time >= 0 {
@@ -282,21 +215,30 @@ impl Engine {
         }
     }
 
-    fn metronome_sample(&self, prev_time: i64) -> Option<&Sample> {
-        let prev_beat = Engine::normalize_beat(Engine::get_beat(
-            self.tempo.bpm(), prev_time), self.time_signature);
-        let cur_beat = Engine::normalize_beat(Engine::get_beat(
-            self.tempo.bpm(), self.time), self.time_signature);
-        // TODO: solve the problem of first beat missing
-        if prev_beat != cur_beat {
-            if cur_beat == 0 {
-                Some(&self.beat_emphasis)
-            } else {
-                Some(&self.beat_normal)
-            }
-        } else {
-            None
-        }
+    // fn metronome_sample(&self, prev_time: i64) -> Option<&Sample> {
+    //     let prev_beat = Engine::get_beat(
+    //         self.tempo.bpm(), prev_time), self.time_signature);
+    //     let cur_beat = Engine::normalize_beat(Engine::get_beat(
+    //         self.tempo.bpm(), self.time), self.time_signature);
+    //     // TODO: solve the problem of first beat missing
+    //     if prev_beat != cur_beat {
+    //         if cur_beat == 0 {
+    //             Some(&self.beat_emphasis)
+    //         } else {
+    //             Some(&self.beat_normal)
+    //         }
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    // returns length
+    fn measure_len(&self) -> FrameTime {
+        let bps = self.tempo.bpm() as f32 / 60.0;
+        let mspb = 1000.0 / bps;
+        let mspm = mspb * self.time_signature.upper as f32;
+
+        FrameTime::from_ms(mspm as f64)
     }
 
     // Step 1: Convert midi events to commands
@@ -322,30 +264,30 @@ impl Engine {
         }
 
         let measure_len = self.measure_len();
-        let prev_beat = Engine::normalize_beat(
-            Engine::get_beat(self.tempo.bpm(), self.time),
-            self.time_signature);
+        // let prev_beat = Engine::normalize_beat(
+        //     Engine::get_beat(self.tempo.bpm(), self.time),
+        //     self.time_signature);
         let prev_time = self.time;
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
                 self.time += frames as i64;
             } else {
-                self.time = -(measure_len as i64);
+                self.time = -(measure_len.0 as i64);
             }
         }
 
-        let cur_beat = Engine::normalize_beat(
-            Engine::get_beat(self.tempo.bpm(), self.time),
-            self.time_signature);
+        // let cur_beat = Engine::normalize_beat(
+        //     Engine::get_beat(self.tempo.bpm(), self.time),
+        //     self.time_signature);
 
         // self.handle_commands();
 
-        if let Some(metronome_sample) = self.metronome_sample(prev_time) {
-            self.metronome_player = Some(SamplePlayer {
-                sample: metronome_sample.clone(),
-                time: 0,
-            })
-        }
+        // if let Some(metronome_sample) = self.metronome_sample(prev_time) {
+        //     self.metronome_player = Some(SamplePlayer {
+        //         sample: metronome_sample.clone(),
+        //         time: 0,
+        //     })
+        // }
 
         let active = self.active;
 
@@ -356,17 +298,14 @@ impl Engine {
         ];
 
         self.play_loops(&mut out_64_vec);
-        if let Some(_player) = &mut self.metronome_player {
-            // player.play(met_bufs);
-        }
 
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
-        if prev_beat != cur_beat &&
-            cur_beat == 0 &&
-            looper.mode == LooperMode::Stopping{
-            looper.transition_to(LooperMode::Playing);
-        }
+        // if prev_beat != cur_beat &&
+        //     cur_beat == 0 &&
+        //     looper.mode == LooperMode::Stopping{
+        //     looper.transition_to(LooperMode::Playing);
+        // }
 
         if looper.mode == LooperMode::Ready &&
             //(max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD
@@ -402,17 +341,17 @@ impl Engine {
             LoopState {
                 id: l.id,
                 mode: l.mode as i32,
-                time: Engine::samples_to_time(t as isize) as i64,
-                length: Engine::samples_to_time(len as isize) as i64,
+                time: FrameTime(t as i64).to_ms() as i64,
+                length: FrameTime(len as i64).to_ms() as i64,
                 active: l.id == active,
             }
         }).collect();
 
         gui_output.push(State{
             loops: loop_states,
-            time: Engine::samples_to_time(self.time as isize) as i64,
+            time: FrameTime(self.time).to_ms() as i64,
             length: 0,
-            beat: cur_beat as i64,
+            beat: 0, //cur_beat as i64,
             bpm: self.tempo.bpm(),
             time_signature_upper: self.time_signature.upper as u64,
             time_signature_lower: self.time_signature.lower as u64,

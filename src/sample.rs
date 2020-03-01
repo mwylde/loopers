@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +107,36 @@ impl Sample {
                 self.buffer[i][time_in_samples as usize + t] += *v;
             }
         }
+    }
+}
+
+
+pub struct SamplePlayer<'a> {
+    pub sample: Rc<Sample>,
+    pub time: usize,
+}
+
+#[derive(PartialOrd, PartialEq)]
+pub enum PlayOutput {
+    Done, NotDone
+}
+
+impl <'a> SamplePlayer<'a> {
+    pub fn new(sample: Rc<Sample>) -> SamplePlayer {
+        SamplePlayer { sample, time: 0}
+    }
+
+    pub fn play(&mut self, out: &mut [&mut [f32]; 2]) -> PlayOutput {
+        for i in 0..out[0].len() {
+            let t = self.time + i;
+            if t >= self.sample.length() as usize {
+                return PlayOutput::Done;
+            }
+
+            out[0][i] += self.sample.buffer[0][t];
+            out[1][i] += self.sample.buffer[0][t];
+        }
+
+        PlayOutput::Done
     }
 }

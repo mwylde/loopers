@@ -21,6 +21,7 @@ mod gui;
 mod protos;
 mod config;
 mod midi;
+mod metronome;
 
 fn main() {
     let (gui, output, input) = gui::Gui::new();
