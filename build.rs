@@ -12,7 +12,7 @@ fn main() {
     let mut prost_config = prost_build::Config::new();
 
     prost_config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
-    prost_config.out_dir(path);
+    //prost_config.out_dir(path);
 
     tower_grpc_build::Config::from_prost(prost_config)
         .enable_server(true)
