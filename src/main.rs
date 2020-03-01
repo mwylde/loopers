@@ -1,3 +1,5 @@
+#![cfg_attr(feature="fail-on-warnings", deny(warnings))]
+
 extern crate jack;
 extern crate crossbeam_queue;
 extern crate prost;
