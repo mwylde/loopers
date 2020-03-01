@@ -10,13 +10,6 @@ use crate::looper::Looper;
 use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-}
-
-
 pub struct Engine {
     config: Config,
 
@@ -54,12 +47,15 @@ impl Engine {
                gui_input: Arc<SegQueue<Command>>,
                beat_normal: Vec<f32>,
                beat_emphasis: Vec<f32>) -> Engine {
+        let time_signature = TimeSignature::new(4, 4).unwrap();
+        let tempo = Tempo::from_bpm(120.0);
+
         Engine {
             config,
 
             time: 0,
-            time_signature: TimeSignature::new(4, 4).unwrap(),
-            tempo: Tempo::from_bpm(120.0),
+            time_signature,
+            tempo,
 
             gui_output,
             gui_input,
@@ -69,7 +65,9 @@ impl Engine {
             beat_normal: Sample::from_mono(&beat_normal),
             beat_emphasis: Sample::from_mono(&beat_emphasis),
 
-            metronome: None,
+            metronome: Some(Metronome::new(tempo, time_signature,
+                                           Sample::from_mono(&beat_normal),
+                                           Sample::from_mono(&beat_emphasis))),
 
             is_learning: false,
             last_midi: None,
@@ -172,30 +170,28 @@ impl Engine {
         }
     }
 
-    fn handle_commands(&mut self, commands: &[&Command]) {
-        for c in commands {
-            if let Some(oneof) = &c.command_oneof {
-                match oneof {
-                    CommandOneof::LooperCommand(lc) => {
-                        self.handle_loop_command(lc);
-                    },
-                    CommandOneof::GlobalCommand(gc) => {
-                        if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
-                            match typ as GlobalCommandType {
-                                GlobalCommandType::ResetTime => {
-                                    self.time = 0;
-                                },
-                                GlobalCommandType::AddLooper => {
-                                    self.loopers.push(Looper::new(self.id_counter));
-                                    self.active = self.id_counter;
-                                    self.id_counter += 1;
-                                }
-                                GlobalCommandType::EnableLearnMode => {
-                                    self.is_learning = true;
-                                }
-                                GlobalCommandType::DisableLearnMode => {
-                                    self.is_learning = false;
-                                }
+    fn handle_command(&mut self, command: &Command) {
+        if let Some(oneof) = &command.command_oneof {
+            match oneof {
+                CommandOneof::LooperCommand(lc) => {
+                    self.handle_loop_command(lc);
+                },
+                CommandOneof::GlobalCommand(gc) => {
+                    if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
+                        match typ as GlobalCommandType {
+                            GlobalCommandType::ResetTime => {
+                                self.time = 0;
+                            },
+                            GlobalCommandType::AddLooper => {
+                                self.loopers.push(Looper::new(self.id_counter));
+                                self.active = self.id_counter;
+                                self.id_counter += 1;
+                            }
+                            GlobalCommandType::EnableLearnMode => {
+                                self.is_learning = true;
+                            }
+                            GlobalCommandType::DisableLearnMode => {
+                                self.is_learning = false;
                             }
                         }
                     }
@@ -203,7 +199,6 @@ impl Engine {
             }
         }
     }
-
 
     fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
         if self.time >= 0 {
@@ -249,10 +244,11 @@ impl Engine {
     pub fn process(&mut self,
                    in_bufs: [&[f32]; 2],
                    out_bufs: &mut [&mut[f32]; 2],
-                   _met_bufs: &mut [&mut[f32]; 2],
+                   met_bufs: &mut [&mut[f32]; 2],
                    frames: u64,
                    midi_events: &[MidiEvent],
     ) {
+        // Convert midi events to commands
         if !self.is_learning {
             self.commands_from_midi(midi_events);
             self.last_midi = None;
@@ -263,34 +259,38 @@ impl Engine {
             }
         }
 
+        // Update our state based on commands
+        loop {
+            let c = self.gui_input.pop();
+            if let Ok(c) = c {
+                self.handle_command(&c);
+            } else {
+                break;
+            }
+        }
+
+        // Update our time
         let measure_len = self.measure_len();
-        // let prev_beat = Engine::normalize_beat(
-        //     Engine::get_beat(self.tempo.bpm(), self.time),
-        //     self.time_signature);
-        let prev_time = self.time;
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
                 self.time += frames as i64;
             } else {
+                if let Some(m) = &mut self.metronome {
+                    m.reset();
+                }
                 self.time = -(measure_len.0 as i64);
             }
         }
 
-        // let cur_beat = Engine::normalize_beat(
-        //     Engine::get_beat(self.tempo.bpm(), self.time),
-        //     self.time_signature);
 
-        // self.handle_commands();
-
-        // if let Some(metronome_sample) = self.metronome_sample(prev_time) {
-        //     self.metronome_player = Some(SamplePlayer {
-        //         sample: metronome_sample.clone(),
-        //         time: 0,
-        //     })
-        // }
+        // Play the metronome
+        if let Some(metronome) = &mut self.metronome {
+            metronome.advance(met_bufs);
+        }
 
         let active = self.active;
 
+        // Play our loops
         let buf_len = out_bufs[0].len();
         let mut out_64_vec: [Vec<f64>; 2] = [
             in_bufs[0].iter().map(|v| *v as f64).collect(),
@@ -300,12 +300,6 @@ impl Engine {
         self.play_loops(&mut out_64_vec);
 
         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
-
-        // if prev_beat != cur_beat &&
-        //     cur_beat == 0 &&
-        //     looper.mode == LooperMode::Stopping{
-        //     looper.transition_to(LooperMode::Playing);
-        // }
 
         if looper.mode == LooperMode::Ready &&
             //(max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD
@@ -319,12 +313,13 @@ impl Engine {
             }
         }
 
-//        met_bufs[0].clone_from_slice(&met_l);
-//        met_bufs[1].clone_from_slice(&met_r);
+        // Record input to active loop
 
         looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
 
-        // TODO: make this non-allocating
+        // Update GUI
+
+        // TODO: make this async or non-allocating
         let gui_output = &mut self.gui_output;
         let time = self.time as usize;
         let loop_states: Vec<LoopState> = self.loopers.iter()
