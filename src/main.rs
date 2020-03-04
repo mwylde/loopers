@@ -97,7 +97,14 @@ fn main() {
     let process_callback = move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
         let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
+        for buf in &mut out_bufs {
+            for b in &mut **buf { *b = 0f32 }
+        }
+
         let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
+        for buf in &mut met_bufs {
+            for b in &mut **buf { *b = 0f32 }
+        }
 
         let midi_events: Vec<MidiEvent> = midi_in.iter(ps)
             .map(|e| MidiEvent { bytes: e.bytes.to_vec() })
@@ -115,9 +122,14 @@ fn main() {
     let active_client = client.activate_async(Notifications, process).unwrap();
 
     // Wait for user input to quit
-    println!("Press enter/return to quit...");
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input).ok();
+    println!("Type q to quit...");
+    loop {
+        let mut user_input = String::new();
+        io::stdin().read_line(&mut user_input).ok();
+        if user_input == "q" {
+            break;
+        }
+    }
 
     active_client.deactivate().unwrap();
 }

@@ -129,6 +129,8 @@ impl SamplePlayer {
     pub fn play(&mut self, out: &mut [&mut [f32]; 2]) -> PlayOutput {
         for i in 0..out[0].len() {
             let t = self.time + i;
+
+
             if t >= self.sample.length() as usize {
                 return PlayOutput::Done;
             }

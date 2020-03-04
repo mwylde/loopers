@@ -21,8 +21,18 @@ mod tests {
     fn test_get_beat() {
         let tempo = Tempo::from_bpm(120f32);
         assert_eq!(0, tempo.beat(FrameTime(0)));
+        assert_eq!(0, tempo.beat(FrameTime(22049)));
+
+        assert_eq!(1, tempo.beat(FrameTime(22050)));
         assert_eq!(1, tempo.beat(FrameTime(22500)));
-        assert_eq!(-1, tempo.beat(FrameTime(-22500)));
+        assert_eq!(1, tempo.beat(FrameTime(44099)));
+
+        assert_eq!(2, tempo.beat(FrameTime(44100)));
+        assert_eq!(2, tempo.beat(FrameTime(44101)));
+
+        assert_eq!(-1, tempo.beat(FrameTime(-22050)));
+        assert_eq!(-2, tempo.beat(FrameTime(-44100)));
+        assert_eq!(-2, tempo.beat(FrameTime(-44099)));
     }
 
     #[test]
@@ -86,9 +96,12 @@ impl Tempo {
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
+        let mut t = time.to_ms() as f32;
         let bps = self.bpm() / 60.0;
         let mspb = 1000.0 / bps;
-        (time.to_ms() as f32 / mspb) as i64
+        let m = t / mspb;
+
+        m.floor() as i64
     }
 }
 

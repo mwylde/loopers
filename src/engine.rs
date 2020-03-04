@@ -10,6 +10,10 @@ use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
 use std::f32::NEG_INFINITY;
 
+struct Trigger {
+
+}
+
 pub struct Engine {
     config: Config,
 
@@ -29,6 +33,8 @@ pub struct Engine {
 
     is_learning: bool,
     last_midi: Option<Vec<u8>>,
+
+    triggers: Vec<Trigger>,
 }
 
 #[allow(dead_code)]
@@ -68,6 +74,8 @@ impl Engine {
 
             is_learning: false,
             last_midi: None,
+
+            triggers: vec![],
         }
     }
 
@@ -207,23 +215,6 @@ impl Engine {
         }
     }
 
-    // fn metronome_sample(&self, prev_time: i64) -> Option<&Sample> {
-    //     let prev_beat = Engine::get_beat(
-    //         self.tempo.bpm(), prev_time), self.time_signature);
-    //     let cur_beat = Engine::normalize_beat(Engine::get_beat(
-    //         self.tempo.bpm(), self.time), self.time_signature);
-    //     // TODO: solve the problem of first beat missing
-    //     if prev_beat != cur_beat {
-    //         if cur_beat == 0 {
-    //             Some(&self.beat_emphasis)
-    //         } else {
-    //             Some(&self.beat_normal)
-    //         }
-    //     } else {
-    //         None
-    //     }
-    // }
-
     // returns length
     fn measure_len(&self) -> FrameTime {
         let bps = self.tempo.bpm() as f32 / 60.0;
@@ -271,6 +262,33 @@ impl Engine {
         {
             if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
                 self.time += frames as i64;
+
+                // Play the metronome
+                if let Some(metronome) = &mut self.metronome {
+                    metronome.advance(met_bufs);
+                }
+
+                let active = self.active;
+
+                // Play our loops
+                let buf_len = out_bufs[0].len();
+                let mut out_64_vec: [Vec<f64>; 2] = [
+                    in_bufs[0].iter().map(|v| *v as f64).collect(),
+                    in_bufs[1].iter().map(|v| *v as f64).collect(),
+                ];
+
+                self.play_loops(&mut out_64_vec);
+
+                let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
+
+                for i in 0..buf_len {
+                    for j in 0..out_64_vec.len() {
+                        out_bufs[j][i] = out_64_vec[j][i] as f32
+                    }
+                }
+
+                // Record input to active loop
+                looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
             } else {
                 if let Some(m) = &mut self.metronome {
                     m.reset();
@@ -279,46 +297,12 @@ impl Engine {
             }
         }
 
-
-        // Play the metronome
-        if let Some(metronome) = &mut self.metronome {
-            metronome.advance(met_bufs);
-        }
-
-        let active = self.active;
-
-        // Play our loops
-        let buf_len = out_bufs[0].len();
-        let mut out_64_vec: [Vec<f64>; 2] = [
-            in_bufs[0].iter().map(|v| *v as f64).collect(),
-            in_bufs[1].iter().map(|v| *v as f64).collect(),
-        ];
-
-        self.play_loops(&mut out_64_vec);
-
-        let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
-
-        if looper.mode == LooperMode::Ready &&
-            //(max_abs(in_a_p) > THRESHOLD || max_abs(in_b_p) > THRESHOLD
-            self.time >= 0 {
-            looper.transition_to(LooperMode::Record);
-        }
-
-        for i in 0..buf_len {
-            for j in 0..out_64_vec.len() {
-                out_bufs[j][i] = out_64_vec[j][i] as f32
-            }
-        }
-
-        // Record input to active loop
-
-        looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
-
         // Update GUI
 
         // TODO: make this async or non-allocating
         let gui_output = &mut self.gui_output;
         let time = self.time as usize;
+        let active = self.active;
         let loop_states: Vec<LoopState> = self.loopers.iter()
             .filter(|l| !l.deleted)
             .map(|l| {
@@ -339,11 +323,14 @@ impl Engine {
             }
         }).collect();
 
+        // println!("beat {}", self.time_signature.beat_of_measure(self.tempo.beat(
+        //     FrameTime(self.time))));
         gui_output.push(State{
             loops: loop_states,
             time: FrameTime(self.time).to_ms() as i64,
             length: 0,
-            beat: 0, //cur_beat as i64,
+            beat: self.time_signature.beat_of_measure(self.tempo.beat(
+                FrameTime(self.time))) as i64,
             bpm: self.tempo.bpm(),
             time_signature_upper: self.time_signature.upper as u64,
             time_signature_lower: self.time_signature.lower as u64,

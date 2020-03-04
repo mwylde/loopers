@@ -120,7 +120,7 @@ impl Metronome {
             beat_normal: Arc::new(beat_normal),
             beat_emphasis,
             time: FrameTime(0),
-            player: Some(player)
+            player: Some(player),
         }
     }
 
