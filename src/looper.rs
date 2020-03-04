@@ -1,5 +1,6 @@
 use crate::sample::Sample;
 use crate::protos::LooperMode;
+use crate::music::FrameTime;
 
 #[cfg(test)]
 mod tests {
@@ -38,6 +39,34 @@ mod tests {
         looper.transition_to(LooperMode::Record);
         assert_eq!(1, looper.samples.len());
         assert_eq!(0, looper.length_in_samples());
+    }
+
+    #[test]
+    fn test_io() {
+        let mut l = Looper::new(1);
+        l.transition_to(LooperMode::Record);
+        let input_left = vec![1f32, 2.0, 3.0, 4.0];
+        let input_right = vec![-1f32, -2.0, -3.0, -4.0];
+        l.process_input(0, &[&input_left, &input_right]);
+
+        let output_left = vec![1f64; 2];
+        let output_right = vec![-1f64; 2];
+
+        l.transition_to(LooperMode::Playing);
+
+        let mut o = [output_left, output_right];
+
+        l.process_output(FrameTime(0), &mut o);
+        assert_eq!(vec![2.0f64, 3.0], o[0]);
+        assert_eq!(vec![-2.0f64, -3.0], o[1]);
+
+        l.process_output(FrameTime(2), &mut o);
+        assert_eq!(vec![5f64, 7.0], o[0]);
+        assert_eq!(vec![-5f64, -7.0], o[1]);
+
+        l.process_output(FrameTime(4), &mut o);
+        assert_eq!(vec![6f64, 9.0], o[0]);
+        assert_eq!(vec![-6f64, -9.0], o[1]);
     }
 }
 
@@ -92,21 +121,27 @@ impl Looper {
 
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
-    pub fn process_output(&self, time: u64, outputs: &mut [Vec<f64>; 2]) {
+    pub fn process_output(&self, time: FrameTime, outputs: &mut [Vec<f64>; 2]) {
+        if time.0 < 0 {
+            return;
+        }
+
+        let output_len = outputs[0].len();
+        let sample_len = self.length_in_samples() as usize;
+
         if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdub {
-            let mut time = time as usize;
             if !self.samples.is_empty() {
-                for i in 0..outputs[0].len() {
-                    for sample in &self.samples {
-                        let b = &sample.buffer;
-                        assert_eq!(b[0].len(), b[1].len());
-                        if b[0].len() > 0 {
-                            for (j, o) in outputs.iter_mut().enumerate() {
-                                o[i] += b[j][time & b[j].len()] as f64;
-                            }
+                for sample in &self.samples {
+                    let b = &sample.buffer;
+                    if b[0].is_empty() {
+                        continue;
+                    }
+
+                    for i in 0usize..2 {
+                        for t in 0..output_len {
+                            outputs[i][t] += b[i][(time.0 as usize + t) % sample_len] as f64;
                         }
                     }
-                    time += 1;
                 }
             }
         }

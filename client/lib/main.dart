@@ -175,8 +175,8 @@ class TimeWidget extends StatelessWidget {
       var time = state.time.toInt();
       var negative = "";
       if (time < 0) {
-         negative = "-";
-         time = -time;
+        negative = "-";
+        time = -time;
       }
       time = time.toInt() ~/ 1000;
       var hours = time ~/ 60 ~/ 60;
@@ -299,7 +299,7 @@ class LooperWidget extends StatelessWidget {
                                   protos.LooperCommandType.ENABLE_OVERDUB);
                             }
                             service.sendLooperCommand(this.index,
-                                protos.LooperCommandType.ENABLE_READY);
+                                protos.LooperCommandType.ENABLE_RECORD);
                           }
                         }),
                     LooperButton(

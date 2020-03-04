@@ -96,12 +96,9 @@ impl Tempo {
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
-        let mut t = time.to_ms() as f32;
         let bps = self.bpm() / 60.0;
         let mspb = 1000.0 / bps;
-        let m = t / mspb;
-
-        m.floor() as i64
+        ((time.to_ms() as f32) / mspb).floor() as i64
     }
 }
 

@@ -101,10 +101,11 @@ impl Sample {
     pub fn overdub(&mut self, time_in_samples: u64, data: &[&[f32]]) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
+        let len = self.length() as usize;
 
         for (i, channel) in data.iter().enumerate() {
             for (t, v) in channel.iter().enumerate() {
-                self.buffer[i][time_in_samples as usize + t] += *v;
+                self.buffer[i][(time_in_samples as usize + t) % len] += *v;
             }
         }
     }

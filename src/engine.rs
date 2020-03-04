@@ -10,10 +10,6 @@ use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
 use std::f32::NEG_INFINITY;
 
-struct Trigger {
-
-}
-
 pub struct Engine {
     config: Config,
 
@@ -33,8 +29,6 @@ pub struct Engine {
 
     is_learning: bool,
     last_midi: Option<Vec<u8>>,
-
-    triggers: Vec<Trigger>,
 }
 
 #[allow(dead_code)]
@@ -74,8 +68,6 @@ impl Engine {
 
             is_learning: false,
             last_midi: None,
-
-            triggers: vec![],
         }
     }
 
@@ -209,7 +201,7 @@ impl Engine {
         if self.time >= 0 {
             for looper in &self.loopers {
                 if !looper.deleted && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub) {
-                    looper.process_output(self.time as u64, outputs)
+                    looper.process_output(FrameTime(self.time as i64), outputs)
                 }
             }
         }
@@ -257,6 +249,15 @@ impl Engine {
             }
         }
 
+
+        let buf_len = out_bufs[0].len();
+
+        // create new output bufs from the input
+        let mut out_64_vec: [Vec<f64>; 2] = [
+            in_bufs[0].iter().map(|v| *v as f64).collect(),
+            in_bufs[1].iter().map(|v| *v as f64).collect(),
+        ];
+
         // Update our time
         let measure_len = self.measure_len();
         {
@@ -271,29 +272,25 @@ impl Engine {
                 let active = self.active;
 
                 // Play our loops
-                let buf_len = out_bufs[0].len();
-                let mut out_64_vec: [Vec<f64>; 2] = [
-                    in_bufs[0].iter().map(|v| *v as f64).collect(),
-                    in_bufs[1].iter().map(|v| *v as f64).collect(),
-                ];
 
-                self.play_loops(&mut out_64_vec);
+                if self.time >= 0 {
+                    self.play_loops(&mut out_64_vec);
+                    let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
-                let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
-
-                for i in 0..buf_len {
-                    for j in 0..out_64_vec.len() {
-                        out_bufs[j][i] = out_64_vec[j][i] as f32
-                    }
+                    // Record input to active loop
+                    looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
                 }
-
-                // Record input to active loop
-                looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
             } else {
                 if let Some(m) = &mut self.metronome {
                     m.reset();
                 }
                 self.time = -(measure_len.0 as i64);
+            }
+        }
+
+        for i in 0..buf_len {
+            for j in 0..out_64_vec.len() {
+                out_bufs[j][i] = out_64_vec[j][i] as f32
             }
         }
 
