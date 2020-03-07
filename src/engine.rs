@@ -10,6 +10,15 @@ use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
 use std::f32::NEG_INFINITY;
 
+enum TriggerCondition {
+    BEAT0,
+}
+
+struct Trigger {
+    condition: TriggerCondition,
+    command: Command,
+}
+
 pub struct Engine {
     config: Config,
 
@@ -24,6 +33,8 @@ pub struct Engine {
     active: u32,
 
     metronome: Option<Metronome>,
+
+    triggers: Vec<Trigger>,
 
     id_counter: u32,
 
@@ -66,6 +77,8 @@ impl Engine {
                                            Sample::from_mono(&beat_normal),
                                            Sample::from_mono(&beat_emphasis))),
 
+            triggers: vec![],
+
             is_learning: false,
             last_midi: None,
         }
@@ -90,7 +103,29 @@ impl Engine {
         }
     }
 
-    fn handle_loop_command(&mut self, lc: &LooperCommand) {
+    // possibly convert a loop command into a trigger
+    fn trigger_from_command(lc: &LooperCommand) -> Option<Trigger> {
+        match LooperCommandType::from_i32(lc.command_type) {
+            Some(LooperCommandType::EnableRecord) |
+            Some(LooperCommandType::EnableOverdub) |
+            Some(LooperCommandType::RecordOverdubPlay) => {
+                Some(Trigger {
+                    condition: TriggerCondition::BEAT0,
+                    command: Command { command_oneof: Some(CommandOneof::LooperCommand(lc.clone()))},
+                })
+            }
+            _ => None
+        }
+    }
+
+    fn handle_loop_command(&mut self, lc: &LooperCommand, triggered: bool) {
+        if !triggered {
+            if let Some(trigger) = Engine::trigger_from_command(lc) {
+                self.triggers.push(trigger);
+                return;
+            }
+        }
+
         let loopers: Vec<&mut Looper> = match lc.target_oneof.as_ref().unwrap() {
             TargetOneof::TargetAll(_) => {
                 self.loopers.iter_mut().collect()
@@ -147,9 +182,10 @@ impl Engine {
                         l.deleted = true;
                     },
 
-                    LooperCommandType::ReadyOverdubPlay => {
+                    LooperCommandType::RecordOverdubPlay => {
+                        selected = Some(l.id);
                         if l.samples.is_empty() {
-                            l.transition_to(LooperMode::Ready);
+                            l.transition_to(LooperMode::Record);
                         } else if l.mode == LooperMode::Record || l.mode == LooperMode::Playing {
                             l.transition_to(LooperMode::Overdub);
                         } else {
@@ -167,11 +203,11 @@ impl Engine {
         }
     }
 
-    fn handle_command(&mut self, command: &Command) {
+    fn handle_command(&mut self, command: &Command, triggered: bool) {
         if let Some(oneof) = &command.command_oneof {
             match oneof {
                 CommandOneof::LooperCommand(lc) => {
-                    self.handle_loop_command(lc);
+                    self.handle_loop_command(lc, triggered);
                 },
                 CommandOneof::GlobalCommand(gc) => {
                     if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
@@ -243,7 +279,7 @@ impl Engine {
         loop {
             let c = self.gui_input.pop();
             if let Ok(c) = c {
-                self.handle_command(&c);
+                self.handle_command(&c, false);
             } else {
                 break;
             }
@@ -261,8 +297,36 @@ impl Engine {
         // Update our time
         let measure_len = self.measure_len();
         {
-            if !self.loopers.iter().all(|l| l.mode == LooperMode::None) {
+            if self.loopers.iter().all(|l| l.mode == LooperMode::None)
+                && self.triggers.is_empty() {
+                if let Some(m) = &mut self.metronome {
+                    m.reset();
+                }
+                self.time = -(measure_len.0 as i64);
+            } else {
+
                 self.time += frames as i64;
+
+                // process triggers
+                let beat_of_measure = self.time_signature.beat_of_measure(
+                    self.tempo.beat(FrameTime(self.time)));
+
+                let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
+                self.triggers = vec![];
+
+                for t in old_triggers {
+                    let matched = match t.condition {
+                        TriggerCondition::BEAT0 => {
+                            beat_of_measure == 0 && self.time >= 0
+                        },
+                    };
+
+                    if matched {
+                        self.handle_command(&t.command, true);
+                    } else {
+                        self.triggers.push(t);
+                    }
+                }
 
                 // Play the metronome
                 if let Some(metronome) = &mut self.metronome {
@@ -280,11 +344,6 @@ impl Engine {
                     // Record input to active loop
                     looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
                 }
-            } else {
-                if let Some(m) = &mut self.metronome {
-                    m.reset();
-                }
-                self.time = -(measure_len.0 as i64);
             }
         }
 

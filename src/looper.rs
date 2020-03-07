@@ -108,7 +108,9 @@ impl Looper {
             (_, LooperMode::Overdub) => {
                 let len = self.length_in_samples();
                 if len == 0 {
-                    panic!("moving to overdub with 0-length looper")
+                    println!( "trying to move to overdub with 0-length looper");
+                    self.mode = LooperMode::Record;
+                    return;
                 }
                 self.samples.push(Sample::with_size(len as usize));
             },

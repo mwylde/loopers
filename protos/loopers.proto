@@ -63,7 +63,7 @@ enum LooperCommandType {
     SELECT = 6;
     DELETE = 7;
 
-    READY_OVERDUB_PLAY = 8;
+    RECORD_OVERDUB_PLAY = 8;
 }
 
 message TargetAll {

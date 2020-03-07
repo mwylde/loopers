@@ -136,8 +136,8 @@ impl SamplePlayer {
                 return PlayOutput::Done;
             }
 
-            out[0][i] += self.sample.buffer[0][t];
-            out[1][i] += self.sample.buffer[1][t];
+            out[0][i] += self.sample.buffer[0][t] * 0.5;
+            out[1][i] += self.sample.buffer[1][t] * 0.5;
         }
 
         self.time += out[0].len();
