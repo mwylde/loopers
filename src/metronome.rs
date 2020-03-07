@@ -107,6 +107,7 @@ pub struct Metronome {
     beat_emphasis: Arc<Sample>,
     time: FrameTime,
     player: Option<SamplePlayer>,
+    volume: f32,
 }
 
 impl Metronome {
@@ -121,7 +122,12 @@ impl Metronome {
             beat_emphasis,
             time: FrameTime(0),
             player: Some(player),
+            volume: 1.0,
         }
+    }
+
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume;
     }
 
     fn beat(&self) -> i64 {
@@ -139,7 +145,7 @@ impl Metronome {
         // TODO: it would be more accurate to do this analytically, i.e., use the current
         //   time without relying on the exact timing of the calls
         if let Some(player) = &mut self.player {
-            if player.play(out) == Done {
+            if player.play(out, self.volume) == Done {
                 self.player = None;
             }
         }

@@ -330,6 +330,7 @@ impl Engine {
 
                 // Play the metronome
                 if let Some(metronome) = &mut self.metronome {
+                    metronome.set_volume(0.5);
                     metronome.advance(met_bufs);
                 }
 

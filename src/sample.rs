@@ -127,7 +127,7 @@ impl SamplePlayer {
         SamplePlayer { sample, time: 0}
     }
 
-    pub fn play(&mut self, out: &mut [&mut [f32]; 2]) -> PlayOutput {
+    pub fn play(&mut self, out: &mut [&mut [f32]; 2], volume: f32) -> PlayOutput {
         for i in 0..out[0].len() {
             let t = self.time + i;
 
@@ -136,8 +136,8 @@ impl SamplePlayer {
                 return PlayOutput::Done;
             }
 
-            out[0][i] += self.sample.buffer[0][t] * 0.5;
-            out[1][i] += self.sample.buffer[1][t] * 0.5;
+            out[0][i] += self.sample.buffer[0][t] * volume;
+            out[1][i] += self.sample.buffer[1][t] * volume;
         }
 
         self.time += out[0].len();
