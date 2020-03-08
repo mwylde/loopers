@@ -36,7 +36,7 @@ const LooperCommandType$json = const {
     const {'1': 'ENABLE_PLAY', '2': 5},
     const {'1': 'SELECT', '2': 6},
     const {'1': 'DELETE', '2': 7},
-    const {'1': 'READY_OVERDUB_PLAY', '2': 8},
+    const {'1': 'RECORD_OVERDUB_PLAY', '2': 8},
   ],
 };
 
@@ -129,11 +129,27 @@ const GlobalCommand$json = const {
   ],
 };
 
+const SaveSessionCommand$json = const {
+  '1': 'SaveSessionCommand',
+  '2': const [
+    const {'1': 'path', '3': 1, '4': 1, '5': 9, '10': 'path'},
+  ],
+};
+
+const LoadSessionCommand$json = const {
+  '1': 'LoadSessionCommand',
+  '2': const [
+    const {'1': 'path', '3': 1, '4': 1, '5': 9, '10': 'path'},
+  ],
+};
+
 const Command$json = const {
   '1': 'Command',
   '2': const [
     const {'1': 'looper_command', '3': 1, '4': 1, '5': 11, '6': '.protos.LooperCommand', '9': 0, '10': 'looperCommand'},
     const {'1': 'global_command', '3': 2, '4': 1, '5': 11, '6': '.protos.GlobalCommand', '9': 0, '10': 'globalCommand'},
+    const {'1': 'save_session_command', '3': 3, '4': 1, '5': 11, '6': '.protos.SaveSessionCommand', '9': 0, '10': 'saveSessionCommand'},
+    const {'1': 'load_session_command', '3': 4, '4': 1, '5': 11, '6': '.protos.LoadSessionCommand', '9': 0, '10': 'loadSessionCommand'},
   ],
   '8': const [
     const {'1': 'command_oneof'},
@@ -153,6 +169,25 @@ const Config$json = const {
   '1': 'Config',
   '2': const [
     const {'1': 'midi_mappings', '3': 1, '4': 3, '5': 11, '6': '.protos.MidiMapping', '10': 'midiMappings'},
+  ],
+};
+
+const SavedLooper$json = const {
+  '1': 'SavedLooper',
+  '2': const [
+    const {'1': 'id', '3': 1, '4': 1, '5': 13, '10': 'id'},
+    const {'1': 'samples', '3': 2, '4': 3, '5': 9, '10': 'samples'},
+  ],
+};
+
+const SavedSession$json = const {
+  '1': 'SavedSession',
+  '2': const [
+    const {'1': 'save_time', '3': 1, '4': 1, '5': 3, '10': 'saveTime'},
+    const {'1': 'time_signature_upper', '3': 2, '4': 1, '5': 4, '10': 'timeSignatureUpper'},
+    const {'1': 'time_signature_lower', '3': 3, '4': 1, '5': 4, '10': 'timeSignatureLower'},
+    const {'1': 'tempo_mbpm', '3': 4, '4': 1, '5': 4, '10': 'tempoMbpm'},
+    const {'1': 'loopers', '3': 5, '4': 3, '5': 11, '6': '.protos.SavedLooper', '10': 'loopers'},
   ],
 };
 

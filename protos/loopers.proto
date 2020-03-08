@@ -96,10 +96,20 @@ message GlobalCommand {
     GlobalCommandType command = 1;
 }
 
+message SaveSessionCommand {
+    string path = 1;
+}
+
+message LoadSessionCommand {
+    string path = 1;
+}
+
 message Command {
     oneof command_oneof {
         LooperCommand looper_command = 1;
         GlobalCommand global_command = 2;
+        SaveSessionCommand save_session_command = 3;
+        LoadSessionCommand load_session_command = 4;
     }
 }
 
@@ -111,4 +121,17 @@ message MidiMapping {
 
 message Config {
     repeated MidiMapping midi_mappings = 1;
+}
+
+message SavedLooper {
+    uint32 id = 1;
+    repeated string samples = 2;
+}
+
+message SavedSession {
+    int64 save_time = 1;
+    uint64 time_signature_upper = 2;
+    uint64 time_signature_lower = 3;
+    uint64 tempo_mbpm = 4;
+    repeated SavedLooper loopers = 5;
 }

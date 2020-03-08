@@ -9,6 +9,13 @@ use crate::looper::Looper;
 use crate::midi::MidiEvent;
 use crate::metronome::Metronome;
 use std::f32::NEG_INFINITY;
+use std::path::{PathBuf, Path};
+use chrono::Local;
+use std::fs::{File, create_dir_all};
+use std::io::{Write, Read};
+use prost::Message;
+use crate::error::SaveLoadError;
+use bytes::BytesMut;
 
 enum TriggerCondition {
     BEAT0,
@@ -203,6 +210,59 @@ impl Engine {
         }
     }
 
+    fn save_session(&self, command: &SaveSessionCommand) -> Result<(), SaveLoadError> {
+        let now = Local::now();
+        let mut path = PathBuf::from(&command.path);
+        path.push(now.format("%Y-%m-%d_%H:%M:%S").to_string());
+
+        create_dir_all(&path)?;
+
+        let mut session = SavedSession {
+            save_time: now.timestamp_millis(),
+            time_signature_upper: self.time_signature.upper as u64,
+            time_signature_lower: self.time_signature.lower as u64,
+            tempo_mbpm: self.tempo.mbpm,
+            loopers: Vec::with_capacity(self.loopers.len()),
+        };
+
+        for l in &self.loopers {
+            let state = l.serialize(&path)?;
+            session.loopers.push(state);
+        }
+
+        path.push("project.loopers");
+        let mut file = File::create(&path)?;
+
+        let mut buf = BytesMut::with_capacity(session.encoded_len());
+        session.encode(&mut buf)?;
+        file.write_all(&buf)?;
+        Ok(())
+    }
+
+    fn load_session(&mut self, command: &LoadSessionCommand) -> Result<(), SaveLoadError> {
+        let mut file = File::open(&command.path)?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
+
+        let path = Path::new(&command.path);
+        let dir = path.parent().unwrap();
+
+        let session: SavedSession = SavedSession::decode(&buf)?;
+        self.time_signature = TimeSignature::new(session.time_signature_upper as u8,
+                                                 session.time_signature_lower as u8).
+            expect(&format!("Invalid time signature: {}/{}",
+                            session.time_signature_upper, session.time_signature_lower));
+
+        self.tempo = Tempo { mbpm: session.tempo_mbpm };
+
+        self.loopers.clear();
+        for l in session.loopers {
+            self.loopers.push(Looper::from_serialized(&l, dir)?);
+        }
+
+        Ok(())
+    }
+
     fn handle_command(&mut self, command: &Command, triggered: bool) {
         if let Some(oneof) = &command.command_oneof {
             match oneof {
@@ -227,6 +287,16 @@ impl Engine {
                                 self.is_learning = false;
                             }
                         }
+                    }
+                },
+                CommandOneof::SaveSessionCommand(command) => {
+                    if let Err(e) = self.save_session(command) {
+                        println!("Failed to save session {:?}", e);
+                    }
+                }
+                CommandOneof::LoadSessionCommand(command) => {
+                    if let Err(e) = self.load_session(command) {
+                        println!("Failed to load session {:?}", e);
                     }
                 }
             }

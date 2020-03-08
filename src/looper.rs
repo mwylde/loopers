@@ -1,10 +1,14 @@
 use crate::sample::Sample;
-use crate::protos::LooperMode;
+use crate::protos::{LooperMode, SavedLooper};
 use crate::music::FrameTime;
+use std::path::Path;
+use crate::error::SaveLoadError;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+    use std::f32::consts::PI;
 
     #[test]
     fn test_new() {
@@ -68,8 +72,50 @@ mod tests {
         assert_eq!(vec![6f64, 9.0], o[0]);
         assert_eq!(vec![-6f64, -9.0], o[1]);
     }
-}
 
+    #[test]
+    fn test_serialization() {
+        let dir = tempdir().unwrap();
+        let mut input_left = vec![];
+        let mut input_right = vec![];
+
+        let mut input_left2 = vec![];
+        let mut input_right2 = vec![];
+
+        for t in (0 .. 44100).map(|x| x as f32 / 44100.0) {
+            let sample = (t * 440.0 * 2.0 * PI).sin();
+            input_left.push(sample / 2.0);
+            input_right.push(sample / 2.0);
+
+            let sample = (t * 540.0 * 2.0 * PI).sin();
+            input_left2.push(sample / 2.0);
+            input_right2.push(sample / 2.0);
+        }
+
+        let mut looper = Looper::new(5);
+
+        looper.transition_to(LooperMode::Record);
+        looper.process_input(0, &[&input_left, &input_right]);
+
+        looper.transition_to(LooperMode::Overdub);
+        looper.process_input(0, &[&input_left2, &input_right2]);
+
+
+        let state = looper.serialize(dir.path()).unwrap();
+
+        let deserialized = Looper::from_serialized(&state,dir.path()).unwrap();
+
+        assert_eq!(looper.id, deserialized.id);
+        assert_eq!(2, deserialized.samples.len());
+
+        assert_eq!(input_left, deserialized.samples[0].buffer[0]);
+        assert_eq!(input_right, deserialized.samples[0].buffer[1]);
+
+        assert_eq!(input_left2, deserialized.samples[1].buffer[0]);
+        assert_eq!(input_right2, deserialized.samples[1].buffer[1]);
+
+    }
+}
 
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
 // driven by a state machine, which controls how it responds to input buffers (e.g., by recording
@@ -167,5 +213,66 @@ impl Looper {
 
     pub fn length_in_samples(&self) -> u64 {
         self.samples.get(0).map(|s| s.length()).unwrap_or(0)
+    }
+
+    pub fn serialize(&self, path: &Path) -> Result<SavedLooper, SaveLoadError> {
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 44100,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+
+        let mut saved = SavedLooper {
+            id: self.id,
+            samples: Vec::with_capacity(self.samples.len()),
+        };
+
+
+        for (i, s) in self.samples.iter().enumerate() {
+            let p = path.join(format!("loop_{}_{}.wav", self.id, i));
+            let mut writer = hound::WavWriter::create(&p,
+                                                      spec.clone())?;
+
+            for j in 0..s.length() as usize {
+                writer.write_sample(s.buffer[0][j])?;
+                writer.write_sample(s.buffer[1][j])?;
+            }
+            writer.finalize()?;
+            saved.samples.push(p.to_str().unwrap().to_string());
+        }
+
+        Ok(saved)
+    }
+
+    pub fn from_serialized(state: &SavedLooper, path: &Path) -> Result<Looper, SaveLoadError> {
+        let mut looper = Looper {
+            id: state.id,
+            samples: Vec::with_capacity(state.samples.len()),
+            mode: LooperMode::None,
+            deleted: false
+        };
+
+        for sample_path in &state.samples {
+            let mut reader = hound::WavReader::open(
+                &path.join(sample_path))?;
+
+            let mut sample = Sample::new();
+            let mut left = Vec::with_capacity(reader.len() as usize / 2);
+            let mut right = Vec::with_capacity(reader.len() as usize / 2);
+
+            for (i, s) in reader.samples().enumerate() {
+                if i % 2 == 0 {
+                    left.push(s?);
+                } else {
+                    right.push(s?);
+                }
+            }
+
+            sample.record(&[&left, &right]);
+            looper.samples.push(sample);
+        }
+
+        Ok(looper)
     }
 }

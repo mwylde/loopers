@@ -463,9 +463,73 @@ class GlobalCommand extends $pb.GeneratedMessage {
   void clearCommand() => clearField(1);
 }
 
+class SaveSessionCommand extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo('SaveSessionCommand', package: const $pb.PackageName('protos'), createEmptyInstance: create)
+    ..aOS(1, 'path')
+    ..hasRequiredFields = false
+  ;
+
+  SaveSessionCommand._() : super();
+  factory SaveSessionCommand() => create();
+  factory SaveSessionCommand.fromBuffer($core.List<$core.int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromBuffer(i, r);
+  factory SaveSessionCommand.fromJson($core.String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromJson(i, r);
+  SaveSessionCommand clone() => SaveSessionCommand()..mergeFromMessage(this);
+  SaveSessionCommand copyWith(void Function(SaveSessionCommand) updates) => super.copyWith((message) => updates(message as SaveSessionCommand));
+  $pb.BuilderInfo get info_ => _i;
+  @$core.pragma('dart2js:noInline')
+  static SaveSessionCommand create() => SaveSessionCommand._();
+  SaveSessionCommand createEmptyInstance() => create();
+  static $pb.PbList<SaveSessionCommand> createRepeated() => $pb.PbList<SaveSessionCommand>();
+  @$core.pragma('dart2js:noInline')
+  static SaveSessionCommand getDefault() => _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<SaveSessionCommand>(create);
+  static SaveSessionCommand _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get path => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set path($core.String v) { $_setString(0, v); }
+  @$pb.TagNumber(1)
+  $core.bool hasPath() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPath() => clearField(1);
+}
+
+class LoadSessionCommand extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo('LoadSessionCommand', package: const $pb.PackageName('protos'), createEmptyInstance: create)
+    ..aOS(1, 'path')
+    ..hasRequiredFields = false
+  ;
+
+  LoadSessionCommand._() : super();
+  factory LoadSessionCommand() => create();
+  factory LoadSessionCommand.fromBuffer($core.List<$core.int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromBuffer(i, r);
+  factory LoadSessionCommand.fromJson($core.String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromJson(i, r);
+  LoadSessionCommand clone() => LoadSessionCommand()..mergeFromMessage(this);
+  LoadSessionCommand copyWith(void Function(LoadSessionCommand) updates) => super.copyWith((message) => updates(message as LoadSessionCommand));
+  $pb.BuilderInfo get info_ => _i;
+  @$core.pragma('dart2js:noInline')
+  static LoadSessionCommand create() => LoadSessionCommand._();
+  LoadSessionCommand createEmptyInstance() => create();
+  static $pb.PbList<LoadSessionCommand> createRepeated() => $pb.PbList<LoadSessionCommand>();
+  @$core.pragma('dart2js:noInline')
+  static LoadSessionCommand getDefault() => _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<LoadSessionCommand>(create);
+  static LoadSessionCommand _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get path => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set path($core.String v) { $_setString(0, v); }
+  @$pb.TagNumber(1)
+  $core.bool hasPath() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPath() => clearField(1);
+}
+
 enum Command_CommandOneof {
   looperCommand, 
   globalCommand, 
+  saveSessionCommand, 
+  loadSessionCommand, 
   notSet
 }
 
@@ -473,12 +537,16 @@ class Command extends $pb.GeneratedMessage {
   static const $core.Map<$core.int, Command_CommandOneof> _Command_CommandOneofByTag = {
     1 : Command_CommandOneof.looperCommand,
     2 : Command_CommandOneof.globalCommand,
+    3 : Command_CommandOneof.saveSessionCommand,
+    4 : Command_CommandOneof.loadSessionCommand,
     0 : Command_CommandOneof.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo('Command', package: const $pb.PackageName('protos'), createEmptyInstance: create)
-    ..oo(0, [1, 2])
+    ..oo(0, [1, 2, 3, 4])
     ..aOM<LooperCommand>(1, 'looperCommand', subBuilder: LooperCommand.create)
     ..aOM<GlobalCommand>(2, 'globalCommand', subBuilder: GlobalCommand.create)
+    ..aOM<SaveSessionCommand>(3, 'saveSessionCommand', subBuilder: SaveSessionCommand.create)
+    ..aOM<LoadSessionCommand>(4, 'loadSessionCommand', subBuilder: LoadSessionCommand.create)
     ..hasRequiredFields = false
   ;
 
@@ -521,6 +589,28 @@ class Command extends $pb.GeneratedMessage {
   void clearGlobalCommand() => clearField(2);
   @$pb.TagNumber(2)
   GlobalCommand ensureGlobalCommand() => $_ensure(1);
+
+  @$pb.TagNumber(3)
+  SaveSessionCommand get saveSessionCommand => $_getN(2);
+  @$pb.TagNumber(3)
+  set saveSessionCommand(SaveSessionCommand v) { setField(3, v); }
+  @$pb.TagNumber(3)
+  $core.bool hasSaveSessionCommand() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearSaveSessionCommand() => clearField(3);
+  @$pb.TagNumber(3)
+  SaveSessionCommand ensureSaveSessionCommand() => $_ensure(2);
+
+  @$pb.TagNumber(4)
+  LoadSessionCommand get loadSessionCommand => $_getN(3);
+  @$pb.TagNumber(4)
+  set loadSessionCommand(LoadSessionCommand v) { setField(4, v); }
+  @$pb.TagNumber(4)
+  $core.bool hasLoadSessionCommand() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearLoadSessionCommand() => clearField(4);
+  @$pb.TagNumber(4)
+  LoadSessionCommand ensureLoadSessionCommand() => $_ensure(3);
 }
 
 class MidiMapping extends $pb.GeneratedMessage {
@@ -599,5 +689,105 @@ class Config extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(1)
   $core.List<MidiMapping> get midiMappings => $_getList(0);
+}
+
+class SavedLooper extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo('SavedLooper', package: const $pb.PackageName('protos'), createEmptyInstance: create)
+    ..a<$core.int>(1, 'id', $pb.PbFieldType.OU3)
+    ..pPS(2, 'samples')
+    ..hasRequiredFields = false
+  ;
+
+  SavedLooper._() : super();
+  factory SavedLooper() => create();
+  factory SavedLooper.fromBuffer($core.List<$core.int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromBuffer(i, r);
+  factory SavedLooper.fromJson($core.String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromJson(i, r);
+  SavedLooper clone() => SavedLooper()..mergeFromMessage(this);
+  SavedLooper copyWith(void Function(SavedLooper) updates) => super.copyWith((message) => updates(message as SavedLooper));
+  $pb.BuilderInfo get info_ => _i;
+  @$core.pragma('dart2js:noInline')
+  static SavedLooper create() => SavedLooper._();
+  SavedLooper createEmptyInstance() => create();
+  static $pb.PbList<SavedLooper> createRepeated() => $pb.PbList<SavedLooper>();
+  @$core.pragma('dart2js:noInline')
+  static SavedLooper getDefault() => _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<SavedLooper>(create);
+  static SavedLooper _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get id => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set id($core.int v) { $_setUnsignedInt32(0, v); }
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.List<$core.String> get samples => $_getList(1);
+}
+
+class SavedSession extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo('SavedSession', package: const $pb.PackageName('protos'), createEmptyInstance: create)
+    ..aInt64(1, 'saveTime')
+    ..a<$fixnum.Int64>(2, 'timeSignatureUpper', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(3, 'timeSignatureLower', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(4, 'tempoMbpm', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
+    ..pc<SavedLooper>(5, 'loopers', $pb.PbFieldType.PM, subBuilder: SavedLooper.create)
+    ..hasRequiredFields = false
+  ;
+
+  SavedSession._() : super();
+  factory SavedSession() => create();
+  factory SavedSession.fromBuffer($core.List<$core.int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromBuffer(i, r);
+  factory SavedSession.fromJson($core.String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromJson(i, r);
+  SavedSession clone() => SavedSession()..mergeFromMessage(this);
+  SavedSession copyWith(void Function(SavedSession) updates) => super.copyWith((message) => updates(message as SavedSession));
+  $pb.BuilderInfo get info_ => _i;
+  @$core.pragma('dart2js:noInline')
+  static SavedSession create() => SavedSession._();
+  SavedSession createEmptyInstance() => create();
+  static $pb.PbList<SavedSession> createRepeated() => $pb.PbList<SavedSession>();
+  @$core.pragma('dart2js:noInline')
+  static SavedSession getDefault() => _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<SavedSession>(create);
+  static SavedSession _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get saveTime => $_getI64(0);
+  @$pb.TagNumber(1)
+  set saveTime($fixnum.Int64 v) { $_setInt64(0, v); }
+  @$pb.TagNumber(1)
+  $core.bool hasSaveTime() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSaveTime() => clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get timeSignatureUpper => $_getI64(1);
+  @$pb.TagNumber(2)
+  set timeSignatureUpper($fixnum.Int64 v) { $_setInt64(1, v); }
+  @$pb.TagNumber(2)
+  $core.bool hasTimeSignatureUpper() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTimeSignatureUpper() => clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get timeSignatureLower => $_getI64(2);
+  @$pb.TagNumber(3)
+  set timeSignatureLower($fixnum.Int64 v) { $_setInt64(2, v); }
+  @$pb.TagNumber(3)
+  $core.bool hasTimeSignatureLower() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearTimeSignatureLower() => clearField(3);
+
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get tempoMbpm => $_getI64(3);
+  @$pb.TagNumber(4)
+  set tempoMbpm($fixnum.Int64 v) { $_setInt64(3, v); }
+  @$pb.TagNumber(4)
+  $core.bool hasTempoMbpm() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearTempoMbpm() => clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.List<SavedLooper> get loopers => $_getList(4);
 }
 

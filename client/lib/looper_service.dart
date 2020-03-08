@@ -123,6 +123,22 @@ class LooperService {
     return sendCommand(command);
   }
 
+  Future<CommandResp> sendSaveSessionCommand() {
+    var saveCommand = SaveSessionCommand();
+    saveCommand.path = "/home/mwylde/looper-sessions";
+    var command = Command();
+    command.saveSessionCommand = saveCommand;
+    return sendCommand(command);
+  }
+
+  Future<CommandResp> sendLoadSessionCommand(String path) {
+    var loadCommand = LoadSessionCommand();
+    loadCommand.path = path;
+    var command = Command();
+    command.loadSessionCommand = loadCommand;
+    return sendCommand(command);
+  }
+
   Future<CommandResp> sendCommand(Command command, {int retries = 3}) async {
     var req = CommandReq();
     req.command = command;

@@ -64,6 +64,62 @@ class MyApp extends StatelessWidget {
   }
 }
 
+void showFilePicker(BuildContext context, LooperService service) {
+  String path;
+
+  Dialog simpleDialog = Dialog(
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12.0),
+    ),
+    child: Container(
+      height: 200.0,
+      width: 300.0,
+      child: Column(
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsets.all(15.0),
+            child: Text(
+              'Select file to load',
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(15.0),
+            child: TextField(
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Path",
+              ),
+              onChanged: (text) {
+                path = text;
+              },
+            ),
+          ),
+          ButtonBar(
+            alignment: MainAxisAlignment.center,
+            children: <Widget>[
+              FlatButton(
+                child: Text("Load"),
+                onPressed: () {
+                  print("sending $path");
+                  service.sendLoadSessionCommand(path);
+                  Navigator.of(context).pop();
+                },
+              ),
+              FlatButton(
+                child: Text("Cancel"),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              )
+            ],
+          )
+        ],
+      ),
+    ),
+  );
+  showDialog(context: context, builder: (BuildContext context) => simpleDialog);
+}
+
 class MainPage extends StatefulWidget {
   MainPage({this.service});
 
@@ -96,6 +152,17 @@ class MainPageState extends State<MainPage> {
               AppBar(
                 title: Text("Loopers"),
                 actions: <Widget>[
+                  IconButton(
+                    icon: Icon(Icons.save),
+                    onPressed: () {
+                      widget.service.sendSaveSessionCommand();
+                    },
+                  ),
+                  IconButton(
+                      icon: Icon(Icons.open_in_browser),
+                      onPressed: () {
+                        showFilePicker(context, widget.service);
+                      }),
                   IconButton(
                       icon: Icon(Icons.offline_bolt),
                       color: snapshot.data != null && snapshot.data.learnMode

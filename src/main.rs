@@ -11,6 +11,7 @@ extern crate bytes;
 extern crate serde;
 extern crate serde_yaml;
 extern crate dirs;
+extern crate chrono;
 
 use std::{io, thread, fs};
 use crate::midi::MidiEvent;
@@ -25,6 +26,7 @@ mod engine;
 mod gui;
 mod config;
 mod midi;
+mod error;
 mod metronome;
 
 fn main() {
