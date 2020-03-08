@@ -38,6 +38,8 @@ message State {
     bool learn_mode = 8;
 
     bytes last_midi = 9;
+
+    float metronome_volume = 10;
 }
 
 message CommandReq {
@@ -104,12 +106,17 @@ message LoadSessionCommand {
     string path = 1;
 }
 
+message MetronomeVolumeCommand {
+    float volume = 1;
+}
+
 message Command {
     oneof command_oneof {
         LooperCommand looper_command = 1;
         GlobalCommand global_command = 2;
         SaveSessionCommand save_session_command = 3;
         LoadSessionCommand load_session_command = 4;
+        MetronomeVolumeCommand metronome_volume_command = 5;
     }
 }
 

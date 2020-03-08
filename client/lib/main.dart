@@ -188,7 +188,7 @@ class MainPageState extends State<MainPage> {
                   ),
                 ],
               ),
-              TimeWidget(state: snapshot.data),
+              TimeWidget(state: snapshot.data, service: widget.service),
               Container(child: loopers)
             ]),
             floatingActionButton: FloatingActionButton(
@@ -233,8 +233,9 @@ class Metronome extends StatelessWidget {
 
 class TimeWidget extends StatelessWidget {
   final protos.State state;
+  final LooperService service;
 
-  const TimeWidget({Key key, this.state}) : super(key: key);
+  const TimeWidget({Key key, this.state, this.service}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -254,6 +255,9 @@ class TimeWidget extends StatelessWidget {
 
       var r = (d) => d < 10 ? "0" + d.toString() : d.toString();
 
+      var metIcon =
+          state.metronomeVolume == 0.0 ? Icons.volume_mute : Icons.volume_up;
+
       return Container(
           height: 50,
           child: Row(
@@ -262,7 +266,17 @@ class TimeWidget extends StatelessWidget {
               Metronome(
                 state: state,
               ),
-              Text("${state.bpm} bpm")
+              Text("${state.bpm} bpm"),
+              IconButton(
+                icon: Icon(metIcon),
+                onPressed: () {
+                  if (state.metronomeVolume == 0.0) {
+                    service.sendMetronomeVolume(1.0);
+                  } else {
+                    service.sendMetronomeVolume(0.0);
+                  }
+                },
+              )
             ],
           ));
     } else {

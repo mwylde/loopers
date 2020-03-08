@@ -117,6 +117,7 @@ class State extends $pb.GeneratedMessage {
     ..a<$fixnum.Int64>(7, 'timeSignatureLower', $pb.PbFieldType.OU6, defaultOrMaker: $fixnum.Int64.ZERO)
     ..aOB(8, 'learnMode')
     ..a<$core.List<$core.int>>(9, 'lastMidi', $pb.PbFieldType.OY)
+    ..a<$core.double>(10, 'metronomeVolume', $pb.PbFieldType.OF)
     ..hasRequiredFields = false
   ;
 
@@ -209,6 +210,15 @@ class State extends $pb.GeneratedMessage {
   $core.bool hasLastMidi() => $_has(8);
   @$pb.TagNumber(9)
   void clearLastMidi() => clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.double get metronomeVolume => $_getN(9);
+  @$pb.TagNumber(10)
+  set metronomeVolume($core.double v) { $_setFloat(9, v); }
+  @$pb.TagNumber(10)
+  $core.bool hasMetronomeVolume() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearMetronomeVolume() => clearField(10);
 }
 
 class CommandReq extends $pb.GeneratedMessage {
@@ -525,11 +535,43 @@ class LoadSessionCommand extends $pb.GeneratedMessage {
   void clearPath() => clearField(1);
 }
 
+class MetronomeVolumeCommand extends $pb.GeneratedMessage {
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo('MetronomeVolumeCommand', package: const $pb.PackageName('protos'), createEmptyInstance: create)
+    ..a<$core.double>(1, 'volume', $pb.PbFieldType.OF)
+    ..hasRequiredFields = false
+  ;
+
+  MetronomeVolumeCommand._() : super();
+  factory MetronomeVolumeCommand() => create();
+  factory MetronomeVolumeCommand.fromBuffer($core.List<$core.int> i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromBuffer(i, r);
+  factory MetronomeVolumeCommand.fromJson($core.String i, [$pb.ExtensionRegistry r = $pb.ExtensionRegistry.EMPTY]) => create()..mergeFromJson(i, r);
+  MetronomeVolumeCommand clone() => MetronomeVolumeCommand()..mergeFromMessage(this);
+  MetronomeVolumeCommand copyWith(void Function(MetronomeVolumeCommand) updates) => super.copyWith((message) => updates(message as MetronomeVolumeCommand));
+  $pb.BuilderInfo get info_ => _i;
+  @$core.pragma('dart2js:noInline')
+  static MetronomeVolumeCommand create() => MetronomeVolumeCommand._();
+  MetronomeVolumeCommand createEmptyInstance() => create();
+  static $pb.PbList<MetronomeVolumeCommand> createRepeated() => $pb.PbList<MetronomeVolumeCommand>();
+  @$core.pragma('dart2js:noInline')
+  static MetronomeVolumeCommand getDefault() => _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<MetronomeVolumeCommand>(create);
+  static MetronomeVolumeCommand _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.double get volume => $_getN(0);
+  @$pb.TagNumber(1)
+  set volume($core.double v) { $_setFloat(0, v); }
+  @$pb.TagNumber(1)
+  $core.bool hasVolume() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearVolume() => clearField(1);
+}
+
 enum Command_CommandOneof {
   looperCommand, 
   globalCommand, 
   saveSessionCommand, 
   loadSessionCommand, 
+  metronomeVolumeCommand, 
   notSet
 }
 
@@ -539,14 +581,16 @@ class Command extends $pb.GeneratedMessage {
     2 : Command_CommandOneof.globalCommand,
     3 : Command_CommandOneof.saveSessionCommand,
     4 : Command_CommandOneof.loadSessionCommand,
+    5 : Command_CommandOneof.metronomeVolumeCommand,
     0 : Command_CommandOneof.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo('Command', package: const $pb.PackageName('protos'), createEmptyInstance: create)
-    ..oo(0, [1, 2, 3, 4])
+    ..oo(0, [1, 2, 3, 4, 5])
     ..aOM<LooperCommand>(1, 'looperCommand', subBuilder: LooperCommand.create)
     ..aOM<GlobalCommand>(2, 'globalCommand', subBuilder: GlobalCommand.create)
     ..aOM<SaveSessionCommand>(3, 'saveSessionCommand', subBuilder: SaveSessionCommand.create)
     ..aOM<LoadSessionCommand>(4, 'loadSessionCommand', subBuilder: LoadSessionCommand.create)
+    ..aOM<MetronomeVolumeCommand>(5, 'metronomeVolumeCommand', subBuilder: MetronomeVolumeCommand.create)
     ..hasRequiredFields = false
   ;
 
@@ -611,6 +655,17 @@ class Command extends $pb.GeneratedMessage {
   void clearLoadSessionCommand() => clearField(4);
   @$pb.TagNumber(4)
   LoadSessionCommand ensureLoadSessionCommand() => $_ensure(3);
+
+  @$pb.TagNumber(5)
+  MetronomeVolumeCommand get metronomeVolumeCommand => $_getN(4);
+  @$pb.TagNumber(5)
+  set metronomeVolumeCommand(MetronomeVolumeCommand v) { setField(5, v); }
+  @$pb.TagNumber(5)
+  $core.bool hasMetronomeVolumeCommand() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearMetronomeVolumeCommand() => clearField(5);
+  @$pb.TagNumber(5)
+  MetronomeVolumeCommand ensureMetronomeVolumeCommand() => $_ensure(4);
 }
 
 class MidiMapping extends $pb.GeneratedMessage {

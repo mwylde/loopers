@@ -324,10 +324,19 @@ impl Engine {
                     if let Err(e) = self.save_session(command) {
                         println!("Failed to save session {:?}", e);
                     }
-                }
+                },
                 CommandOneof::LoadSessionCommand(command) => {
                     if let Err(e) = self.load_session(command) {
                         println!("Failed to load session {:?}", e);
+                    }
+                },
+                CommandOneof::MetronomeVolumeCommand(command) => {
+                    if command.volume >= 0.0 && command.volume <= 1.0 {
+                        if let Some(metronome) = &mut self.metronome {
+                            metronome.set_volume(command.volume);
+                        }
+                    } else {
+                        println!("Invalid metronome volume; must be between 0 and 1");
                     }
                 }
             }
@@ -431,7 +440,6 @@ impl Engine {
 
                 // Play the metronome
                 if let Some(metronome) = &mut self.metronome {
-                    metronome.set_volume(0.5);
                     metronome.advance(met_bufs);
                 }
 
@@ -481,8 +489,6 @@ impl Engine {
             }
         }).collect();
 
-        // println!("beat {}", self.time_signature.beat_of_measure(self.tempo.beat(
-        //     FrameTime(self.time))));
         gui_output.push(State{
             loops: loop_states,
             time: FrameTime(self.time).to_ms() as i64,
@@ -494,6 +500,7 @@ impl Engine {
             time_signature_lower: self.time_signature.lower as u64,
             learn_mode: self.is_learning,
             last_midi: self.last_midi.as_ref().map(|b| b.clone()).unwrap_or_else(|| vec![]),
+            metronome_volume: self.metronome.as_ref().map_or(0.0, |m| m.get_volume()),
         });
     }
 }

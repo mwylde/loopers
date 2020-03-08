@@ -126,6 +126,10 @@ impl Metronome {
         }
     }
 
+    pub fn get_volume(&self) -> f32 {
+        self.volume
+    }
+
     pub fn set_volume(&mut self, volume: f32) {
         self.volume = volume;
     }
@@ -145,7 +149,7 @@ impl Metronome {
         // TODO: it would be more accurate to do this analytically, i.e., use the current
         //   time without relying on the exact timing of the calls
         if let Some(player) = &mut self.player {
-            if player.play(out, self.volume) == Done {
+            if player.play(out, self.volume / 2.0) == Done {
                 self.player = None;
             }
         }

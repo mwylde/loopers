@@ -139,6 +139,14 @@ class LooperService {
     return sendCommand(command);
   }
 
+  Future<CommandResp> sendMetronomeVolume(double volume) {
+    var metronomeCommand = MetronomeVolumeCommand();
+    metronomeCommand.volume = volume;
+    var command = Command();
+    command.metronomeVolumeCommand = metronomeCommand;
+    return sendCommand(command);
+  }
+
   Future<CommandResp> sendCommand(Command command, {int retries = 3}) async {
     var req = CommandReq();
     req.command = command;

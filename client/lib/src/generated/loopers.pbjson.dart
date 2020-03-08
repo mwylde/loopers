@@ -77,6 +77,7 @@ const State$json = const {
     const {'1': 'time_signature_lower', '3': 7, '4': 1, '5': 4, '10': 'timeSignatureLower'},
     const {'1': 'learn_mode', '3': 8, '4': 1, '5': 8, '10': 'learnMode'},
     const {'1': 'last_midi', '3': 9, '4': 1, '5': 12, '10': 'lastMidi'},
+    const {'1': 'metronome_volume', '3': 10, '4': 1, '5': 2, '10': 'metronomeVolume'},
   ],
 };
 
@@ -143,6 +144,13 @@ const LoadSessionCommand$json = const {
   ],
 };
 
+const MetronomeVolumeCommand$json = const {
+  '1': 'MetronomeVolumeCommand',
+  '2': const [
+    const {'1': 'volume', '3': 1, '4': 1, '5': 2, '10': 'volume'},
+  ],
+};
+
 const Command$json = const {
   '1': 'Command',
   '2': const [
@@ -150,6 +158,7 @@ const Command$json = const {
     const {'1': 'global_command', '3': 2, '4': 1, '5': 11, '6': '.protos.GlobalCommand', '9': 0, '10': 'globalCommand'},
     const {'1': 'save_session_command', '3': 3, '4': 1, '5': 11, '6': '.protos.SaveSessionCommand', '9': 0, '10': 'saveSessionCommand'},
     const {'1': 'load_session_command', '3': 4, '4': 1, '5': 11, '6': '.protos.LoadSessionCommand', '9': 0, '10': 'loadSessionCommand'},
+    const {'1': 'metronome_volume_command', '3': 5, '4': 1, '5': 11, '6': '.protos.MetronomeVolumeCommand', '9': 0, '10': 'metronomeVolumeCommand'},
   ],
   '8': const [
     const {'1': 'command_oneof'},
