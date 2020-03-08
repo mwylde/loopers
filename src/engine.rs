@@ -11,11 +11,12 @@ use crate::metronome::Metronome;
 use std::f32::NEG_INFINITY;
 use std::path::{PathBuf, Path};
 use chrono::Local;
-use std::fs::{File, create_dir_all};
+use std::fs::{File, create_dir_all, read_to_string};
 use std::io::{Write, Read};
 use prost::Message;
 use crate::error::SaveLoadError;
 use bytes::BytesMut;
+use std::io;
 
 enum TriggerCondition {
     BEAT0,
@@ -58,16 +59,25 @@ fn max_abs(b: &[f32]) -> f32 {
         .fold(NEG_INFINITY, |a, b| a.max(b))
 }
 
+fn last_session_path() -> io::Result<PathBuf> {
+    let mut config_path = dirs::config_dir().unwrap();
+    config_path.push("loopers");
+    create_dir_all(&config_path)?;
+    config_path.push(".last-session");
+    Ok(config_path)
+}
+
 impl Engine {
     pub fn new(config: Config,
                gui_output: Arc<SegQueue<State>>,
                gui_input: Arc<SegQueue<Command>>,
                beat_normal: Vec<f32>,
-               beat_emphasis: Vec<f32>) -> Engine {
+               beat_emphasis: Vec<f32>,
+               restore: bool) -> Engine {
         let time_signature = TimeSignature::new(4, 4).unwrap();
         let tempo = Tempo::from_bpm(120.0);
 
-        Engine {
+        let mut engine = Engine {
             config,
 
             time: 0,
@@ -88,7 +98,22 @@ impl Engine {
 
             is_learning: false,
             last_midi: None,
+        };
+
+        if restore {
+            let mut restore_fn = || {
+                let config_path = last_session_path()?;
+                let restore_path = read_to_string(config_path)?;
+                println!("Restoring from {}", restore_path);
+                engine.load_session(&LoadSessionCommand{ path: restore_path })
+            };
+
+            if let Err(err) = restore_fn() {
+                println!("Failed to restore existing session {:?}", err);
+            }
         }
+
+        engine
     }
 
     fn looper_by_id_mut(&mut self, id: u32) -> Option<&mut Looper> {
@@ -236,6 +261,12 @@ impl Engine {
         let mut buf = BytesMut::with_capacity(session.encoded_len());
         session.encode(&mut buf)?;
         file.write_all(&buf)?;
+
+        // save our last session
+        let config_path = last_session_path()?;
+        let mut last_session = File::create(config_path)?;
+        write!(last_session, "{}", path.to_string_lossy())?;
+
         Ok(())
     }
 

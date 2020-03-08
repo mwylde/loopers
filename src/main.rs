@@ -15,6 +15,7 @@ extern crate chrono;
 
 use std::{io, thread, fs};
 use crate::midi::MidiEvent;
+use clap::{App, Arg};
 
 #[allow(dead_code)]
 mod protos;
@@ -30,6 +31,18 @@ mod error;
 mod metronome;
 
 fn main() {
+    let matches = App::new("loopers")
+        .version("0.0.1")
+        .author("Micah Wylde <micah@micahw.com>")
+        .arg(Arg::with_name("restore")
+            .long("restore")
+        ).get_matches();
+
+    let restore = matches.is_present("restore");
+
+    println!("Restoring previous session");
+
+
     let (gui, output, input) = gui::Gui::new();
     thread::spawn(move|| {
         gui.run();
@@ -94,7 +107,8 @@ fn main() {
         .register_port("rust_midi_in", jack::MidiIn::default()).unwrap();
 
     let mut engine = engine::Engine::new(
-        config.to_config(), output,  input, beat_normal, beat_empahsis);
+        config.to_config(), output,  input,
+        beat_normal, beat_empahsis, restore);
 
     let process_callback = move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
