@@ -117,6 +117,8 @@ mod tests {
     }
 }
 
+const CROSS_FADE_SAMPLES: usize = 1024;
+
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
 // driven by a state machine, which controls how it responds to input buffers (e.g., by recording
 // or overdubbing to its internal buffers) and output buffers (e.g., by playing).
@@ -125,6 +127,7 @@ pub struct Looper {
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
     pub deleted: bool,
+    xfade_samples_left: usize,
 }
 
 impl Looper {
@@ -134,6 +137,7 @@ impl Looper {
             samples: vec![],
             mode: LooperMode::None,
             deleted: false,
+            xfade_samples_left: 0,
         };
 
         looper
@@ -145,6 +149,12 @@ impl Looper {
         println!("Transition {:?} to {:?}", self.mode, mode);
         match (self.mode, mode) {
             (x, y) if x == y => {},
+            (LooperMode::Record, LooperMode::None) |
+            (LooperMode::Record, LooperMode::Playing) |
+            (LooperMode::Overdub, LooperMode::None) |
+            // (LooperMode::Overdub, LooperMode::Playing) => {
+            //     self.xfade_samples_left = CROSS_FADE_SAMPLES;
+            // },
             (_, LooperMode::None) => {},
             (_, LooperMode::Ready) => {},
             (_, LooperMode::Record) => {
@@ -161,7 +171,6 @@ impl Looper {
                 self.samples.push(Sample::with_size(len as usize));
             },
             (_, LooperMode::Playing) => {},
-            (_, LooperMode::Stopping) => {},
         }
 
         self.mode = mode;
@@ -208,6 +217,14 @@ impl Looper {
             // in record mode, we extend the current buffer with the new samples
             let s = self.samples.last_mut().expect("No samples for looper in record mode");
             s.record(inputs);
+        } else if self.xfade_samples_left > 0 {
+            if let Some(s) = self.samples.last_mut() {
+                // linear
+                s.xfade(CROSS_FADE_SAMPLES, time_in_samples, inputs);
+                self.xfade_samples_left = (self.xfade_samples_left - inputs[0].len()).max(0);
+            } else {
+                println!("tried to cross fade but no samples... something is likely wrong");
+            }
         }
     }
 
@@ -250,7 +267,8 @@ impl Looper {
             id: state.id,
             samples: Vec::with_capacity(state.samples.len()),
             mode: LooperMode::None,
-            deleted: false
+            deleted: false,
+            xfade_samples_left: 0,
         };
 
         for sample_path in &state.samples {

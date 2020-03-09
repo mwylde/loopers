@@ -201,11 +201,7 @@ impl Engine {
                     }
 
                     LooperCommandType::EnablePlay => {
-                        if l.mode == LooperMode::Record {
-                            l.transition_to(LooperMode::Stopping);
-                        } else {
-                            l.transition_to(LooperMode::Playing);
-                        }
+                        l.transition_to(LooperMode::Playing);
                     },
                     LooperCommandType::Select => {
                         selected = Some(l.id);

@@ -13,7 +13,6 @@ enum LooperMode {
     RECORD = 2;
     OVERDUB = 3;
     PLAYING = 4;
-    STOPPING = 5;
 }
 
 message GetStateReq {

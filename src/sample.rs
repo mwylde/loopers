@@ -109,6 +109,21 @@ impl Sample {
             }
         }
     }
+
+    pub fn xfade(&mut self, xfade_size: usize, time_in_samples: u64, data: &[&[f32]]) {
+        // start with linear
+        assert_eq!(2, data.len());
+        assert_eq!(data[0].len(), data[1].len());
+        assert!(time_in_samples <= xfade_size as u64,
+                format!("expected {} <= {}", time_in_samples, xfade_size));
+
+        for i in 0..data.len() {
+            for j in 0..data[i].len() {
+                let q = time_in_samples as f32 / xfade_size as f32;
+                self.buffer[i][j] = self.buffer[i][j] * q + data[i][j] * (1.0 - q);
+            }
+        }
+    }
 }
 
 
