@@ -15,8 +15,8 @@ mod tests {
 
     #[test]
     fn test_cycle() {
-        let normal = sample(1.0, 4);
-        let emphasis = sample(2.0, 4);
+        let normal = sample(2.0, 4);
+        let emphasis = sample(4.0, 4);
 
         let bpm = 60_000f32 / FrameTime(8).to_ms() as f32;
 
