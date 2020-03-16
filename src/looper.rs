@@ -215,7 +215,7 @@ mod tests {
     }
 }
 
-const CROSS_FADE_SAMPLES: usize = 32;
+const CROSS_FADE_SAMPLES: usize = 256;
 
 struct StateMachine {
     transitions: Vec<(Vec<LooperMode>, Vec<LooperMode>,
