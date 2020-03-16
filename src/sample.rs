@@ -65,8 +65,10 @@ mod tests {
         sample.record(&[&data[0], &data[1]]);
 
         let xfade = [vec![3.0f32; 3], vec![-3.0f32; 3]];
-        sample.xfade_linear(3, 0, &[&xfade[0][0..2], &xfade[1][0..2]]);
-        sample.xfade_linear(3, 2, &[&xfade[0][2..], &xfade[1][2..]]);
+        sample.xfade_linear(3, 0, 0,&[&xfade[0][0..2], &xfade[1][0..2]],
+                            XfadeDirection::IN);
+        sample.xfade_linear(3, 2, 2, &[&xfade[0][2..], &xfade[1][2..]],
+                            XfadeDirection::IN);
 
         let l: Vec<i64> =
             sample.buffer[0].iter().map(|f| (*f * 1000f32).floor() as i64).collect();
@@ -82,6 +84,11 @@ mod tests {
 #[derive(Clone)]
 pub struct Sample {
     pub buffer: [Vec<f32>; 2],
+}
+
+pub enum XfadeDirection {
+    IN,
+    OUT,
 }
 
 impl Sample {
@@ -129,19 +136,44 @@ impl Sample {
         }
     }
 
-    // Performs a linear crossfade with the existing buffer
-    pub fn xfade_linear(&mut self, xfade_size: usize, time_in_samples: u64, data: &[&[f32]]) {
+    pub fn replace(&mut self, time_in_samples: u64, data: &[&[f32]]) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
-        assert!(time_in_samples + data[0].len() as u64 <= xfade_size as u64,
-                format!("expected {} <= {}", time_in_samples + data[0].len() as u64, xfade_size));
+        let len = self.length() as usize;
+
+        for (i, channel) in data.iter().enumerate() {
+            for (t, v) in channel.iter().enumerate() {
+                self.buffer[i][(time_in_samples as usize + t) % len] = *v;
+            }
+        }
+    }
+
+    // Performs a linear crossfade with the existing buffer
+    pub fn xfade_linear(&mut self, xfade_size: usize,
+                        start_time_in_fade: u64,
+                        time_in_samples: u64,
+                        data: &[&[f32]], direction: XfadeDirection) {
+        assert_eq!(2, data.len());
+        assert_eq!(data[0].len(), data[1].len());
 
         let len = self.length();
+
+        // let end_time = time_in_samples % len + data[0].len() as u64;
+        // assert!(end_time <= xfade_size as u64,
+        //         format!("expected {} <= {}", end_time, xfade_size));
+
         for i in 0..data.len() {
             for j in 0..data[i].len() {
                 let idx = ((time_in_samples + j as u64) % len) as usize;
-                let q = (time_in_samples + j as u64) as f32 / xfade_size as f32;
-                self.buffer[i][idx] = self.buffer[i][idx] * q + data[i][j] * (1.0 - q);
+                let q = (start_time_in_fade + j as u64) as f32 / xfade_size as f32;
+                self.buffer[i][idx] = match direction {
+                    XfadeDirection::IN => {
+                        self.buffer[i][idx] * q + data[i][j] * (1.0 - q)
+                    },
+                    XfadeDirection::OUT => {
+                        self.buffer[i][idx] * (1.0 - q) + data[i][j] * q
+                    },
+                }
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::sample::Sample;
+use crate::sample::{Sample, XfadeDirection};
 use crate::protos::{LooperMode, SavedLooper};
 use crate::music::FrameTime;
 use std::path::Path;
@@ -112,6 +112,66 @@ mod tests {
     }
 
     #[test]
+    fn test_pre_xfade() {
+        let mut l = Looper::new(1);
+
+        let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
+        let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
+
+        // process some random input
+        for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
+            l.process_input(l.length_in_samples() + i as u64,
+                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+        }
+
+        // construct our real input
+        for i in 0..CROSS_FADE_SAMPLES {
+            // q = i / CROSS_FADE_SAMPLES
+            // 0 = d[i] * (1 - q) + x * q
+            // -d[i] * (1-q) = x*q
+            // (-i * (1-q)) / q
+
+            let q = 1.0 - i as f32 / CROSS_FADE_SAMPLES as f32;
+
+            if i != 0 {
+                input_left[i] = -q / (1f32 - q);
+                input_right[i] = q / (1f32 - q);
+            }
+        }
+
+        // process that
+        for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
+            l.process_input(l.length_in_samples() + i as u64,
+                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+        }
+
+        l.transition_to(LooperMode::Record);
+
+        input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
+        input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
+
+        l.process_input(0, &[&input_left, &input_right]);
+
+        l.transition_to(LooperMode::Playing);
+
+        let output_left = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let output_right = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o = [output_left, output_right];
+        l.process_output(FrameTime(0), &mut o);
+
+        for i in 0..o[0].len() {
+            if i <= CROSS_FADE_SAMPLES {
+                assert_eq!(1f64, o[0][i]);
+                assert_eq!(-1f64, o[1][i]);
+            } else {
+                assert!((0f64 - o[0][i]).abs() < 0.000001, "left is {} at idx {}, expected 0", o[0][i], i);
+                assert!((0f64 - o[1][i]).abs() < 0.000001, "right is {} at idx {}, expected 0", o[1][i], i);
+            }
+        }
+    }
+
+
+    #[test]
     fn test_serialization() {
         let dir = tempdir().unwrap();
         let mut input_left = vec![];
@@ -155,7 +215,7 @@ mod tests {
     }
 }
 
-const CROSS_FADE_SAMPLES: usize = 256;
+const CROSS_FADE_SAMPLES: usize = 32;
 
 struct StateMachine {
     transitions: Vec<(Vec<LooperMode>, Vec<LooperMode>,
@@ -170,6 +230,7 @@ impl StateMachine {
                 (vec![],                vec![Record],                Looper::prepare_for_recording),
                 (vec![],                vec![Overdub],               Looper::prepare_for_overdubbing),
                 (vec![Record, Overdub], vec![None, Record, Playing], Looper::enable_start_crossfading),
+                (vec![Record],          vec![],                      Looper::apply_post_crossfade),
             ]
         }
     }
@@ -249,6 +310,26 @@ impl Looper {
         next_state
     }
 
+    fn apply_post_crossfade(&mut self, next_state: LooperMode) -> LooperMode {
+        if let Some(s) = self.samples.last_mut() {
+            let size = self.input_buffer_idx.min(CROSS_FADE_SAMPLES);
+            if let Some(start) = s.length().checked_sub(size as u64) {
+                // TODO: I'm sure there's a way to do this without allocating
+                let mut left = vec![0f32; size];
+                let mut right = vec![0f32; size];
+
+                for i in 0..size {
+                    left[i] = self.input_buffer.buffer[0][(i) % size];
+                    right[i] = self.input_buffer.buffer[1][(i) % size];
+                }
+
+                s.xfade_linear(CROSS_FADE_SAMPLES, 0, start,
+                               &[&left, &right], XfadeDirection::OUT);
+            }
+        }
+        next_state
+    }
+
     pub fn transition_to(&mut self, mode: LooperMode) {
         println!("Transition {:?} to {:?}", self.mode, mode);
 
@@ -305,8 +386,9 @@ impl Looper {
             if let Some(s) = self.samples.last_mut() {
                 // this assumes that things are sample-aligned
                 s.xfade_linear(CROSS_FADE_SAMPLES,
+                               CROSS_FADE_SAMPLES as u64 - self.xfade_samples_left as u64,
                                (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
-                               inputs);
+                               inputs, XfadeDirection::IN);
                 self.xfade_samples_left = (self.xfade_samples_left as i64 - inputs[0].len() as i64)
                     .max(0) as usize;
             } else {
@@ -314,7 +396,7 @@ impl Looper {
             }
         } else {
             // record to our circular input buffer, which will be used to cross-fade the end
-            self.input_buffer.overdub(self.input_buffer_idx as u64, inputs);
+            self.input_buffer.replace(self.input_buffer_idx as u64, inputs);
             self.input_buffer_idx += inputs[0].len();
         }
     }
