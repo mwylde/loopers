@@ -12,6 +12,7 @@ crossbeam-queue = "0.1"
 rand = "0.6"
 hound = "3.4.0"
 chrono = "0.4.11"
+lazy_static = "1.4.0"
 
 prost = "0.5"
 tokio = "0.1"

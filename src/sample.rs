@@ -58,6 +58,25 @@ mod tests {
         assert_eq!(vec![-2.0f32, -2.0, 0.0, 0.0, 0.0, 0.0, -1.0, -1.0], sample.buffer[1]);
     }
 
+    #[test]
+    fn test_xfade() {
+        let mut sample = Sample::with_size(0);
+        let data = [vec![1.0f32; 8], vec![-1.0f32; 8]];
+        sample.record(&[&data[0], &data[1]]);
+
+        let xfade = [vec![3.0f32; 3], vec![-3.0f32; 3]];
+        sample.xfade_linear(3, 0, &[&xfade[0][0..2], &xfade[1][0..2]]);
+        sample.xfade_linear(3, 2, &[&xfade[0][2..], &xfade[1][2..]]);
+
+        let l: Vec<i64> =
+            sample.buffer[0].iter().map(|f| (*f * 1000f32).floor() as i64).collect();
+        let r: Vec<i64> =
+            sample.buffer[1].iter().map(|f| (*f * 1000f32).ceil() as i64).collect();
+
+        assert_eq!(8, sample.length());
+        assert_eq!(vec![ 3000i64,   2333,   1666,   1000,   1000,   1000,   1000,   1000], l);
+        assert_eq!(vec![-3000i64,  -2333,  -1666,  -1000,  -1000,  -1000,  -1000,  -1000], r);
+    }
 }
 
 #[derive(Clone)]
@@ -110,17 +129,19 @@ impl Sample {
         }
     }
 
-    pub fn xfade(&mut self, xfade_size: usize, time_in_samples: u64, data: &[&[f32]]) {
-        // start with linear
+    // Performs a linear crossfade with the existing buffer
+    pub fn xfade_linear(&mut self, xfade_size: usize, time_in_samples: u64, data: &[&[f32]]) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
-        assert!(time_in_samples <= xfade_size as u64,
-                format!("expected {} <= {}", time_in_samples, xfade_size));
+        assert!(time_in_samples + data[0].len() as u64 <= xfade_size as u64,
+                format!("expected {} <= {}", time_in_samples + data[0].len() as u64, xfade_size));
 
+        let len = self.length();
         for i in 0..data.len() {
             for j in 0..data[i].len() {
-                let q = time_in_samples as f32 / xfade_size as f32;
-                self.buffer[i][j] = self.buffer[i][j] * q + data[i][j] * (1.0 - q);
+                let idx = ((time_in_samples + j as u64) % len) as usize;
+                let q = (time_in_samples + j as u64) as f32 / xfade_size as f32;
+                self.buffer[i][idx] = self.buffer[i][idx] * q + data[i][j] * (1.0 - q);
             }
         }
     }

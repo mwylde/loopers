@@ -56,7 +56,7 @@ impl FrameTime {
     }
 
     pub fn to_ms(&self) -> f64 {
-        ((self.0 as f64) / SAMPLE_RATE)
+        (self.0 as f64) / SAMPLE_RATE
     }
 }
 

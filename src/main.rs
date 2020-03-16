@@ -12,6 +12,8 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate dirs;
 extern crate chrono;
+#[macro_use]
+extern crate lazy_static;
 
 use std::{io, thread, fs};
 use crate::midi::MidiEvent;

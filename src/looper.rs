@@ -74,6 +74,44 @@ mod tests {
     }
 
     #[test]
+    fn test_post_xfade() {
+        let mut l = Looper::new(1);
+        l.transition_to(LooperMode::Record);
+        let mut input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
+        let mut input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
+
+        l.process_input(0, &[&input_left, &input_right]);
+
+        for i in 0..CROSS_FADE_SAMPLES {
+            let q = i as f32 / CROSS_FADE_SAMPLES as f32;
+            input_left[i] = -q / (1f32 - q);
+            input_right[i] = q / (1f32 - q);
+        }
+
+        l.transition_to(LooperMode::Playing);
+
+        for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
+            l.process_input(l.length_in_samples() + i as u64,
+                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+        }
+
+        let output_left = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let output_right = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o = [output_left, output_right];
+        l.process_output(FrameTime(0), &mut o);
+
+        for i in 0..o[0].len() {
+            if i < CROSS_FADE_SAMPLES {
+                assert!((0f64 - o[0][i]).abs() < 0.000001, "left is {} at idx {}, expected 0", o[0][i], i);
+                assert!((0f64 - o[1][i]).abs() < 0.000001, "right is {} at idx {}, expected 0", o[1][i], i);
+            } else {
+                assert_eq!(1f64, o[0][i]);
+                assert_eq!(-1f64, o[1][i]);
+            }
+        }
+    }
+
+    #[test]
     fn test_serialization() {
         let dir = tempdir().unwrap();
         let mut input_left = vec![];
@@ -117,7 +155,41 @@ mod tests {
     }
 }
 
-const CROSS_FADE_SAMPLES: usize = 1024;
+const CROSS_FADE_SAMPLES: usize = 256;
+
+struct StateMachine {
+    transitions: Vec<(Vec<LooperMode>, Vec<LooperMode>,
+                      for<'r> fn(&'r mut Looper, LooperMode) -> LooperMode)>,
+}
+
+impl StateMachine {
+    fn new() -> StateMachine {
+        use LooperMode::*;
+        StateMachine {
+            transitions: vec![
+                (vec![],                vec![Record],                Looper::prepare_for_recording),
+                (vec![],                vec![Overdub],               Looper::prepare_for_overdubbing),
+                (vec![Record, Overdub], vec![None, Record, Playing], Looper::enable_start_crossfading),
+            ]
+        }
+    }
+
+    fn handle_transition(&self, looper: &mut Looper, next_state: LooperMode) {
+        let cur = looper.mode;
+        let mut next_state = next_state;
+        for transition in &self.transitions {
+            if (transition.0.is_empty() || transition.0.contains(&cur)) &&
+                (transition.1.is_empty() || transition.1.contains(&next_state)) {
+                next_state = transition.2(looper, next_state);
+            }
+        }
+        looper.mode = next_state;
+    }
+}
+
+lazy_static! {
+  static ref STATE_MACHINE: StateMachine = StateMachine::new();
+}
 
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
 // driven by a state machine, which controls how it responds to input buffers (e.g., by recording
@@ -127,16 +199,26 @@ pub struct Looper {
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
     pub deleted: bool,
+    input_buffer: Sample,
+    input_buffer_idx: usize,
     xfade_samples_left: usize,
 }
 
 impl Looper {
     pub fn new(id: u32) -> Looper {
+        use LooperMode::*;
+
         let looper = Looper {
             id,
             samples: vec![],
-            mode: LooperMode::None,
+            mode: None,
             deleted: false,
+            // input buffer is used to record _before_ actual recording starts, and will be xfaded
+            // with the end of the actual sample
+            input_buffer: Sample::with_size(CROSS_FADE_SAMPLES),
+            input_buffer_idx: 0,
+            // xfade samples are recorded _after_ actual recording ends, and are xfaded immediately
+            // with the beginning of the actual sample
             xfade_samples_left: 0,
         };
 
@@ -145,35 +227,37 @@ impl Looper {
 }
 
 impl Looper {
+    // state transition functions
+    fn enable_start_crossfading(&mut self, next_state: LooperMode) -> LooperMode {
+        self.xfade_samples_left = CROSS_FADE_SAMPLES;
+        next_state
+    }
+
+    fn prepare_for_recording(&mut self, next_state: LooperMode) -> LooperMode {
+        self.samples.clear();
+        self.samples.push(Sample::new());
+        next_state
+    }
+
+    fn prepare_for_overdubbing(&mut self, next_state: LooperMode) -> LooperMode {
+        let len = self.length_in_samples();
+        if len == 0 {
+            println!("trying to move to overdub with 0-length looper");
+            return LooperMode::Record;
+        }
+        self.samples.push(Sample::with_size(len as usize));
+        next_state
+    }
+
     pub fn transition_to(&mut self, mode: LooperMode) {
         println!("Transition {:?} to {:?}", self.mode, mode);
-        match (self.mode, mode) {
-            (x, y) if x == y => {},
-            (LooperMode::Record, LooperMode::None) |
-            (LooperMode::Record, LooperMode::Playing) |
-            (LooperMode::Overdub, LooperMode::None) |
-            // (LooperMode::Overdub, LooperMode::Playing) => {
-            //     self.xfade_samples_left = CROSS_FADE_SAMPLES;
-            // },
-            (_, LooperMode::None) => {},
-            (_, LooperMode::Ready) => {},
-            (_, LooperMode::Record) => {
-                self.samples.clear();
-                self.samples.push(Sample::new());
-            },
-            (_, LooperMode::Overdub) => {
-                let len = self.length_in_samples();
-                if len == 0 {
-                    println!( "trying to move to overdub with 0-length looper");
-                    self.mode = LooperMode::Record;
-                    return;
-                }
-                self.samples.push(Sample::with_size(len as usize));
-            },
-            (_, LooperMode::Playing) => {},
+
+        if self.mode == mode {
+            // do nothing if we're not changing state
+            return;
         }
 
-        self.mode = mode;
+        STATE_MACHINE.handle_transition(self, mode);
     }
 
     // In process_output, we modify the specified output buffers according to our internal state. In
@@ -219,12 +303,19 @@ impl Looper {
             s.record(inputs);
         } else if self.xfade_samples_left > 0 {
             if let Some(s) = self.samples.last_mut() {
-                // linear
-                s.xfade(CROSS_FADE_SAMPLES, time_in_samples, inputs);
-                self.xfade_samples_left = (self.xfade_samples_left - inputs[0].len()).max(0);
+                // this assumes that things are sample-aligned
+                s.xfade_linear(CROSS_FADE_SAMPLES,
+                               (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
+                               inputs);
+                self.xfade_samples_left = (self.xfade_samples_left as i64 - inputs[0].len() as i64)
+                    .max(0) as usize;
             } else {
                 println!("tried to cross fade but no samples... something is likely wrong");
             }
+        } else {
+            // record to our circular input buffer, which will be used to cross-fade the end
+            self.input_buffer.overdub(self.input_buffer_idx as u64, inputs);
+            self.input_buffer_idx += inputs[0].len();
         }
     }
 
@@ -263,13 +354,7 @@ impl Looper {
     }
 
     pub fn from_serialized(state: &SavedLooper, path: &Path) -> Result<Looper, SaveLoadError> {
-        let mut looper = Looper {
-            id: state.id,
-            samples: Vec::with_capacity(state.samples.len()),
-            mode: LooperMode::None,
-            deleted: false,
-            xfade_samples_left: 0,
-        };
+        let mut looper = Looper::new(state.id);
 
         for sample_path in &state.samples {
             let mut reader = hound::WavReader::open(
