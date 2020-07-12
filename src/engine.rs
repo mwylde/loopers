@@ -27,12 +27,28 @@ struct Trigger {
     command: Command,
 }
 
+#[derive(Copy, Clone)]
+pub struct MetricStructure {
+    pub time_signature: TimeSignature,
+    pub tempo: Tempo,
+}
+
+impl MetricStructure {
+    pub fn new(upper: u8, lower: u8, bpm: f32) -> Option<MetricStructure> {
+        let time_signature = TimeSignature::new(upper, lower)?;
+        Some(MetricStructure {
+            time_signature,
+            tempo: Tempo::from_bpm(bpm),
+        })
+    }
+}
+
 pub struct Engine {
     config: Config,
 
     time: i64,
-    time_signature: TimeSignature,
-    tempo: Tempo,
+
+    metric_structure: MetricStructure,
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
@@ -74,23 +90,21 @@ impl Engine {
                beat_normal: Vec<f32>,
                beat_emphasis: Vec<f32>,
                restore: bool) -> Engine {
-        let time_signature = TimeSignature::new(4, 4).unwrap();
-        let tempo = Tempo::from_bpm(120.0);
-
+        let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
         let mut engine = Engine {
             config,
 
             time: 0,
-            time_signature,
-            tempo,
+
+            metric_structure,
 
             gui_output,
             gui_input,
-            loopers: vec![Looper::new(0)],
+            loopers: vec![],
             active: 0,
             id_counter: 1,
 
-            metronome: Some(Metronome::new(tempo, time_signature,
+            metronome: Some(Metronome::new(metric_structure,
                                            Sample::from_mono(&beat_normal),
                                            Sample::from_mono(&beat_emphasis))),
 
@@ -240,9 +254,9 @@ impl Engine {
 
         let mut session = SavedSession {
             save_time: now.timestamp_millis(),
-            time_signature_upper: self.time_signature.upper as u64,
-            time_signature_lower: self.time_signature.lower as u64,
-            tempo_mbpm: self.tempo.mbpm,
+            time_signature_upper: self.metric_structure.time_signature.upper as u64,
+            time_signature_lower: self.metric_structure.time_signature.lower as u64,
+            tempo_mbpm: self.metric_structure.tempo.mbpm,
             loopers: Vec::with_capacity(self.loopers.len()),
         };
 
@@ -275,12 +289,13 @@ impl Engine {
         let dir = path.parent().unwrap();
 
         let session: SavedSession = SavedSession::decode(&buf)?;
-        self.time_signature = TimeSignature::new(session.time_signature_upper as u8,
-                                                 session.time_signature_lower as u8).
+        self.metric_structure.time_signature =
+            TimeSignature::new(session.time_signature_upper as u8,
+                               session.time_signature_lower as u8).
             expect(&format!("Invalid time signature: {}/{}",
                             session.time_signature_upper, session.time_signature_lower));
 
-        self.tempo = Tempo { mbpm: session.tempo_mbpm };
+        self.metric_structure.tempo = Tempo { mbpm: session.tempo_mbpm };
 
         self.loopers.clear();
         for l in session.loopers {
@@ -351,9 +366,9 @@ impl Engine {
 
     // returns length
     fn measure_len(&self) -> FrameTime {
-        let bps = self.tempo.bpm() as f32 / 60.0;
+        let bps = self.metric_structure.tempo.bpm() as f32 / 60.0;
         let mspb = 1000.0 / bps;
-        let mspm = mspb * self.time_signature.upper as f32;
+        let mspm = mspb * self.metric_structure.time_signature.upper as f32;
 
         FrameTime::from_ms(mspm as f64)
     }
@@ -414,8 +429,8 @@ impl Engine {
                 self.time += frames as i64;
 
                 // process triggers
-                let beat_of_measure = self.time_signature.beat_of_measure(
-                    self.tempo.beat(FrameTime(self.time)));
+                let beat_of_measure = self.metric_structure.time_signature.beat_of_measure(
+                    self.metric_structure.tempo.beat(FrameTime(self.time)));
 
                 let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
                 self.triggers = vec![];
@@ -489,11 +504,11 @@ impl Engine {
             loops: loop_states,
             time: FrameTime(self.time).to_ms() as i64,
             length: 0,
-            beat: self.time_signature.beat_of_measure(self.tempo.beat(
+            beat: self.metric_structure.time_signature.beat_of_measure(self.metric_structure.tempo.beat(
                 FrameTime(self.time))) as i64,
-            bpm: self.tempo.bpm(),
-            time_signature_upper: self.time_signature.upper as u64,
-            time_signature_lower: self.time_signature.lower as u64,
+            bpm: self.metric_structure.tempo.bpm(),
+            time_signature_upper: self.metric_structure.time_signature.upper as u64,
+            time_signature_lower: self.metric_structure.time_signature.lower as u64,
             learn_mode: self.is_learning,
             last_midi: self.last_midi.as_ref().map(|b| b.clone()).unwrap_or_else(|| vec![]),
             metronome_volume: self.metronome.as_ref().map_or(0.0, |m| m.get_volume()),

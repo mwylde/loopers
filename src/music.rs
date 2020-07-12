@@ -33,6 +33,9 @@ mod tests {
         assert_eq!(-1, tempo.beat(FrameTime(-22050)));
         assert_eq!(-2, tempo.beat(FrameTime(-44100)));
         assert_eq!(-2, tempo.beat(FrameTime(-44099)));
+
+        assert_eq!(15, tempo.beat(FrameTime(352768)));
+        assert_eq!(16, tempo.beat(FrameTime(352800)));
     }
 
     #[test]
