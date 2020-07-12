@@ -47,6 +47,14 @@ mod tests {
         assert_eq!(0, ts.beat_of_measure(-3));
         assert_eq!(1, ts.beat_of_measure(-2));
     }
+
+    #[test]
+    fn test_next_beat() {
+        let ts = Tempo::from_bpm(120.0);
+        assert_eq!(FrameTime(352800), ts.next_full_beat(FrameTime(352768)));
+
+        assert_eq!(FrameTime(352800), ts.next_full_beat(FrameTime(352800)));
+    }
 }
 
 
@@ -102,6 +110,15 @@ impl Tempo {
         let bps = self.bpm() / 60.0;
         let mspb = 1000.0 / bps;
         ((time.to_ms() as f32) / mspb).floor() as i64
+    }
+
+    /// Returns the exact time of the next full beat from the given `time` (e.g., the 0 time of
+    /// the beat). If `time` already points to the 0 of a beat, will return `time`.
+    pub fn next_full_beat(&self, time: FrameTime) -> FrameTime {
+        let beats_per_sample = (self.bpm() as f64 / 60.0) / (SAMPLE_RATE * 1000.0);
+        let cur = (time.0 as f64 * beats_per_sample).ceil();
+
+        FrameTime((cur as f64 / beats_per_sample) as i64)
     }
 }
 

@@ -18,6 +18,7 @@ use crate::error::SaveLoadError;
 use bytes::BytesMut;
 use std::io;
 
+#[derive(Eq, PartialEq)]
 enum TriggerCondition {
     BEAT0,
 }
@@ -100,7 +101,9 @@ impl Engine {
 
             gui_output,
             gui_input,
-            loopers: vec![],
+            loopers: vec![
+                Looper::new(0),
+            ],
             active: 0,
             id_counter: 1,
 
@@ -165,6 +168,8 @@ impl Engine {
     }
 
     fn handle_loop_command(&mut self, lc: &LooperCommand, triggered: bool) {
+        println!("Handling loop command: {:?}", lc);
+
         if !triggered {
             if let Some(trigger) = Engine::trigger_from_command(lc) {
                 self.triggers.push(trigger);
@@ -416,45 +421,82 @@ impl Engine {
         ];
 
         // Update our time
+        let stopped = self.loopers.iter().all(|l| l.mode == LooperMode::None);
         let measure_len = self.measure_len();
         {
-            if self.loopers.iter().all(|l| l.mode == LooperMode::None)
-                && self.triggers.is_empty() {
+            if stopped && self.triggers.is_empty() {
                 if let Some(m) = &mut self.metronome {
                     m.reset();
                 }
                 self.time = -(measure_len.0 as i64);
             } else {
-
-                self.time += frames as i64;
-
                 // process triggers
                 let beat_of_measure = self.metric_structure.time_signature.beat_of_measure(
-                    self.metric_structure.tempo.beat(FrameTime(self.time)));
+                    self.metric_structure.tempo.beat(FrameTime(self.time + frames as i64)));
 
                 let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
+                let mut beat0_triggers = vec![];
                 self.triggers = vec![];
 
                 for t in old_triggers {
-                    let matched = match t.condition {
+                    let did_match = match t.condition {
                         TriggerCondition::BEAT0 => {
                             beat_of_measure == 0 && self.time >= 0
                         },
                     };
 
-                    if matched {
+                    if did_match && t.condition == TriggerCondition::BEAT0 {
+                        beat0_triggers.push(t);
+                    } else if did_match {
                         self.handle_command(&t.command, true);
                     } else {
                         self.triggers.push(t);
                     }
                 }
 
+                let active = self.active;
+
+                let mut buf_index = 0;
+
+                // We need to handle "beat 0" triggers specially, as the input buffer may not line
+                // up exactly with our beats. Since this trigger is used to stop recording, we need
+                // to ensure that we end up with exactly the right number of samples, no matter what
+                // our buffer size is. We do that by splitting up the input into two pieces: the part
+                // before beat 0 and the part after.
+                if self.time >= 0 && !beat0_triggers.is_empty() {
+                    if stopped {
+                        // if we were previously stopped, we will cheat a bit and reset the time to
+                        // *exactly* 0 (it will be something between 0 and frame_size)
+                        self.time = 0;
+                    }
+
+                    let next_beat_time = self.metric_structure.tempo.next_full_beat(FrameTime(self.time));
+                    assert!(next_beat_time.0 < self.time + frames as i64,
+                            format!("{} >= {} (time = {})", next_beat_time.0, self.time + frames as i64, self.time));
+
+                    let pre_size = (next_beat_time.0 - self.time) as usize;
+
+                    if pre_size > 0 {
+                        let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
+
+                        // Record input to active loop
+                        looper.process_input(self.time as u64 + pre_size as u64,
+                                             &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]]);
+
+                        buf_index = pre_size;
+                    }
+
+                    for t in beat0_triggers {
+                        self.handle_command(&t.command, true);
+                    }
+                }
+
+                self.time += frames as i64;
+
                 // Play the metronome
                 if let Some(metronome) = &mut self.metronome {
                     metronome.advance(met_bufs);
                 }
-
-                let active = self.active;
 
                 // Play our loops
 
@@ -463,7 +505,9 @@ impl Engine {
                     let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
                     // Record input to active loop
-                    looper.process_input(self.time as u64, &[in_bufs[0], in_bufs[1]]);
+                    looper.process_input(self.time as u64,
+                                         &[&in_bufs[0][buf_index..frames as usize],
+                                             &in_bufs[1][buf_index..frames as usize]]);
                 }
             }
         }
