@@ -18,6 +18,7 @@ extern crate lazy_static;
 use crate::midi::MidiEvent;
 use clap::{App, Arg};
 use std::{fs, io, thread};
+use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
 mod protos;
@@ -31,6 +32,9 @@ mod metronome;
 mod midi;
 mod music;
 mod sample;
+
+mod skia;
+mod app;
 
 fn main() {
     let matches = App::new("loopers")
@@ -120,14 +124,21 @@ fn main() {
         .register_port("rust_midi_in", jack::MidiIn::default())
         .unwrap();
 
-    let mut engine = engine::Engine::new(
+    let engine = Arc::new(Mutex::new(engine::Engine::new(
         config.to_config(),
         output,
         input,
         beat_normal,
         beat_empahsis,
         restore,
-    );
+    )));
+
+    {
+        let engine = engine.clone();
+        thread::spawn(move|| {
+            skia::skia_main(engine);
+        });
+    }
 
     let process_callback =
         move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
@@ -153,7 +164,7 @@ fn main() {
                 })
                 .collect();
 
-            engine.process(
+            engine.lock().unwrap().process(
                 in_bufs,
                 &mut out_bufs,
                 &mut met_bufs,

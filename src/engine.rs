@@ -47,14 +47,14 @@ impl MetricStructure {
 pub struct Engine {
     config: Config,
 
-    time: i64,
+    pub time: i64,
 
-    metric_structure: MetricStructure,
+    pub metric_structure: MetricStructure,
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
 
-    loopers: Vec<Looper>,
+    pub loopers: Vec<Looper>,
     active: u32,
 
     metronome: Option<Metronome>,

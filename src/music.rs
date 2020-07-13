@@ -89,6 +89,10 @@ impl TimeSignature {
     pub fn beat_of_measure(&self, beat: i64) -> u8 {
         beat.rem_euclid(self.upper as i64) as u8
     }
+
+    pub fn measure(&self, beat: i64) -> i64 {
+        beat / self.lower as i64
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]

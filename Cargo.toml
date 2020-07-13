@@ -32,6 +32,12 @@ serde_yaml = "0.8"
 clap = "2.33.0"
 
 
+skia-safe = {version = "0.29", features = ["gl"]}
+
+glutin = "0.24"
+gl-rs = { package = "gl", version = "0.14.0" }
+
+
 [build-dependencies]
 tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc",  features = ["tower-hyper"]  }
 prost-build = "0.5"
