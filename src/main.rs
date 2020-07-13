@@ -1,52 +1,50 @@
-#![cfg_attr(feature="fail-on-warnings", deny(warnings))]
+#![cfg_attr(feature = "fail-on-warnings", deny(warnings))]
 
-extern crate jack;
+extern crate bytes;
+extern crate chrono;
 extern crate crossbeam_queue;
+extern crate dirs;
+extern crate futures;
+extern crate jack;
 extern crate prost;
+extern crate serde;
+extern crate serde_yaml;
 extern crate tokio;
 extern crate tower_grpc;
 extern crate tower_hyper;
-extern crate futures;
-extern crate bytes;
-extern crate serde;
-extern crate serde_yaml;
-extern crate dirs;
-extern crate chrono;
 #[macro_use]
 extern crate lazy_static;
 
-use std::{io, thread, fs};
 use crate::midi::MidiEvent;
 use clap::{App, Arg};
+use std::{fs, io, thread};
 
 #[allow(dead_code)]
 mod protos;
 
-mod looper;
-mod sample;
-mod music;
-mod engine;
-mod gui;
 mod config;
-mod midi;
+mod engine;
 mod error;
+mod gui;
+mod looper;
 mod metronome;
+mod midi;
+mod music;
+mod sample;
 
 fn main() {
     let matches = App::new("loopers")
         .version("0.0.1")
         .author("Micah Wylde <micah@micahw.com>")
-        .arg(Arg::with_name("restore")
-            .long("restore")
-        ).get_matches();
+        .arg(Arg::with_name("restore").long("restore"))
+        .get_matches();
 
     let restore = matches.is_present("restore");
 
     println!("Restoring previous session");
 
-
     let (gui, output, input) = gui::Gui::new();
-    thread::spawn(move|| {
+    thread::spawn(move || {
         gui.run();
         println!("window exited... shutting down");
         std::process::exit(0);
@@ -55,20 +53,21 @@ fn main() {
     // read config
     let mut config_path = dirs::config_dir().unwrap();
     config_path.push("loopers/config.yaml");
-    let mut config : config::Config = fs::read_to_string(config_path)
+    let mut config: config::Config = fs::read_to_string(config_path)
         .map(|s| serde_yaml::from_str(&s).expect("Failed to parse config file"))
-        .unwrap_or(config::Config { midi_mappings: vec![] });
+        .unwrap_or(config::Config {
+            midi_mappings: vec![],
+        });
 
     let mut mapping_path = dirs::config_dir().unwrap();
     mapping_path.push("loopers/midi_mappings.tsv");
-    let mappings = fs::read_to_string(mapping_path)
-        .map(|s| {
-            s.lines()
-                .filter(|l| !l.trim().is_empty())
-                .map(config::MidiMapping::from_line)
-                .map(|m| m.expect("Failed to map line"))
-                .collect::<Vec<config::MidiMapping>>()
-        });
+    let mappings = fs::read_to_string(mapping_path).map(|s| {
+        s.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(config::MidiMapping::from_line)
+            .map(|m| m.expect("Failed to map line"))
+            .collect::<Vec<config::MidiMapping>>()
+    });
 
     if let Ok(mappings) = mappings {
         config.midi_mappings.extend(&mappings);
@@ -78,12 +77,18 @@ fn main() {
 
     // read wav files
     let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
-    let beat_normal: Vec<f32> = reader.into_samples().into_iter()
-        .map(|x| x.unwrap()).collect();
+    let beat_normal: Vec<f32> = reader
+        .into_samples()
+        .into_iter()
+        .map(|x| x.unwrap())
+        .collect();
 
     let reader = hound::WavReader::open("resources/sine_emphasis.wav").unwrap();
-    let beat_empahsis: Vec<f32> = reader.into_samples().into_iter()
-        .map(|x| x.unwrap()).collect();
+    let beat_empahsis: Vec<f32> = reader
+        .into_samples()
+        .into_iter()
+        .map(|x| x.unwrap())
+        .collect();
 
     // Create client
     let (client, _status) =
@@ -92,48 +97,72 @@ fn main() {
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
     let in_a = client
-        .register_port("rust_in_l", jack::AudioIn::default()).unwrap();
+        .register_port("rust_in_l", jack::AudioIn::default())
+        .unwrap();
     let in_b = client
-        .register_port("rust_in_r", jack::AudioIn::default()).unwrap();
+        .register_port("rust_in_r", jack::AudioIn::default())
+        .unwrap();
     let mut out_a = client
-        .register_port("rust_out_l", jack::AudioOut::default()).unwrap();
+        .register_port("rust_out_l", jack::AudioOut::default())
+        .unwrap();
     let mut out_b = client
-        .register_port("rust_out_r", jack::AudioOut::default()).unwrap();
+        .register_port("rust_out_r", jack::AudioOut::default())
+        .unwrap();
 
     let mut met_out_a = client
-        .register_port("metronome_out_l",jack::AudioOut::default()).unwrap();
+        .register_port("metronome_out_l", jack::AudioOut::default())
+        .unwrap();
     let mut met_out_b = client
-        .register_port("metronome_out_r", jack::AudioOut::default()).unwrap();
+        .register_port("metronome_out_r", jack::AudioOut::default())
+        .unwrap();
 
     let midi_in = client
-        .register_port("rust_midi_in", jack::MidiIn::default()).unwrap();
+        .register_port("rust_midi_in", jack::MidiIn::default())
+        .unwrap();
 
     let mut engine = engine::Engine::new(
-        config.to_config(), output,  input,
-        beat_normal, beat_empahsis, restore);
+        config.to_config(),
+        output,
+        input,
+        beat_normal,
+        beat_empahsis,
+        restore,
+    );
 
-    let process_callback = move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
-        let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
-        for buf in &mut out_bufs {
-            for b in &mut **buf { *b = 0f32 }
-        }
+    let process_callback =
+        move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+            let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
+            let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
+            for buf in &mut out_bufs {
+                for b in &mut **buf {
+                    *b = 0f32
+                }
+            }
 
-        let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
-        for buf in &mut met_bufs {
-            for b in &mut **buf { *b = 0f32 }
-        }
+            let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
+            for buf in &mut met_bufs {
+                for b in &mut **buf {
+                    *b = 0f32
+                }
+            }
 
-        let midi_events: Vec<MidiEvent> = midi_in.iter(ps)
-            .map(|e| MidiEvent { bytes: e.bytes.to_vec() })
-            .collect();
+            let midi_events: Vec<MidiEvent> = midi_in
+                .iter(ps)
+                .map(|e| MidiEvent {
+                    bytes: e.bytes.to_vec(),
+                })
+                .collect();
 
-        engine.process(in_bufs, &mut out_bufs,
-                       &mut met_bufs, ps.n_frames() as u64,
-                       &midi_events);
+            engine.process(
+                in_bufs,
+                &mut out_bufs,
+                &mut met_bufs,
+                ps.n_frames() as u64,
+                &midi_events,
+            );
 
-        jack::Control::Continue
-    };
+            jack::Control::Continue
+        };
     let process = jack::ClosureProcessHandler::new(process_callback);
 
     // Activate the client, which starts the processing.

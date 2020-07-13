@@ -1,22 +1,21 @@
-use std::time::Duration;
-use crossbeam_queue::SegQueue;
-use std::sync::{Arc, Mutex};
-use futures::{Stream, future};
-use tower_grpc::{Response, Request};
-use futures::sync::mpsc;
-use futures::sink::Sink;
 use crate::protos::*;
-use tower_hyper::Server;
-use tower_hyper::server::Http;
-use tokio::net::TcpListener;
+use crossbeam_queue::SegQueue;
+use futures::sink::Sink;
+use futures::sync::mpsc;
 use futures::Future;
-use std::net::{SocketAddrV4, Ipv4Addr, SocketAddr};
+use futures::{future, Stream};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::net::TcpListener;
+use tower_grpc::{Request, Response};
+use tower_hyper::server::Http;
+use tower_hyper::Server;
 
 #[derive(Clone)]
 pub struct Gui {
     state: GuiState,
 }
-
 
 #[derive(Clone)]
 struct GuiState {
@@ -56,7 +55,7 @@ impl Gui {
         println!("listening on {:?}", addr);
 
         let state = self.state.clone();
-        std::thread::spawn(move||{
+        std::thread::spawn(move || {
             loop {
                 let mut message = None;
                 loop {
@@ -65,7 +64,7 @@ impl Gui {
                             message = Some(m);
                         }
                         Err(_) => {
-                            break // no more messages
+                            break; // no more messages
                         }
                     }
                 }
@@ -103,12 +102,11 @@ impl Gui {
             .map_err(|e| eprintln!("accept error: {}", e));
 
         tokio::run(serve);
-
     }
 }
 
 impl server::Looper for GuiState {
-    type GetStateStream = Box<dyn Stream<Item=State, Error=tower_grpc::Status> + Send>;
+    type GetStateStream = Box<dyn Stream<Item = State, Error = tower_grpc::Status> + Send>;
     type GetStateFuture = future::FutureResult<Response<Self::GetStateStream>, tower_grpc::Status>;
     type CommandFuture = future::FutureResult<Response<CommandResp>, tower_grpc::Status>;
 
@@ -127,7 +125,7 @@ impl server::Looper for GuiState {
         if let Some(command) = request.into_inner().command {
             self.output.push(command);
         }
-        
+
         future::ok(Response::new(CommandResp {
             status: CommandStatus::Accepted as i32,
         }))

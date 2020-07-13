@@ -57,7 +57,6 @@ mod tests {
     }
 }
 
-
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone)]
 pub struct FrameTime(pub i64);
 
@@ -81,7 +80,7 @@ impl TimeSignature {
     pub fn new(upper: u8, lower: u8) -> Option<TimeSignature> {
         if lower == 0 || (lower & (lower - 1)) != 0 {
             // lower must be a power of 2
-            return None
+            return None;
         }
         Some(TimeSignature { upper, lower })
     }
@@ -94,12 +93,14 @@ impl TimeSignature {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tempo {
-    pub mbpm: u64
+    pub mbpm: u64,
 }
 
 impl Tempo {
     pub fn from_bpm(bpm: f32) -> Tempo {
-        Tempo { mbpm: (bpm * 1000f32).round() as u64 }
+        Tempo {
+            mbpm: (bpm * 1000f32).round() as u64,
+        }
     }
 
     pub fn bpm(&self) -> f32 {
@@ -121,4 +122,3 @@ impl Tempo {
         FrameTime((cur as f64 / beats_per_sample) as i64)
     }
 }
-

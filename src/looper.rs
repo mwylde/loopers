@@ -1,14 +1,15 @@
-use crate::sample::{Sample, XfadeDirection};
-use crate::protos::{LooperMode, SavedLooper};
-use crate::music::FrameTime;
-use std::path::Path;
 use crate::error::SaveLoadError;
+use crate::music::FrameTime;
+use crate::protos::{LooperMode, SavedLooper};
+use crate::sample;
+use crate::sample::{Sample, XfadeDirection};
+use std::path::Path;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::f32::consts::PI;
+    use tempfile::tempdir;
 
     #[test]
     fn test_new() {
@@ -91,8 +92,10 @@ mod tests {
         l.transition_to(LooperMode::Playing);
 
         for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
-            l.process_input(l.length_in_samples() + i as u64,
-                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+            l.process_input(
+                l.length_in_samples() + i as u64,
+                &[&input_left[i..i + 16], &input_right[i..i + 16]],
+            );
         }
 
         let output_left = vec![0f64; CROSS_FADE_SAMPLES * 2];
@@ -102,8 +105,18 @@ mod tests {
 
         for i in 0..o[0].len() {
             if i < CROSS_FADE_SAMPLES {
-                assert!((0f64 - o[0][i]).abs() < 0.000001, "left is {} at idx {}, expected 0", o[0][i], i);
-                assert!((0f64 - o[1][i]).abs() < 0.000001, "right is {} at idx {}, expected 0", o[1][i], i);
+                assert!(
+                    (0f64 - o[0][i]).abs() < 0.000001,
+                    "left is {} at idx {}, expected 0",
+                    o[0][i],
+                    i
+                );
+                assert!(
+                    (0f64 - o[1][i]).abs() < 0.000001,
+                    "right is {} at idx {}, expected 0",
+                    o[1][i],
+                    i
+                );
             } else {
                 assert_eq!(1f64, o[0][i]);
                 assert_eq!(-1f64, o[1][i]);
@@ -120,8 +133,10 @@ mod tests {
 
         // process some random input
         for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
-            l.process_input(l.length_in_samples() + i as u64,
-                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+            l.process_input(
+                l.length_in_samples() + i as u64,
+                &[&input_left[i..i + 16], &input_right[i..i + 16]],
+            );
         }
 
         // construct our real input
@@ -141,8 +156,10 @@ mod tests {
 
         // process that
         for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
-            l.process_input(l.length_in_samples() + i as u64,
-                            &[&input_left[i..i+16], &input_right[i..i+16]]);
+            l.process_input(
+                l.length_in_samples() + i as u64,
+                &[&input_left[i..i + 16], &input_right[i..i + 16]],
+            );
         }
 
         l.transition_to(LooperMode::Record);
@@ -164,12 +181,21 @@ mod tests {
                 assert_eq!(1f64, o[0][i]);
                 assert_eq!(-1f64, o[1][i]);
             } else {
-                assert!((0f64 - o[0][i]).abs() < 0.000001, "left is {} at idx {}, expected 0", o[0][i], i);
-                assert!((0f64 - o[1][i]).abs() < 0.000001, "right is {} at idx {}, expected 0", o[1][i], i);
+                assert!(
+                    (0f64 - o[0][i]).abs() < 0.000001,
+                    "left is {} at idx {}, expected 0",
+                    o[0][i],
+                    i
+                );
+                assert!(
+                    (0f64 - o[1][i]).abs() < 0.000001,
+                    "right is {} at idx {}, expected 0",
+                    o[1][i],
+                    i
+                );
             }
         }
     }
-
 
     #[test]
     fn test_serialization() {
@@ -180,7 +206,7 @@ mod tests {
         let mut input_left2 = vec![];
         let mut input_right2 = vec![];
 
-        for t in (0 .. 16).map(|x| x as f32 / 44100.0) {
+        for t in (0..16).map(|x| x as f32 / 44100.0) {
             let sample = (t * 440.0 * 2.0 * PI).sin();
             input_left.push(sample / 2.0);
             input_right.push(sample / 2.0);
@@ -198,30 +224,43 @@ mod tests {
         looper.transition_to(LooperMode::Overdub);
         looper.process_input(0, &[&input_left2, &input_right2]);
 
-
         let state = looper.serialize(dir.path()).unwrap();
 
-        let deserialized = Looper::from_serialized(&state,dir.path()).unwrap();
+        let deserialized = Looper::from_serialized(&state, dir.path()).unwrap();
 
         assert_eq!(looper.id, deserialized.id);
         assert_eq!(2, deserialized.samples.len());
 
         for i in 0..input_left.len() {
-            assert!((input_left[i] - deserialized.samples[0].buffer[0][i]).abs() < 0.00001);
-            assert!((input_right[i] - deserialized.samples[0].buffer[1][i]).abs() < 0.00001);
+            assert!(
+                (looper.samples[0].buffer[0][i] - deserialized.samples[0].buffer[0][i]).abs()
+                    < 0.00001
+            );
+            assert!(
+                (looper.samples[0].buffer[1][i] - deserialized.samples[0].buffer[1][i]).abs()
+                    < 0.00001
+            );
 
-            assert!((input_left2[i] - deserialized.samples[1].buffer[0][i]).abs() < 0.00001);
-            assert!((input_right2[i] - deserialized.samples[1].buffer[1][i]).abs() < 0.00001);
+            assert!(
+                (looper.samples[1].buffer[0][i] - deserialized.samples[1].buffer[0][i]).abs()
+                    < 0.00001
+            );
+            assert!(
+                (looper.samples[1].buffer[0][i] - deserialized.samples[1].buffer[1][i]).abs()
+                    < 0.00001
+            );
         }
-
     }
 }
 
 const CROSS_FADE_SAMPLES: usize = 8192;
 
 struct StateMachine {
-    transitions: Vec<(Vec<LooperMode>, Vec<LooperMode>,
-                      for<'r> fn(&'r mut Looper, LooperMode) -> LooperMode)>,
+    transitions: Vec<(
+        Vec<LooperMode>,
+        Vec<LooperMode>,
+        for<'r> fn(&'r mut Looper, LooperMode) -> LooperMode,
+    )>,
 }
 
 impl StateMachine {
@@ -229,10 +268,10 @@ impl StateMachine {
         use LooperMode::*;
         StateMachine {
             transitions: vec![
-                (vec![Record, Overdub],  vec![],              Looper::handle_crossfades),
-                (vec![],                 vec![Overdub],       Looper::prepare_for_overdubbing),
-                (vec![],                 vec![Record],        Looper::prepare_for_recording),
-            ]
+                (vec![Record, Overdub], vec![], Looper::handle_crossfades),
+                (vec![], vec![Overdub], Looper::prepare_for_overdubbing),
+                (vec![], vec![Record], Looper::prepare_for_recording),
+            ],
         }
     }
 
@@ -240,8 +279,9 @@ impl StateMachine {
         let cur = looper.mode;
         let mut next_state = next_state;
         for transition in &self.transitions {
-            if (transition.0.is_empty() || transition.0.contains(&cur)) &&
-                (transition.1.is_empty() || transition.1.contains(&next_state)) {
+            if (transition.0.is_empty() || transition.0.contains(&cur))
+                && (transition.1.is_empty() || transition.1.contains(&next_state))
+            {
                 next_state = transition.2(looper, next_state);
             }
         }
@@ -250,7 +290,7 @@ impl StateMachine {
 }
 
 lazy_static! {
-  static ref STATE_MACHINE: StateMachine = StateMachine::new();
+    static ref STATE_MACHINE: StateMachine = StateMachine::new();
 }
 
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
@@ -264,6 +304,7 @@ pub struct Looper {
     input_buffer: Sample,
     input_buffer_idx: usize,
     xfade_samples_left: usize,
+    xfade_sample_idx: usize,
 }
 
 impl Looper {
@@ -282,6 +323,7 @@ impl Looper {
             // xfade samples are recorded _after_ actual recording ends, and are xfaded immediately
             // with the beginning of the actual sample
             xfade_samples_left: 0,
+            xfade_sample_idx: 0,
         };
 
         looper
@@ -292,27 +334,41 @@ impl Looper {
     // state transition functions
     fn handle_crossfades(&mut self, next_state: LooperMode) -> LooperMode {
         self.xfade_samples_left = CROSS_FADE_SAMPLES;
+        self.xfade_sample_idx = self.samples.len() - 1;
 
-        //self.samples_remaining = self.length_in_samples()
-
+        // handle fading the pre-recorded samples (stored in input buffer) with the _end_ of the
+        // actual loop
         if let Some(s) = self.samples.last_mut() {
             let size = self.input_buffer_idx.min(CROSS_FADE_SAMPLES);
-            if let Some(start) = s.length().checked_sub(size as u64) {
+            if let Some(write_start) = s.length().checked_sub(size as u64) {
                 // TODO: I'm sure there's a way to do this without allocating
                 let mut left = vec![0f32; size];
                 let mut right = vec![0f32; size];
 
+                let len = self.input_buffer.length();
+                let read_start =
+                    (self.input_buffer_idx as i64 - size as i64).rem_euclid(len as i64) as usize;
+
                 for i in 0..size {
-                    left[i] = self.input_buffer.buffer[0][(i) % size];
-                    right[i] = self.input_buffer.buffer[1][(i) % size];
+                    left[i] = self.input_buffer.buffer[0][(i + read_start) % len as usize];
+                    right[i] = self.input_buffer.buffer[1][(i + read_start) % len as usize];
                 }
 
-                s.xfade_linear(CROSS_FADE_SAMPLES, 0, start,
-                               &[&left, &right], XfadeDirection::OUT);
+                s.xfade(
+                    CROSS_FADE_SAMPLES,
+                    0,
+                    write_start,
+                    &[&left, &right],
+                    XfadeDirection::IN,
+                    sample::norm,
+                );
             } else {
                 println!("Couldn't post crossfade because start was wrong");
             }
         }
+
+        self.input_buffer.clear();
+        self.input_buffer_idx = 0;
 
         next_state
     }
@@ -329,7 +385,28 @@ impl Looper {
             println!("trying to move to overdub with 0-length looper");
             return LooperMode::Record;
         }
-        self.samples.push(Sample::with_size(len as usize));
+
+        let overdub_sample = Sample::with_size(len as usize);
+
+        // TODO: currently, overdub buffers coming from record are not properly crossfaded until
+        //       overdubbing is finished
+        // if we're currently recording, we will start our sample off with a crossfade from
+        // 0 to the stuff we just recorded. this will be further crossfaded
+        // if self.mode == LooperMode::Record {
+        //     if let Some(s) = self.samples.last() {
+        //         let count = len.min(CROSS_FADE_SAMPLES as u64) as usize;
+        //         let range = len as usize - count..len as usize;
+        //         assert_eq!(range.len(), count);
+        //         self.input_buffer.replace(self.xfade_sample_idx as u64,
+        //                                   &[&(&s.buffer[0])[range.clone()],
+        //                                       &(&s.buffer[1])[range]]);
+        //         self.input_buffer_idx += count;
+        //     } else {
+        //         println!("no previous sample when moving to overdub!");
+        //     }
+        // }
+
+        self.samples.push(overdub_sample);
         next_state
     }
 
@@ -379,27 +456,40 @@ impl Looper {
         let len = self.length_in_samples();
         if self.mode == LooperMode::Overdub {
             // in overdub mode, we add the new samples to our existing buffer
-            let s = self.samples.last_mut().expect("No samples for looper in overdub mode");
+            let s = self
+                .samples
+                .last_mut()
+                .expect("No samples for looper in overdub mode");
             s.overdub(time_in_samples % len, inputs);
         } else if self.mode == LooperMode::Record {
             // in record mode, we extend the current buffer with the new samples
-            let s = self.samples.last_mut().expect("No samples for looper in record mode");
+            let s = self
+                .samples
+                .last_mut()
+                .expect("No samples for looper in record mode");
             s.record(inputs);
         } else {
             // record to our circular input buffer, which will be used to cross-fade the end
-            self.input_buffer.replace(self.input_buffer_idx as u64, inputs);
+            self.input_buffer
+                .replace(self.input_buffer_idx as u64, inputs);
             self.input_buffer_idx += inputs[0].len();
         }
 
+        // after recording finishes, cross fade some samples with the beginning of the loop to
+        // reduce popping
         if self.xfade_samples_left > 0 {
-            if let Some(s) = self.samples.last_mut() {
+            if let Some(s) = self.samples.get_mut(self.xfade_sample_idx) {
                 // this assumes that things are sample-aligned
-                s.xfade_linear(CROSS_FADE_SAMPLES,
-                               CROSS_FADE_SAMPLES as u64 - self.xfade_samples_left as u64,
-                               (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
-                               inputs, XfadeDirection::IN);
-                self.xfade_samples_left = (self.xfade_samples_left as i64 - inputs[0].len() as i64)
-                    .max(0) as usize;
+                s.xfade(
+                    CROSS_FADE_SAMPLES,
+                    CROSS_FADE_SAMPLES as u64 - self.xfade_samples_left as u64,
+                    (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
+                    inputs,
+                    XfadeDirection::OUT,
+                    sample::norm,
+                );
+                self.xfade_samples_left =
+                    (self.xfade_samples_left as i64 - inputs[0].len() as i64).max(0) as usize;
             } else {
                 println!("tried to cross fade but no samples... something is likely wrong");
             }
@@ -423,11 +513,9 @@ impl Looper {
             samples: Vec::with_capacity(self.samples.len()),
         };
 
-
         for (i, s) in self.samples.iter().enumerate() {
             let p = path.join(format!("loop_{}_{}.wav", self.id, i));
-            let mut writer = hound::WavWriter::create(&p,
-                                                      spec.clone())?;
+            let mut writer = hound::WavWriter::create(&p, spec.clone())?;
 
             for j in 0..s.length() as usize {
                 writer.write_sample(s.buffer[0][j])?;
@@ -444,8 +532,7 @@ impl Looper {
         let mut looper = Looper::new(state.id);
 
         for sample_path in &state.samples {
-            let mut reader = hound::WavReader::open(
-                &path.join(sample_path))?;
+            let mut reader = hound::WavReader::open(&path.join(sample_path))?;
 
             let mut sample = Sample::new();
             let mut left = Vec::with_capacity(reader.len() as usize / 2);

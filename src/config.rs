@@ -1,12 +1,12 @@
-use crate::protos::{LooperCommandType, GlobalCommandType};
-use serde::{Serialize, Deserialize};
 use crate::protos;
+use crate::protos::{GlobalCommandType, LooperCommandType};
+use serde::{Deserialize, Serialize};
 use std::io;
 use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Config {
-    pub midi_mappings: Vec<MidiMapping>
+    pub midi_mappings: Vec<MidiMapping>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -20,14 +20,16 @@ impl MidiMapping {
     pub fn from_line(line: &str) -> io::Result<MidiMapping> {
         let err = |err: &'static str| io::Error::new(io::ErrorKind::Other, err);
 
-        let mut cs  = line.split_ascii_whitespace();
-        let controller = cs.next().ok_or(err("No controller field"))
-            .and_then(|c| u8::from_str(c)
-                .map_err(|_| err("Channel is not a number")))?;
+        let mut cs = line.split_ascii_whitespace();
+        let controller = cs
+            .next()
+            .ok_or(err("No controller field"))
+            .and_then(|c| u8::from_str(c).map_err(|_| err("Channel is not a number")))?;
 
-        let data = cs.next().ok_or(err("No data field"))
-            .and_then(|c| u8::from_str(c)
-                .map_err(|_| err("Data is not a number")))?;
+        let data = cs
+            .next()
+            .ok_or(err("No data field"))
+            .and_then(|c| u8::from_str(c).map_err(|_| err("Data is not a number")))?;
 
         let command_name = cs.next().ok_or(err("No command field"))?;
 
@@ -48,9 +50,7 @@ impl MidiMapping {
 
         // println!("MAPPING\n-----------------\n{}", buf);
 
-        serde_yaml::from_str(&buf).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, e)
-        })
+        serde_yaml::from_str(&buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 
@@ -67,59 +67,60 @@ pub enum LooperCommandTarget {
 pub enum Command {
     LooperCommand {
         command: LooperCommandType,
-        target: LooperCommandTarget
+        target: LooperCommandTarget,
     },
     GlobalCommand {
-        command: GlobalCommandType
-    }
+        command: GlobalCommandType,
+    },
 }
 
 impl Config {
     pub fn to_config(&self) -> protos::Config {
-        let midi_mappings: Vec<protos::MidiMapping> = self.midi_mappings.iter().map(|m| {
-            let command = match &m.command {
-                Command::LooperCommand { command, target } => {
-                    protos::Command {
+        let midi_mappings: Vec<protos::MidiMapping> = self
+            .midi_mappings
+            .iter()
+            .map(|m| {
+                let command = match &m.command {
+                    Command::LooperCommand { command, target } => protos::Command {
                         command_oneof: Some(protos::command::CommandOneof::LooperCommand(
                             protos::LooperCommand {
                                 command_type: *command as i32,
                                 target_oneof: Some(match target {
-                                    LooperCommandTarget::All =>
+                                    LooperCommandTarget::All => {
                                         protos::looper_command::TargetOneof::TargetAll(
-                                            protos::TargetAll{}),
-                                    LooperCommandTarget::Selected =>
+                                            protos::TargetAll {},
+                                        )
+                                    }
+                                    LooperCommandTarget::Selected => {
                                         protos::looper_command::TargetOneof::TargetSelected(
-                                            protos::TargetSelected{}),
-                                    LooperCommandTarget::Number(i) =>
-                                    protos::looper_command::TargetOneof::TargetNumber(
-                                        protos::TargetNumber {
-                                            looper_number: *i
-                                        }
-                                    ),
-                                })
-                            }
-                        ))
-                    }
-                },
-                Command::GlobalCommand { command } => {
-                    protos::Command {
+                                            protos::TargetSelected {},
+                                        )
+                                    }
+                                    LooperCommandTarget::Number(i) => {
+                                        protos::looper_command::TargetOneof::TargetNumber(
+                                            protos::TargetNumber { looper_number: *i },
+                                        )
+                                    }
+                                }),
+                            },
+                        )),
+                    },
+                    Command::GlobalCommand { command } => protos::Command {
                         command_oneof: Some(protos::command::CommandOneof::GlobalCommand(
                             protos::GlobalCommand {
-                                command: *command as i32
-                            }
+                                command: *command as i32,
+                            },
                         )),
-                    }
-                },
-            };
-            return protos::MidiMapping {
-                controller_number: m.controller as u32,
-                data: m.data as u32,
-                command: Some(command),
-            };
-        }).collect();
+                    },
+                };
+                return protos::MidiMapping {
+                    controller_number: m.controller as u32,
+                    data: m.data as u32,
+                    command: Some(command),
+                };
+            })
+            .collect();
 
-        return protos::Config {
-            midi_mappings
-        };
+        return protos::Config { midi_mappings };
     }
 }

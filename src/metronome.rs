@@ -1,8 +1,8 @@
-use crate::sample::{Sample, SamplePlayer};
-use crate::sample::PlayOutput::Done;
-use crate::music::FrameTime;
-use std::sync::Arc;
 use crate::engine::MetricStructure;
+use crate::music::FrameTime;
+use crate::sample::PlayOutput::Done;
+use crate::sample::{Sample, SamplePlayer};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests {
@@ -10,7 +10,7 @@ mod tests {
 
     fn sample(v: f32, n: usize) -> Sample {
         Sample {
-            buffer: [vec![v; n], vec![-v; n]]
+            buffer: [vec![v; n], vec![-v; n]],
         }
     }
 
@@ -21,9 +21,7 @@ mod tests {
 
         let bpm = 60_000f32 / FrameTime(8).to_ms() as f32;
 
-        let mut met = Metronome::new(
-            MetricStructure::new(3, 4, bpm).unwrap(),
-            normal, emphasis);
+        let mut met = Metronome::new(MetricStructure::new(3, 4, bpm).unwrap(), normal, emphasis);
 
         assert_eq!(0, met.time.0);
 
@@ -31,71 +29,71 @@ mod tests {
         let mut r = vec![-1f32; 2];
         // play first half of emphasis beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 3f32,  3.0], l);
+        assert_eq!(vec![3f32, 3.0], l);
         assert_eq!(vec![-3f32, -3.0], r);
         assert_eq!(2, met.time.0);
 
         // play second half of emphasis beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 5f32,  5.0], l);
+        assert_eq!(vec![5f32, 5.0], l);
         assert_eq!(vec![-5f32, -5.0], r);
         assert_eq!(4, met.time.0);
 
         // play nothing
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 5f32,  5.0], l);
+        assert_eq!(vec![5f32, 5.0], l);
         assert_eq!(vec![-5f32, -5.0], r);
         assert_eq!(6, met.time.0);
 
         // play nothing
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 5f32,  5.0], l);
+        assert_eq!(vec![5f32, 5.0], l);
         assert_eq!(vec![-5f32, -5.0], r);
         assert_eq!(8, met.time.0);
 
         // play first half of normal beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 6f32,  6.0], l);
+        assert_eq!(vec![6f32, 6.0], l);
         assert_eq!(vec![-6f32, -6.0], r);
         assert_eq!(10, met.time.0);
 
         // play second half of normal beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 7f32,  7.0], l);
+        assert_eq!(vec![7f32, 7.0], l);
         assert_eq!(vec![-7f32, -7.0], r);
         assert_eq!(12, met.time.0);
 
         // play nothing twice
         for _ in 0..2 {
             met.advance(&mut [&mut l, &mut r]);
-            assert_eq!(vec![ 7f32,  7.0], l);
+            assert_eq!(vec![7f32, 7.0], l);
             assert_eq!(vec![-7f32, -7.0], r);
         }
         assert_eq!(16, met.time.0);
 
         // play first half of normal beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 8f32,  8.0], l);
+        assert_eq!(vec![8f32, 8.0], l);
         assert_eq!(vec![-8f32, -8.0], r);
         assert_eq!(18, met.time.0);
 
         // play second half of normal beat
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 9f32,  9.0], l);
+        assert_eq!(vec![9f32, 9.0], l);
         assert_eq!(vec![-9f32, -9.0], r);
         assert_eq!(20, met.time.0);
 
         // play nothing twice
         for _ in 0..2 {
             met.advance(&mut [&mut l, &mut r]);
-            assert_eq!(vec![ 9f32,  9.0], l);
+            assert_eq!(vec![9f32, 9.0], l);
             assert_eq!(vec![-9f32, -9.0], r);
         }
         assert_eq!(24, met.time.0);
 
         // and now we should be back to emphasis
         met.advance(&mut [&mut l, &mut r]);
-        assert_eq!(vec![ 11f32,  11.0], l);
+        assert_eq!(vec![11f32, 11.0], l);
         assert_eq!(vec![-11f32, -11.0], r);
         assert_eq!(26, met.time.0);
     }
@@ -111,8 +109,11 @@ pub struct Metronome {
 }
 
 impl Metronome {
-    pub fn new(metric_structure: MetricStructure,
-               beat_normal: Sample, beat_emphasis: Sample) -> Metronome {
+    pub fn new(
+        metric_structure: MetricStructure,
+        beat_normal: Sample,
+        beat_emphasis: Sample,
+    ) -> Metronome {
         let beat_emphasis = Arc::new(beat_emphasis);
         let player = SamplePlayer::new(beat_emphasis.clone());
 
@@ -143,7 +144,7 @@ impl Metronome {
         self.player = Some(SamplePlayer::new(self.beat_emphasis.clone()))
     }
 
-    pub fn advance(&mut self, out: &mut[&mut[f32]; 2]) {
+    pub fn advance(&mut self, out: &mut [&mut [f32]; 2]) {
         assert_eq!(out[0].len(), out[1].len());
 
         // TODO: it would be more accurate to do this analytically, i.e., use the current
@@ -163,7 +164,12 @@ impl Metronome {
         // println!("{} -> {} / {} -> {}", cur_beat, next_beat, self.time.0 - len as i64, self.time.0);
 
         if next_beat != cur_beat {
-            let sample = if self.metric_structure.time_signature.beat_of_measure(next_beat) == 0 {
+            let sample = if self
+                .metric_structure
+                .time_signature
+                .beat_of_measure(next_beat)
+                == 0
+            {
                 self.beat_emphasis.clone()
             } else {
                 self.beat_normal.clone()
@@ -171,6 +177,5 @@ impl Metronome {
 
             self.player = Some(SamplePlayer::new(sample));
         }
-
     }
 }

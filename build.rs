@@ -1,9 +1,9 @@
-extern crate tower_grpc_build;
 extern crate prost_build;
 extern crate serde;
+extern crate tower_grpc_build;
 
-use std::{env, fs};
 use std::path::PathBuf;
+use std::{env, fs};
 
 fn main() {
     let mut path = env::current_dir().unwrap();
@@ -16,10 +16,7 @@ fn main() {
     tower_grpc_build::Config::from_prost(prost_config)
         .enable_server(true)
         .enable_client(true)
-        .build(
-            &["protos/loopers.proto"],
-            &["protos"],
-        )
+        .build(&["protos/loopers.proto"], &["protos"])
         .unwrap_or_else(|e| panic!("protobuf compilation failed: {}", e));
 
     // copy audio files
@@ -34,6 +31,14 @@ fn main() {
     let mut resources = env::current_dir().unwrap();
     resources.push("resources");
 
-    fs::copy(resources.join("sine_normal.wav"), &out_dir.join("sine_normal.wav")).unwrap();
-    fs::copy(resources.join("sine_emphasis.wav"), &out_dir.join("sine_emphasis.wav")).unwrap();
+    fs::copy(
+        resources.join("sine_normal.wav"),
+        &out_dir.join("sine_normal.wav"),
+    )
+    .unwrap();
+    fs::copy(
+        resources.join("sine_emphasis.wav"),
+        &out_dir.join("sine_emphasis.wav"),
+    )
+    .unwrap();
 }
