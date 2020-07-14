@@ -8,7 +8,8 @@ build = "build.rs"
 
 [dependencies]
 jack = "0.6"
-crossbeam-queue = "0.1"
+crossbeam-queue = "0.2"
+crossbeam-channel = "0.4"
 rand = "0.6"
 hound = "3.4.0"
 chrono = "0.4.11"

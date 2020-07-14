@@ -236,7 +236,7 @@ impl Engine {
 
                     LooperCommandType::RecordOverdubPlay => {
                         selected = Some(l.id);
-                        if l.samples.is_empty() {
+                        if l.length_in_samples() == 0 {
                             l.transition_to(LooperMode::Record);
                         } else if l.mode == LooperMode::Record || l.mode == LooperMode::Playing {
                             l.transition_to(LooperMode::Overdub);
