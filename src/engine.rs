@@ -104,7 +104,7 @@ impl Engine {
 
             gui_output,
             gui_input,
-            loopers: vec![Looper::new(0)],
+            loopers: vec![Looper::new(0).start()],
             active: 0,
             id_counter: 1,
 
@@ -330,10 +330,10 @@ impl Engine {
                     if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
                         match typ as GlobalCommandType {
                             GlobalCommandType::ResetTime => {
-                                self.time = 0;
+                                self.set_time(FrameTime(0));
                             }
                             GlobalCommandType::AddLooper => {
-                                self.loopers.push(Looper::new(self.id_counter));
+                                self.loopers.push(Looper::new(self.id_counter).start());
                                 self.active = self.id_counter;
                                 self.id_counter += 1;
                             }
@@ -390,6 +390,13 @@ impl Engine {
         FrameTime::from_ms(mspm as f64)
     }
 
+    fn set_time(&mut self, time: FrameTime) {
+        self.time = time.0;
+        for l in &mut self.loopers {
+            l.set_time(time);
+        }
+    }
+
     // Step 1: Convert midi events to commands
     // Step 2: Handle commands
     // Step 3: Play current samples
@@ -440,7 +447,7 @@ impl Engine {
                 if let Some(m) = &mut self.metronome {
                     m.reset();
                 }
-                self.time = -(measure_len.0 as i64);
+                self.set_time(FrameTime(-(measure_len.0 as i64)));
             } else {
                 // process triggers
                 let prev_beat_of_measure = self
@@ -489,7 +496,7 @@ impl Engine {
                     if stopped {
                         // if we were previously stopped, we will cheat a bit and reset the time to
                         // *exactly* 0 (it will be something between 0 and frame_size)
-                        self.time = 0;
+                        self.set_time(FrameTime(0));
                     }
 
                     let next_beat_time = self

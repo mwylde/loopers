@@ -14,6 +14,8 @@ extern crate tower_grpc;
 extern crate tower_hyper;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 
 use crate::midi::MidiEvent;
 use clap::{App, Arg};
