@@ -121,7 +121,10 @@ mod tests {
 
         let mut input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
         let mut input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
-        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+        let mut o = [
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+        ];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
@@ -139,7 +142,8 @@ mod tests {
         process_until_done(&mut l);
 
         for i in (0..CROSS_FADE_SAMPLES * 2).step_by(32) {
-            l.process_input(time as u64,
+            l.process_input(
+                time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
             );
             process_until_done(&mut l);
@@ -151,7 +155,10 @@ mod tests {
             time += 32;
         }
 
-        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+        let mut o = [
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+        ];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
@@ -191,7 +198,8 @@ mod tests {
         let mut time = 0i64;
         // process some random input
         for i in (0..CROSS_FADE_SAMPLES).step_by(32) {
-            l.process_input(time as u64,
+            l.process_input(
+                time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
             );
             process_until_done(&mut l);
@@ -220,7 +228,8 @@ mod tests {
 
         // process that
         for i in (0..CROSS_FADE_SAMPLES).step_by(32) {
-            l.process_input(time as u64,
+            l.process_input(
+                time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
             );
             process_until_done(&mut l);
@@ -238,7 +247,10 @@ mod tests {
         input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
         input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
 
-        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+        let mut o = [
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+        ];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
@@ -256,7 +268,10 @@ mod tests {
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
-        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+        let mut o = [
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+            vec![0f64; CROSS_FADE_SAMPLES * 2],
+        ];
         l.process_output(FrameTime(time), &mut o);
         process_until_done(&mut l);
 
@@ -444,7 +459,10 @@ impl LooperBackend {
                 let mut read = 0;
                 let mut processing = false;
                 while read < size {
-                    let buf = self.in_queue.pop().expect("missing expected data from queue");
+                    let buf = self
+                        .in_queue
+                        .pop()
+                        .expect("missing expected data from queue");
                     if buf.id == id {
                         processing = true;
                     } else if processing {
@@ -494,7 +512,7 @@ impl LooperBackend {
         // timing won't be correct if we wrap around.
         if sample_len > 0 && self.mode != LooperMode::Record {
             // make sure we don't lap our input
-            while self.out_time.0 < self.in_time.0 + sample_len as i64  {
+            while self.out_time.0 < self.in_time.0 + sample_len as i64 {
                 let mut buf = TransferBuf {
                     id: 0,
                     time: self.out_time,
@@ -510,7 +528,8 @@ impl LooperBackend {
 
                     for i in 0..2 {
                         for t in 0..TRANSFER_BUF_SIZE {
-                            buf.data[i][t] += b[i][(self.out_time.0 as usize + t) % sample_len] as f64;
+                            buf.data[i][t] +=
+                                b[i][(self.out_time.0 as usize + t) % sample_len] as f64;
                         }
                     }
                 }
@@ -519,7 +538,10 @@ impl LooperBackend {
                     break;
                 }
 
-                debug!("[OUTPUT] t = {} [{}; {}]", self.out_time.0, buf.data[0][0], TRANSFER_BUF_SIZE);
+                debug!(
+                    "[OUTPUT] t = {} [{}; {}]",
+                    self.out_time.0, buf.data[0][0], TRANSFER_BUF_SIZE
+                );
 
                 self.out_time.0 += TRANSFER_BUF_SIZE as i64;
             }
