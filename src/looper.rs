@@ -157,7 +157,6 @@ mod tests {
         process_until_done(&mut l);
 
         l.process_output(FrameTime(time), &mut o);
-        process_until_done(&mut l);
 
         verify_length(&l, CROSS_FADE_SAMPLES as u64 * 2);
 
@@ -182,79 +181,103 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn test_pre_xfade() {
-    //     let mut l = Looper::new(1);
-    //
-    //     let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
-    //     let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
-    //
-    //     // process some random input
-    //     for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
-    //         l.process_input(
-    //             l.length_in_samples() + i as u64,
-    //             &[&input_left[i..i + 16], &input_right[i..i + 16]],
-    //         );
-    //     }
-    //
-    //     // construct our real input
-    //     for i in 0..CROSS_FADE_SAMPLES {
-    //         // q = i / CROSS_FADE_SAMPLES
-    //         // 0 = d[i] * (1 - q) + x * q
-    //         // -d[i] * (1-q) = x*q
-    //         // (-i * (1-q)) / q
-    //
-    //         let q = 1.0 - i as f32 / CROSS_FADE_SAMPLES as f32;
-    //
-    //         if i != 0 {
-    //             input_left[i] = -q / (1f32 - q);
-    //             input_right[i] = q / (1f32 - q);
-    //         }
-    //     }
-    //
-    //     // process that
-    //     for i in (0..CROSS_FADE_SAMPLES).step_by(16) {
-    //         l.process_input(
-    //             l.length_in_samples() + i as u64,
-    //             &[&input_left[i..i + 16], &input_right[i..i + 16]],
-    //         );
-    //     }
-    //
-    //     l.transition_to(LooperMode::Record);
-    //
-    //     input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
-    //     input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
-    //
-    //     l.process_input(0, &[&input_left, &input_right]);
-    //
-    //     l.transition_to(LooperMode::Overdub);
-    //
-    //     let output_left = vec![0f64; CROSS_FADE_SAMPLES * 2];
-    //     let output_right = vec![0f64; CROSS_FADE_SAMPLES * 2];
-    //     let mut o = [output_left, output_right];
-    //     l.process_output(FrameTime(0), &mut o);
-    //
-    //     for i in 0..o[0].len() {
-    //         if i <= CROSS_FADE_SAMPLES {
-    //             assert_eq!(1f64, o[0][i]);
-    //             assert_eq!(-1f64, o[1][i]);
-    //         } else {
-    //             assert!(
-    //                 (0f64 - o[0][i]).abs() < 0.000001,
-    //                 "left is {} at idx {}, expected 0",
-    //                 o[0][i],
-    //                 i
-    //             );
-    //             assert!(
-    //                 (0f64 - o[1][i]).abs() < 0.000001,
-    //                 "right is {} at idx {}, expected 0",
-    //                 o[1][i],
-    //                 i
-    //             );
-    //         }
-    //     }
-    // }
-    //
+    #[test]
+    fn test_pre_xfade() {
+        let mut l = Looper::new(1);
+
+        let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
+        let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
+
+        let mut time = 0i64;
+        // process some random input
+        for i in (0..CROSS_FADE_SAMPLES).step_by(32) {
+            l.process_input(time as u64,
+                &[&input_left[i..i + 32], &input_right[i..i + 32]],
+            );
+            process_until_done(&mut l);
+
+            let mut o = [vec![0f64; 32], vec![0f64; 32]];
+            l.process_output(FrameTime(time), &mut o);
+            process_until_done(&mut l);
+
+            time += 32;
+        }
+
+        // construct our real input
+        for i in 0..CROSS_FADE_SAMPLES {
+            // q = i / CROSS_FADE_SAMPLES
+            // 0 = d[i] * (1 - q) + x * q
+            // -d[i] * (1-q) = x*q
+            // (-i * (1-q)) / q
+
+            let q = 1.0 - i as f32 / CROSS_FADE_SAMPLES as f32;
+
+            if i != 0 {
+                input_left[i] = -q / (1f32 - q);
+                input_right[i] = q / (1f32 - q);
+            }
+        }
+
+        // process that
+        for i in (0..CROSS_FADE_SAMPLES).step_by(32) {
+            l.process_input(time as u64,
+                &[&input_left[i..i + 32], &input_right[i..i + 32]],
+            );
+            process_until_done(&mut l);
+
+            let mut o = [vec![0f64; 32], vec![0f64; 32]];
+            l.process_output(FrameTime(time), &mut o);
+            process_until_done(&mut l);
+
+            time += 32;
+        }
+
+        l.transition_to(LooperMode::Record);
+        process_until_done(&mut l);
+
+        input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
+        input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
+
+        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+
+        l.process_input(time as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+        time += input_left.len() as i64;
+
+        l.transition_to(LooperMode::Playing);
+        process_until_done(&mut l);
+
+        // Go around again (we don't have the crossfaded samples until the second time around)
+        l.process_input(time as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+        time += input_left.len() as i64;
+
+        let mut o = [vec![0f64; CROSS_FADE_SAMPLES * 2], vec![0f64; CROSS_FADE_SAMPLES * 2]];
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+
+        for i in 0..o[0].len() {
+            if i > CROSS_FADE_SAMPLES {
+                assert!(
+                    (0f64 - o[0][i]).abs() < 0.000001,
+                    "left is {} at idx {}, expected 0",
+                    o[0][i],
+                    i
+                );
+                assert!(
+                    (0f64 - o[1][i]).abs() < 0.000001,
+                    "right is {} at idx {}, expected 0",
+                    o[1][i],
+                    i
+                );
+            }
+        }
+    }
+
     // #[test]
     // #[ignore]
     // fn test_serialization() {
@@ -470,16 +493,14 @@ impl LooperBackend {
         // don't fill the output if we're in record mode, because we don't know our length. the
         // timing won't be correct if we wrap around.
         if sample_len > 0 && self.mode != LooperMode::Record {
-            let mut buf = TransferBuf {
-                id: 0,
-                time: self.out_time,
-                size: TRANSFER_BUF_SIZE,
-                data: [[0f32; TRANSFER_BUF_SIZE]; 2],
-            };
-
             // make sure we don't lap our input
             while self.out_time.0 < self.in_time.0 + sample_len as i64  {
-                buf.time = self.out_time;
+                let mut buf = TransferBuf {
+                    id: 0,
+                    time: self.out_time,
+                    size: TRANSFER_BUF_SIZE,
+                    data: [[0f32; TRANSFER_BUF_SIZE]; 2],
+                };
 
                 for sample in &self.samples {
                     let b = &sample.buffer;
@@ -507,6 +528,7 @@ impl LooperBackend {
 
     // state transition functions
     fn handle_crossfades(&mut self, _next_state: LooperMode) {
+        debug!("handling crossfade");
         self.xfade_samples_left = CROSS_FADE_SAMPLES;
         self.xfade_sample_idx = self.samples.len() - 1;
 
@@ -567,7 +589,7 @@ impl LooperBackend {
         //                                       &(&s.buffer[1])[range]]);
         //         self.input_buffer_idx += count;
         //     } else {
-        //         println!("no previous sample when moving to overdub!");
+        //         debug!("no previous sample when moving to overdub!");
         //     }
         // }
 
@@ -575,7 +597,7 @@ impl LooperBackend {
     }
 
     pub fn transition_to(&mut self, mode: LooperMode) {
-        info!("Transition {:?} to {:?}", self.mode, mode);
+        debug!("Transition {:?} to {:?}", self.mode, mode);
 
         if self.mode == mode {
             // do nothing if we're not changing state
@@ -624,7 +646,7 @@ impl LooperBackend {
                 self.xfade_samples_left =
                     (self.xfade_samples_left as i64 - inputs[0].len() as i64).max(0) as usize;
             } else {
-                println!("tried to cross fade but no samples... something is likely wrong");
+                debug!("tried to cross fade but no samples... something is likely wrong");
             }
         }
 
