@@ -7,14 +7,13 @@ use crate::protos::command::CommandOneof;
 use crate::protos::looper_command::TargetOneof;
 use crate::protos::*;
 use crate::sample::Sample;
-use bytes::BytesMut;
-use chrono::Local;
+use crate::session::SessionSaver;
 use crossbeam_queue::SegQueue;
 use prost::Message;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -65,6 +64,8 @@ pub struct Engine {
 
     is_learning: bool,
     last_midi: Option<Vec<u8>>,
+
+    session_saver: SessionSaver,
 }
 
 #[allow(dead_code)]
@@ -77,7 +78,7 @@ fn max_abs(b: &[f32]) -> f32 {
         .fold(NEG_INFINITY, |a, b| a.max(b))
 }
 
-fn last_session_path() -> io::Result<PathBuf> {
+pub fn last_session_path() -> io::Result<PathBuf> {
     let mut config_path = dirs::config_dir().unwrap();
     config_path.push("loopers");
     create_dir_all(&config_path)?;
@@ -118,7 +119,13 @@ impl Engine {
 
             is_learning: false,
             last_midi: None,
+
+            session_saver: SessionSaver::new(),
         };
+
+        for l in &engine.loopers {
+            engine.session_saver.add_looper(l);
+        }
 
         if restore {
             let mut restore_fn = || {
@@ -184,6 +191,8 @@ impl Engine {
             }
         }
 
+        let mut session_saver = self.session_saver.clone();
+
         let loopers: Vec<&mut Looper> = match lc.target_oneof.as_ref().unwrap() {
             TargetOneof::TargetAll(_) => self.loopers.iter_mut().collect(),
             TargetOneof::TargetSelected(_) => {
@@ -231,6 +240,7 @@ impl Engine {
                         selected = Some(l.id);
                     }
                     LooperCommandType::Delete => {
+                        session_saver.remove_looper(l.id);
                         l.deleted = true;
                     }
 
@@ -255,39 +265,10 @@ impl Engine {
         }
     }
 
-    fn save_session(&self, command: &SaveSessionCommand) -> Result<(), SaveLoadError> {
-        let now = Local::now();
-        let mut path = PathBuf::from(&command.path);
-        path.push(now.format("%Y-%m-%d_%H:%M:%S").to_string());
-
-        create_dir_all(&path)?;
-
-        let mut session = SavedSession {
-            save_time: now.timestamp_millis(),
-            time_signature_upper: self.metric_structure.time_signature.upper as u64,
-            time_signature_lower: self.metric_structure.time_signature.lower as u64,
-            tempo_mbpm: self.metric_structure.tempo.mbpm,
-            loopers: Vec::with_capacity(self.loopers.len()),
-        };
-
-        for l in &self.loopers {
-            let state = l.serialize(&path)?;
-            session.loopers.push(state);
-        }
-
-        path.push("project.loopers");
-        let mut file = File::create(&path)?;
-
-        let mut buf = BytesMut::with_capacity(session.encoded_len());
-        session.encode(&mut buf)?;
-        file.write_all(&buf)?;
-
-        // save our last session
-        let config_path = last_session_path()?;
-        let mut last_session = File::create(config_path)?;
-        write!(last_session, "{}", path.to_string_lossy())?;
-
-        Ok(())
+    fn save_session(&mut self, command: &SaveSessionCommand) -> Result<(), SaveLoadError> {
+        // TODO: get rid of this allocation
+        let path = PathBuf::from(&command.path);
+        self.session_saver.save_session(self.metric_structure, path)
     }
 
     fn load_session(&mut self, command: &LoadSessionCommand) -> Result<(), SaveLoadError> {
@@ -312,9 +293,15 @@ impl Engine {
             mbpm: session.tempo_mbpm,
         };
 
+        for l in &self.loopers {
+            self.session_saver.remove_looper(l.id);
+        }
         self.loopers.clear();
+
         for l in session.loopers {
-            self.loopers.push(Looper::from_serialized(&l, dir)?);
+            let looper = Looper::from_serialized(&l, dir)?.start();
+            self.session_saver.add_looper(&looper);
+            self.loopers.push(looper);
         }
 
         Ok(())
@@ -333,7 +320,9 @@ impl Engine {
                                 self.set_time(FrameTime(0));
                             }
                             GlobalCommandType::AddLooper => {
-                                self.loopers.push(Looper::new(self.id_counter).start());
+                                let looper = Looper::new(self.id_counter).start();
+                                self.session_saver.add_looper(&looper);
+                                self.loopers.push(looper);
                                 self.active = self.id_counter;
                                 self.id_counter += 1;
                             }

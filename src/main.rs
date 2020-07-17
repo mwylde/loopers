@@ -33,6 +33,7 @@ mod metronome;
 mod midi;
 mod music;
 mod sample;
+mod session;
 
 fn main() {
     let matches = App::new("loopers")

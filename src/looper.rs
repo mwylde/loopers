@@ -5,7 +5,7 @@ use crate::sample;
 use crate::sample::{Sample, XfadeDirection};
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use crossbeam_queue::ArrayQueue;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
 
@@ -293,61 +293,62 @@ mod tests {
         }
     }
 
-    // #[test]
-    // #[ignore]
-    // fn test_serialization() {
-    //     let dir = tempdir().unwrap();
-    //     let mut input_left = vec![];
-    //     let mut input_right = vec![];
-    //
-    //     let mut input_left2 = vec![];
-    //     let mut input_right2 = vec![];
-    //
-    //     for t in (0..16).map(|x| x as f32 / 44100.0) {
-    //         let sample = (t * 440.0 * 2.0 * PI).sin();
-    //         input_left.push(sample / 2.0);
-    //         input_right.push(sample / 2.0);
-    //
-    //         let sample = (t * 540.0 * 2.0 * PI).sin();
-    //         input_left2.push(sample / 2.0);
-    //         input_right2.push(sample / 2.0);
-    //     }
-    //
-    //     let mut looper = Looper::new(5);
-    //
-    //     looper.transition_to(LooperMode::Record);
-    //     looper.process_input(0, &[&input_left, &input_right]);
-    //
-    //     looper.transition_to(LooperMode::Overdub);
-    //     looper.process_input(0, &[&input_left2, &input_right2]);
-    //
-    //     let state = looper.serialize(dir.path()).unwrap();
-    //
-    //     let deserialized = Looper::from_serialized(&state, dir.path()).unwrap();
-    //
-    //     assert_eq!(looper.id, deserialized.id);
-    //     assert_eq!(2, deserialized.samples.len());
-    //
-    //     for i in 0..input_left.len() {
-    //         assert!(
-    //             (looper.samples[0].buffer[0][i] - deserialized.samples[0].buffer[0][i]).abs()
-    //                 < 0.00001
-    //         );
-    //         assert!(
-    //             (looper.samples[0].buffer[1][i] - deserialized.samples[0].buffer[1][i]).abs()
-    //                 < 0.00001
-    //         );
-    //
-    //         assert!(
-    //             (looper.samples[1].buffer[0][i] - deserialized.samples[1].buffer[0][i]).abs()
-    //                 < 0.00001
-    //         );
-    //         assert!(
-    //             (looper.samples[1].buffer[0][i] - deserialized.samples[1].buffer[1][i]).abs()
-    //                 < 0.00001
-    //         );
-    //     }
-    // }
+    #[test]
+    fn test_serialization() {
+        let dir = tempdir().unwrap();
+        let mut input_left = vec![];
+        let mut input_right = vec![];
+
+        let mut input_left2 = vec![];
+        let mut input_right2 = vec![];
+
+        for t in (0..16).map(|x| x as f32 / 44100.0) {
+            let sample = (t * 440.0 * 2.0 * PI).sin();
+            input_left.push(sample / 2.0);
+            input_right.push(sample / 2.0);
+
+            let sample = (t * 540.0 * 2.0 * PI).sin();
+            input_left2.push(sample / 2.0);
+            input_right2.push(sample / 2.0);
+        }
+
+        let mut l = Looper::new(5);
+
+        l.transition_to(LooperMode::Record);
+        process_until_done(&mut l);
+        l.process_input(0, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+
+        l.transition_to(LooperMode::Overdub);
+        process_until_done(&mut l);
+        l.process_input(0, &[&input_left2, &input_right2]);
+        process_until_done(&mut l);
+
+        let (tx, rx) = bounded(1);
+        l.channel()
+            .send(ControlMessage::Serialize(dir.path().to_path_buf(), tx))
+            .unwrap();
+        process_until_done(&mut l);
+
+        let state = rx.recv().unwrap().unwrap();
+
+        let deserialized = Looper::from_serialized(&state, dir.path()).unwrap();
+
+        assert_eq!(l.id, deserialized.id);
+
+        let b1 = l.backend.as_ref().unwrap();
+        let b2 = deserialized.backend.as_ref().unwrap();
+
+        assert_eq!(2, b2.samples.len());
+
+        for i in 0..input_left.len() {
+            assert!((b1.samples[0].buffer[0][i] - b2.samples[0].buffer[0][i]).abs() < 0.00001);
+            assert!((b1.samples[0].buffer[1][i] - b2.samples[0].buffer[1][i]).abs() < 0.00001);
+
+            assert!((b1.samples[1].buffer[0][i] - b2.samples[1].buffer[0][i]).abs() < 0.00001);
+            assert!((b1.samples[1].buffer[0][i] - b2.samples[1].buffer[1][i]).abs() < 0.00001);
+        }
+    }
 }
 
 const CROSS_FADE_SAMPLES: usize = 64; //8192;
@@ -398,12 +399,13 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-enum ControlMessage {
+pub enum ControlMessage {
     InputDataReady { id: u64, size: usize },
     TransitionTo(LooperMode),
     SetTime(FrameTime),
     ReadOutput,
     Shutdown,
+    Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
 }
 
 const TRANSFER_BUF_SIZE: usize = 32;
@@ -499,6 +501,12 @@ impl LooperBackend {
             ControlMessage::Shutdown => {
                 info!("Got shutdown message, stopping");
                 return false;
+            }
+            ControlMessage::Serialize(path, channel) => {
+                let result = self.serialize(&path);
+                if let Err(e) = channel.try_send(result) {
+                    warn!("failed to respond to serialize request: {:?}", e);
+                }
             }
         }
 
@@ -678,6 +686,34 @@ impl LooperBackend {
     pub fn length_in_samples(&self) -> u64 {
         self.samples.get(0).map(|s| s.length()).unwrap_or(0)
     }
+
+    pub fn serialize(&self, path: &Path) -> Result<SavedLooper, SaveLoadError> {
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 44100,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+
+        let mut saved = SavedLooper {
+            id: self.id,
+            samples: Vec::with_capacity(self.samples.len()),
+        };
+
+        for (i, s) in self.samples.iter().enumerate() {
+            let p = path.join(format!("loop_{}_{}.wav", self.id, i));
+            let mut writer = hound::WavWriter::create(&p, spec.clone())?;
+
+            for j in 0..s.length() as usize {
+                writer.write_sample(s.buffer[0][j])?;
+                writer.write_sample(s.buffer[1][j])?;
+            }
+            writer.finalize()?;
+            saved.samples.push(p.to_str().unwrap().to_string());
+        }
+
+        Ok(saved)
+    }
 }
 
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
@@ -699,6 +735,10 @@ pub struct Looper {
 impl Looper {
     pub fn new(id: u32) -> Looper {
         Self::new_with_samples(id, vec![])
+    }
+
+    pub fn channel(&self) -> Sender<ControlMessage> {
+        self.channel.clone()
     }
 
     fn new_with_samples(id: u32, samples: Vec<Sample>) -> Looper {
@@ -921,36 +961,6 @@ impl Looper {
 
     pub fn length_in_samples(&self) -> u64 {
         self.length_in_samples
-    }
-
-    pub fn serialize(&self, _path: &Path) -> Result<SavedLooper, SaveLoadError> {
-        // let spec = hound::WavSpec {
-        //     channels: 2,
-        //     sample_rate: 44100,
-        //     bits_per_sample: 32,
-        //     sample_format: hound::SampleFormat::Float,
-        // };
-        //
-        // let mut saved = SavedLooper {
-        //     id: self.id,
-        //     samples: Vec::with_capacity(self.samples.len()),
-        // };
-        //
-        // for (i, s) in self.samples.iter().enumerate() {
-        //     let p = path.join(format!("loop_{}_{}.wav", self.id, i));
-        //     let mut writer = hound::WavWriter::create(&p, spec.clone())?;
-        //
-        //     for j in 0..s.length() as usize {
-        //         writer.write_sample(s.buffer[0][j])?;
-        //         writer.write_sample(s.buffer[1][j])?;
-        //     }
-        //     writer.finalize()?;
-        //     saved.samples.push(p.to_str().unwrap().to_string());
-        // }
-        //
-        // Ok(saved)
-
-        unimplemented!()
     }
 }
 

@@ -5,6 +5,10 @@ pub enum SaveLoadError {
     HoundError(hound::Error),
     IOError(io::Error),
     OtherError(String),
+    LooperSaveError(u32),
+    LooperTimeoutError,
+    ChannelFull,
+    ChannelClosed,
 }
 
 impl From<hound::Error> for SaveLoadError {
