@@ -394,11 +394,11 @@ enum ControlMessage {
 const TRANSFER_BUF_SIZE: usize = 32;
 
 #[derive(Clone, Copy)]
-struct TransferBuf {
+struct TransferBuf<DATA> {
     id: u64,
     time: FrameTime,
     size: usize,
-    data: [[f32; TRANSFER_BUF_SIZE]; 2],
+    data: [[DATA; TRANSFER_BUF_SIZE]; 2],
 }
 
 struct LooperBackend {
@@ -415,8 +415,8 @@ struct LooperBackend {
     xfade_samples_left: usize,
     xfade_sample_idx: usize,
 
-    in_queue: Arc<ArrayQueue<TransferBuf>>,
-    out_queue: Arc<ArrayQueue<TransferBuf>>,
+    in_queue: Arc<ArrayQueue<TransferBuf<f32>>>,
+    out_queue: Arc<ArrayQueue<TransferBuf<f64>>>,
 
     channel: Receiver<ControlMessage>,
 }
@@ -499,7 +499,7 @@ impl LooperBackend {
                     id: 0,
                     time: self.out_time,
                     size: TRANSFER_BUF_SIZE,
-                    data: [[0f32; TRANSFER_BUF_SIZE]; 2],
+                    data: [[0f64; TRANSFER_BUF_SIZE]; 2],
                 };
 
                 for sample in &self.samples {
@@ -510,7 +510,7 @@ impl LooperBackend {
 
                     for i in 0..2 {
                         for t in 0..TRANSFER_BUF_SIZE {
-                            buf.data[i][t] += b[i][(self.out_time.0 as usize + t) % sample_len];
+                            buf.data[i][t] += b[i][(self.out_time.0 as usize + t) % sample_len] as f64;
                         }
                     }
                 }
@@ -669,8 +669,8 @@ pub struct Looper {
     backend: Option<LooperBackend>,
     length_in_samples: u64,
     msg_counter: u64,
-    out_queue: Arc<ArrayQueue<TransferBuf>>,
-    in_queue: Arc<ArrayQueue<TransferBuf>>,
+    out_queue: Arc<ArrayQueue<TransferBuf<f32>>>,
+    in_queue: Arc<ArrayQueue<TransferBuf<f64>>>,
     channel: Sender<ControlMessage>,
 }
 
