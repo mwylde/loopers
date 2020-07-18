@@ -337,12 +337,12 @@ impl Engine {
                 }
                 CommandOneof::SaveSessionCommand(command) => {
                     if let Err(e) = self.save_session(command) {
-                        println!("Failed to save session {:?}", e);
+                        error!("Failed to save session {:?}", e);
                     }
                 }
                 CommandOneof::LoadSessionCommand(command) => {
                     if let Err(e) = self.load_session(command) {
-                        println!("Failed to load session {:?}", e);
+                        error!("Failed to load session {:?}", e);
                     }
                 }
                 CommandOneof::MetronomeVolumeCommand(command) => {
@@ -351,16 +351,16 @@ impl Engine {
                             metronome.set_volume(command.volume);
                         }
                     } else {
-                        println!("Invalid metronome volume; must be between 0 and 1");
+                        error!("Invalid metronome volume; must be between 0 and 1");
                     }
                 }
             }
         }
     }
 
-    fn play_loops(&self, outputs: &mut [Vec<f64>; 2]) {
+    fn play_loops(&mut self, outputs: &mut [Vec<f64>; 2]) {
         if self.time >= 0 {
-            for looper in &self.loopers {
+            for looper in self.loopers.iter_mut() {
                 if !looper.deleted
                     && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub)
                 {

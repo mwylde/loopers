@@ -15,6 +15,13 @@ mod tests {
     use std::f32::consts::PI;
     use tempfile::tempdir;
 
+    fn install_test_logger() {
+        let _ = fern::Dispatch::new()
+            .level(log::LevelFilter::Debug)
+            .chain(fern::Output::call(|record| println!("{}", record.args())))
+            .apply();
+    }
+
     fn process_until_done(looper: &mut Looper) {
         loop {
             let msg = looper.backend.as_mut().unwrap().channel.try_recv();
@@ -47,7 +54,35 @@ mod tests {
     }
 
     #[test]
+    fn test_transfer_buf() {
+        let mut t = TransferBuf {
+            id: 0,
+            time: FrameTime(12),
+            size: 22,
+            data: [[0i32; TRANSFER_BUF_SIZE]; 2],
+        };
+
+        for i in 0usize..22 {
+            t.data[0][i] = i as i32 + 1;
+            t.data[1][i] = -(i as i32 + 1);
+        }
+
+        assert!(!t.contains_t(FrameTime(0)));
+        assert!(!t.contains_t(FrameTime(11)));
+
+        assert!(t.contains_t(FrameTime(12)));
+        assert!(t.contains_t(FrameTime(33)));
+
+        assert!(!t.contains_t(FrameTime(34)));
+
+        assert_eq!(Some((1, -1)), t.get_t(FrameTime(12)));
+        assert_eq!(Some((22, -22)), t.get_t(FrameTime(33)));
+    }
+
+    #[test]
     fn test_new() {
+        install_test_logger();
+
         let looper = Looper::new(1);
         verify_mode(&looper, LooperMode::None);
         assert_eq!(1, looper.id);
@@ -56,6 +91,8 @@ mod tests {
 
     #[test]
     fn test_transitions() {
+        install_test_logger();
+
         let mut looper = Looper::new(1);
 
         verify_mode(&looper, LooperMode::None);
@@ -88,6 +125,8 @@ mod tests {
 
     #[test]
     fn test_io() {
+        install_test_logger();
+
         let mut l = Looper::new(1);
         l.transition_to(LooperMode::Record);
         process_until_done(&mut l);
@@ -105,14 +144,96 @@ mod tests {
 
         let mut o = [output_left, output_right];
 
-        l.process_output(FrameTime(0), &mut o);
+        l.process_output(FrameTime(input_left.len() as i64), &mut o);
         process_until_done(&mut l);
         assert_eq!([2.0f64, 3.0, 4.0, 5.0, 2.0, 3.0], o[0][0..6]);
         assert_eq!([-2.0f64, -3.0, -4.0, -5.0, -2.0, -3.0], o[1][0..6]);
     }
 
     #[test]
+    fn test_non_harmonious_lengths() {
+        install_test_logger();
+
+        // ensure that everything works correctly when our looper length is not a multiple of the
+        // buffer size or our TRANSFER_BUF_SIZE
+
+        let buf_size = 128;
+
+        let mut l = Looper::new(2);
+        l.transition_to(LooperMode::Record);
+
+        let mut input_left = vec![1f32; buf_size];
+        let mut input_right = vec![-1f32; buf_size];
+
+        let mut time = 0i64;
+
+        l.process_input(0, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+
+        let mut o = [vec![0f64; buf_size], vec![0f64; buf_size]];
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+        time += buf_size as i64;
+
+        // first give the part before the state change (which will be recorded)
+        input_left = vec![2f32; buf_size];
+        input_right = vec![-2f32; buf_size];
+        l.process_input(time as u64, &[&input_left[0..100], &input_right[0..100]]);
+        process_until_done(&mut l);
+
+        // then transition
+        l.transition_to(LooperMode::Overdub);
+        process_until_done(&mut l);
+
+        let len = buf_size + 100;
+        verify_length(&l, len as u64);
+
+        // then give the rest and process output
+        l.process_input(time as u64, &[&input_left[100..buf_size],
+            &input_right[100..buf_size]]);
+        process_until_done(&mut l);
+
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+
+        for i in 0..buf_size {
+            let t = time as usize + i;
+            if t < buf_size + 100 {
+                assert_eq!(o[0][i], 0f64);
+                assert_eq!(o[1][i], 0f64);
+            } else if t % len < buf_size  {
+                assert_eq!(o[0][i], 1f64);
+                assert_eq!(o[1][i], -1f64);
+            } else {
+                assert_eq!(o[0][i], 2f64);
+                assert_eq!(o[1][i], -2f64);
+
+            }
+        }
+
+        time += buf_size as i64;
+
+        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
+        l.process_output(FrameTime(time), &mut o);
+        process_until_done(&mut l);
+
+        for i in 0..buf_size {
+            let t = time as usize + i;
+            if t % len < buf_size {
+                assert_eq!(o[0][i], 1f64);
+                assert_eq!(o[1][i], -1f64);
+            } else {
+                assert_eq!(o[0][i], 2f64);
+                assert_eq!(o[1][i], -2f64);
+
+            }
+        }
+    }
+
+    #[test]
     fn test_post_xfade() {
+        install_test_logger();
+
         let mut l = Looper::new(1);
         l.transition_to(LooperMode::Record);
         process_until_done(&mut l);
@@ -190,6 +311,8 @@ mod tests {
 
     #[test]
     fn test_pre_xfade() {
+        install_test_logger();
+
         let mut l = Looper::new(1);
 
         let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
@@ -295,6 +418,8 @@ mod tests {
 
     #[test]
     fn test_serialization() {
+        install_test_logger();
+
         let dir = tempdir().unwrap();
         let mut input_left = vec![];
         let mut input_right = vec![];
@@ -367,6 +492,11 @@ impl StateMachine {
         StateMachine {
             transitions: vec![
                 (
+                    vec![Record],
+                    vec![],
+                    LooperBackend::finish_recording,
+                ),
+                (
                     vec![Record, Overdub],
                     vec![],
                     LooperBackend::handle_crossfades,
@@ -403,7 +533,7 @@ pub enum ControlMessage {
     InputDataReady { id: u64, size: usize },
     TransitionTo(LooperMode),
     SetTime(FrameTime),
-    ReadOutput,
+    ReadOutput(FrameTime),
     Shutdown,
     Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
 }
@@ -411,11 +541,26 @@ pub enum ControlMessage {
 const TRANSFER_BUF_SIZE: usize = 32;
 
 #[derive(Clone, Copy)]
-struct TransferBuf<DATA> {
+struct TransferBuf<DATA: Copy> {
     id: u64,
     time: FrameTime,
     size: usize,
     data: [[DATA; TRANSFER_BUF_SIZE]; 2],
+}
+
+impl <DATA: Copy> TransferBuf<DATA> {
+    pub fn contains_t(&self, time: FrameTime) -> bool {
+        return time.0 >= self.time.0 && time.0 < self.time.0 + self.size as i64;
+    }
+
+    pub fn get_t(&self, time: FrameTime) -> Option<(DATA, DATA)> {
+        if self.contains_t(time) {
+            let idx = (time.0 - self.time.0) as usize;
+            Some((self.data[0][idx], self.data[1][idx]))
+        } else {
+            None
+        }
+    }
 }
 
 struct LooperBackend {
@@ -456,6 +601,7 @@ impl LooperBackend {
     }
 
     fn handle_msg(&mut self, msg: ControlMessage) -> bool /* continue */ {
+        info!("[{}] got control message: {:?}", self.id, msg);
         match msg {
             ControlMessage::InputDataReady { id, size } => {
                 let mut read = 0;
@@ -493,10 +639,10 @@ impl LooperBackend {
             }
             ControlMessage::SetTime(time) => {
                 self.out_time = time;
+                self.in_time = time;
             }
-            ControlMessage::ReadOutput => {
-                // don't do anything specific, this is just a notification that some output has been
-                // read and we need to replace it
+            ControlMessage::ReadOutput(time) => {
+                self.in_time = time;
             }
             ControlMessage::Shutdown => {
                 info!("Got shutdown message, stopping");
@@ -518,8 +664,8 @@ impl LooperBackend {
         let sample_len = self.length_in_samples() as usize;
         // don't fill the output if we're in record mode, because we don't know our length. the
         // timing won't be correct if we wrap around.
-        if sample_len > 0 && self.mode != LooperMode::Record {
-            // make sure we don't lap our input
+        if sample_len > 0 && self.mode != LooperMode::Record && self.out_time.0 >= 0 {
+            // make sure we don't pass our input
             while self.out_time.0 < self.in_time.0 + sample_len as i64 {
                 let mut buf = TransferBuf {
                     id: 0,
@@ -547,13 +693,19 @@ impl LooperBackend {
                 }
 
                 debug!(
-                    "[OUTPUT] t = {} [{}; {}]",
-                    self.out_time.0, buf.data[0][0], TRANSFER_BUF_SIZE
+                    "[OUTPUT] t = {} [{}; {}] (in time = {})",
+                    self.out_time.0, buf.data[0][0], TRANSFER_BUF_SIZE, self.in_time.0
                 );
 
                 self.out_time.0 += TRANSFER_BUF_SIZE as i64;
             }
         }
+    }
+
+    fn finish_recording(&mut self, _: LooperMode) {
+        // update our out time to the loop length so that we don't bother outputting a bunch of
+        // of wasted data
+        self.out_time = FrameTime(self.length_in_samples() as i64);
     }
 
     // state transition functions
@@ -628,6 +780,7 @@ impl LooperBackend {
 
     pub fn transition_to(&mut self, mode: LooperMode) {
         debug!("Transition {:?} to {:?}", self.mode, mode);
+        self.fill_output();
 
         if self.mode == mode {
             // do nothing if we're not changing state
@@ -663,6 +816,7 @@ impl LooperBackend {
         // after recording finishes, cross fade some samples with the beginning of the loop to
         // reduce popping
         if self.xfade_samples_left > 0 {
+            debug!("crossfading beginning at time {}", time_in_samples);
             if let Some(s) = self.samples.get_mut(self.xfade_sample_idx) {
                 // this assumes that things are sample-aligned
                 s.xfade(
@@ -730,6 +884,8 @@ pub struct Looper {
     out_queue: Arc<ArrayQueue<TransferBuf<f32>>>,
     in_queue: Arc<ArrayQueue<TransferBuf<f64>>>,
     channel: Sender<ControlMessage>,
+
+    in_progress_output: Option<TransferBuf<f64>>,
 }
 
 impl Looper {
@@ -779,6 +935,8 @@ impl Looper {
             in_queue: play_queue.clone(),
             out_queue: record_queue.clone(),
             channel: s,
+
+            in_progress_output: None,
         };
 
         looper
@@ -833,60 +991,120 @@ impl Looper {
             .expect("channel closed");
     }
 
+    fn output_for_t(&mut self, t: FrameTime) -> Option<(f64, f64)> {
+        let mut cur = self.in_progress_output.or_else(|| self.in_queue.pop().ok())?;
+        self.in_progress_output = Some(cur);
+
+        loop {
+            if cur.time.0 > t.0 {
+                debug!(
+                    "data is in future for looper id {} (time is {}, needed {})",
+                    self.id, cur.time.0, t.0
+                );
+                return None;
+            }
+
+            if let Some(o) = cur.get_t(t) {
+                return Some(o);
+            }
+
+            if let Ok(buf) = self.in_queue.pop() {
+                cur = buf;
+                self.in_progress_output = Some(buf);
+            } else {
+                self.in_progress_output = None;
+                return None;
+            }
+        }
+    }
+
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
-    pub fn process_output(&self, time: FrameTime, outputs: &mut [Vec<f64>; 2]) {
-        assert_eq!(
-            outputs[0].len() % TRANSFER_BUF_SIZE,
-            0,
-            "buffer size must be a multiple of TRANSFER_BUF_SIZE"
-        );
-
+    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [Vec<f64>; 2]) {
         if time.0 < 0 {
             return;
         }
 
-        let mut samples_written = 0;
-        let mut time = time.0;
-        while samples_written < outputs[0].len() {
-            if let Ok(buf) = self.in_queue.pop() {
+        debug!("reading time {}", time.0);
+
+        let mut time = time;
+        let mut out_idx = 0;
+
+        // let mut in_progress = None;
+        // std::mem::swap(&mut self.in_progress_output, &mut in_progress);
+        //
+        // in_progress = in_progress.or_else(|| self.in_queue.pop().ok());
+
+        let mut missing = 0;
+        while out_idx < outputs[0].len() {
+            if let Some((l, r)) = self.output_for_t(time) {
                 if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdub {
-                    // TODO: this is basically just giving up if things don't align correctly,
-                    //       but we can probably try to do a bit better to fix things
-                    if buf.time.0 < time {
-                        debug!(
-                            "skipping old data for looper id {} (time is {}, waiting for {})",
-                            self.id, buf.time.0, time
-                        );
-                    } else if buf.time.0 > time {
-                        debug!(
-                            "data is in future for looper id {} (time is {}, needed {})",
-                            self.id, buf.time.0, time
-                        );
-                        break;
-                    } else {
-                        debug!("outputting time {}", buf.time.0);
-                        for c in 0..2 {
-                            for i in 0..buf.size {
-                                outputs[c][samples_written + i] += buf.data[c][i] as f64;
-                            }
-                        }
-                        time += buf.size as i64;
-                        samples_written += buf.size;
-                    }
+                    outputs[0][out_idx] += l;
+                    outputs[1][out_idx] += r;
                 }
             } else {
-                // TODO: handle missing data
-                if self.mode != LooperMode::Record {
-                    error!("needed output but queue was empty in looper {}", self.id);
-                }
-                break;
+                missing += 1;
             }
-            match self.channel.try_send(ControlMessage::ReadOutput) {
-                Err(TrySendError::Disconnected(_)) => panic!("channel closed"),
-                Err(TrySendError::Full(_)) => warn!("channel full while requesting more output"),
-                _ => {}
-            }
+            out_idx += 1;
+            time.0 += 1;
+        }
+
+        if self.mode != LooperMode::Record && missing > 0 {
+            error!("needed output but queue was empty in looper {} (missed {} samples)",
+                   self.id, missing);
+        }
+
+        // while out_idx < outputs[0].len() {
+        //     if let Some(buf) = in_progress.or_else(|| self.in_queue.pop().ok()) {
+        //         if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdub {
+        //             if (buf.time.0 + buf.size as i64) < time {
+        //                 debug!(
+        //                     "skipping old data for looper id {} (time is {}, waiting for {})",
+        //                     self.id, buf.time.0, time
+        //                 );
+        //             } else if buf.time.0 > time {
+        //                 error!(
+        //                     "data is in future for looper id {} (time is {}, needed {})",
+        //                     self.id, buf.time.0, time
+        //                 );
+        //                 break;
+        //             } else {
+        //                 assert!(buf.time.0 <= time);
+        //                 let still_needed = outputs[0].len() - out_idx;
+        //                 let start = (time - buf.time.0) as usize;
+        //                 let end = (start + still_needed).min(buf.size);
+        //
+        //                 debug!("outputting time {}", buf.time.0 + start as i64);
+        //                 for c in 0..2 {
+        //                     let mut o_i = out_idx;
+        //                     for i in start..end {
+        //                         outputs[c][o_i] += buf.data[c][i] as f64;
+        //                         o_i += 1;
+        //                     }
+        //                 }
+        //
+        //                 time += (end - start) as i64;
+        //                 out_idx += end - start;
+        //
+        //                 if end < buf.size {
+        //                     // we still have data to be read from this buffer for the next iteration
+        //                     self.in_progress_output = Some(buf);
+        //                 }
+        //             }
+        //         }
+        //     } else {
+        //         // TODO: handle missing data
+        //         if self.mode != LooperMode::Record {
+        //             error!("needed output but queue was empty in looper {}", self.id);
+        //         }
+        //         break;
+        //     }
+        // }
+
+        match self.channel.try_send(ControlMessage::ReadOutput(time)) {
+            Err(TrySendError::Disconnected(_)) => panic!("channel closed"),
+            Err(TrySendError::Full(_)) => warn!("channel full while requesting more output"),
+            _ => {}
         }
     }
 

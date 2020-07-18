@@ -35,7 +35,30 @@ mod music;
 mod sample;
 mod session;
 
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .chain(fern::log_file("output.log")?)
+        .apply()?;
+    Ok(())
+}
+
+
 fn main() {
+    if let Err(e) = setup_logger() {
+        eprintln!("Unable to set up logging: {:?}", e);
+    }
+
     let matches = App::new("loopers")
         .version("0.0.1")
         .author("Micah Wylde <micah@micahw.com>")
@@ -44,12 +67,14 @@ fn main() {
 
     let restore = matches.is_present("restore");
 
-    println!("Restoring previous session");
+    if restore {
+        info!("Restoring previous session");
+    }
 
     let (gui, output, input) = gui::Gui::new();
     thread::spawn(move || {
         gui.run();
-        println!("window exited... shutting down");
+        info!("window exited... shutting down");
         std::process::exit(0);
     });
 
@@ -76,7 +101,7 @@ fn main() {
         config.midi_mappings.extend(&mappings);
     }
 
-    println!("Config: {:#?}", config);
+    info!("Config: {:#?}", config);
 
     // read wav files
     let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
