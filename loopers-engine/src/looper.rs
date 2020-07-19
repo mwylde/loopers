@@ -658,7 +658,7 @@ impl<DATA: Copy> TransferBuf<DATA> {
     }
 }
 
-struct LooperBackend {
+pub struct LooperBackend {
     pub id: u32,
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
@@ -677,7 +677,7 @@ struct LooperBackend {
     in_queue: Arc<ArrayQueue<TransferBuf<f32>>>,
     out_queue: Arc<ArrayQueue<TransferBuf<f64>>>,
 
-    channel: Receiver<ControlMessage>,
+    pub channel: Receiver<ControlMessage>,
 }
 
 impl LooperBackend {
@@ -695,6 +695,16 @@ impl LooperBackend {
                 }
             }
         });
+    }
+
+    pub fn process_until_done(&mut self) {
+        loop {
+            let msg = self.channel.try_recv();
+            match msg {
+                Ok(msg) => self.handle_msg(msg),
+                Err(_) => break,
+            };
+        }
     }
 
     fn handle_msg(&mut self, msg: ControlMessage) -> bool /* continue */ {
@@ -984,7 +994,7 @@ pub struct Looper {
     pub mode: LooperMode,
     pub deleted: bool,
 
-    backend: Option<LooperBackend>,
+    pub backend: Option<LooperBackend>,
     length_in_samples: u64,
     msg_counter: u64,
     out_queue: Arc<ArrayQueue<TransferBuf<f32>>>,

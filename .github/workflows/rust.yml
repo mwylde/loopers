@@ -12,6 +12,6 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get install libjack-dev
     - name: Build
-      run: cargo build -v --features=fail-on-warnings
+      run: cargo build -v
     - name: Run tests
       run: cargo test --verbose

@@ -35,3 +35,8 @@ loopers-common = { path = "../loopers-common" }
 [dev-dependencies]
 tempfile = "3.1.0"
 fern = "0.6"
+criterion = "0.3"
+
+[[bench]]
+name = "looper_benchmarks"
+harness = false
