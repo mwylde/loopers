@@ -1008,6 +1008,8 @@ impl Looper {
 
         let (s, r) = bounded(100);
 
+        let length = samples.get(0).map(|s| s.length()).unwrap_or(0);
+
         let backend = LooperBackend {
             id,
             samples,
@@ -1036,7 +1038,7 @@ impl Looper {
             backend: Some(backend),
             mode: LooperMode::None,
             deleted: false,
-            length_in_samples: 0,
+            length_in_samples: length,
             msg_counter: 0,
             in_queue: play_queue.clone(),
             out_queue: record_queue.clone(),

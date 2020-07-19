@@ -42,7 +42,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
 
     let file_config = fern::Dispatch::new()
         .chain(fern::log_file("output.log")?)
-        .level(log::LevelFilter::Info);
+        .level(log::LevelFilter::Debug);
 
     fern::Dispatch::new()
         .format(|out, message, record| {

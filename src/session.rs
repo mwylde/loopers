@@ -32,8 +32,9 @@ impl SessionSaver {
         let (tx, rx) = bounded(10);
 
         thread::spawn(move || {
+            let mut loopers: HashMap<u32, Sender<looper::ControlMessage>> = HashMap::new();
+
             loop {
-                let mut loopers: HashMap<u32, Sender<looper::ControlMessage>> = HashMap::new();
                 match rx.recv() {
                     Ok(Command::SaveSession(ms, path)) => {
                         Self::execute_save_session(ms, path, &loopers)
