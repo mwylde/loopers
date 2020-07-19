@@ -1,9 +1,9 @@
-use crate::protos::*;
 use crossbeam_queue::SegQueue;
 use futures::sink::Sink;
 use futures::sync::mpsc;
 use futures::Future;
 use futures::{future, Stream};
+use loopers_common::protos::*;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

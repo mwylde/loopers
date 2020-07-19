@@ -1,7 +1,8 @@
-use crate::engine::MetricStructure;
-use crate::music::FrameTime;
 use crate::sample::PlayOutput::Done;
 use crate::sample::{Sample, SamplePlayer};
+use crate::MetricStructure;
+
+use loopers_common::music::*;
 use std::sync::Arc;
 
 #[cfg(test)]

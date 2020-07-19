@@ -6,34 +6,19 @@ extern crate crossbeam_queue;
 extern crate dirs;
 extern crate futures;
 extern crate jack;
-extern crate prost;
 extern crate serde;
 extern crate serde_yaml;
 extern crate tokio;
 extern crate tower_grpc;
 extern crate tower_hyper;
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate log;
 
-use crate::midi::MidiEvent;
 use clap::{App, Arg};
+use loopers_common::config;
+use loopers_engine::midi::MidiEvent;
+use loopers_engine::{gui, Engine};
 use std::{fs, io, thread};
-
-#[allow(dead_code)]
-mod protos;
-
-mod config;
-mod engine;
-mod error;
-mod gui;
-mod looper;
-mod metronome;
-mod midi;
-mod music;
-mod sample;
-mod session;
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -155,7 +140,7 @@ fn main() {
         .register_port("rust_midi_in", jack::MidiIn::default())
         .unwrap();
 
-    let mut engine = engine::Engine::new(
+    let mut engine = Engine::new(
         config.to_config(),
         output,
         input,

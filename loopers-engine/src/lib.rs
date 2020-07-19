@@ -1,14 +1,19 @@
-use crate::error::SaveLoadError;
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate log;
+
 use crate::looper::Looper;
 use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
-use crate::music::*;
-use crate::protos::command::CommandOneof;
-use crate::protos::looper_command::TargetOneof;
-use crate::protos::*;
 use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crossbeam_queue::SegQueue;
+use loopers_common::error::SaveLoadError;
+use loopers_common::music::*;
+use loopers_common::protos::command::CommandOneof;
+use loopers_common::protos::looper_command::TargetOneof;
+use loopers_common::protos::*;
 use prost::Message;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
@@ -16,6 +21,13 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+pub mod gui;
+pub mod looper;
+pub mod metronome;
+pub mod midi;
+pub mod sample;
+pub mod session;
 
 #[derive(Eq, PartialEq)]
 enum TriggerCondition {

@@ -1,6 +1,3 @@
-use crate::error::SaveLoadError;
-use crate::music::FrameTime;
-use crate::protos::{LooperMode, SavedLooper};
 use crate::sample;
 use crate::sample::{Sample, XfadeDirection};
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
@@ -8,6 +5,10 @@ use crossbeam_queue::ArrayQueue;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
+
+use loopers_common::error::SaveLoadError;
+use loopers_common::music::*;
+use loopers_common::protos::*;
 
 #[cfg(test)]
 mod tests {

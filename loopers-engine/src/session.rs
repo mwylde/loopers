@@ -1,9 +1,6 @@
-use crate::engine::{last_session_path, MetricStructure};
-use crate::error::SaveLoadError;
 use crate::looper;
 use crate::looper::Looper;
-use crate::prost::Message;
-use crate::protos::SavedSession;
+use crate::{last_session_path, MetricStructure};
 use bytes::BytesMut;
 use chrono::Local;
 use crossbeam_channel::{bounded, Sender, TrySendError};
@@ -13,6 +10,11 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
+
+use prost::Message;
+
+use loopers_common::error::SaveLoadError;
+use loopers_common::protos::SavedSession;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 
