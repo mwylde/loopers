@@ -428,7 +428,6 @@ impl Engine {
             in_bufs[1].iter().map(|v| *v as f64).collect(),
         ];
 
-        // Update our time
         let stopped = self.loopers.iter().all(|l| l.mode == LooperMode::None);
         let measure_len = self.measure_len();
         {
@@ -474,7 +473,7 @@ impl Engine {
 
                 let active = self.active;
 
-                let mut buf_index = 0;
+                let mut pre_size = 0;
 
                 // We need to handle "beat 0" triggers specially, as the input buffer may not line
                 // up exactly with our beats. Since this trigger is used to stop recording, we need
@@ -502,18 +501,16 @@ impl Engine {
                         )
                     );
 
-                    let pre_size = (next_beat_time.0 - self.time) as usize;
+                    pre_size = (next_beat_time.0 - self.time) as usize;
 
                     if pre_size > 0 {
                         let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
 
                         // Record input to active loop
                         looper.process_input(
-                            self.time as u64 + pre_size as u64,
+                            self.time as u64,
                             &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
                         );
-
-                        buf_index = pre_size;
                     }
 
                     for t in beat0_triggers {
@@ -521,28 +518,28 @@ impl Engine {
                     }
                 }
 
-                self.time += frames as i64;
+
+                if self.time >= 0 {
+                    // record rest of input
+                    let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
+                    looper.process_input(
+                        self.time as u64 + pre_size as u64,
+                        &[
+                            &in_bufs[0][pre_size..frames as usize],
+                            &in_bufs[1][pre_size..frames as usize],
+                        ],
+                    );
+
+                    // Play our loops
+                    self.play_loops(&mut out_64_vec);
+                }
 
                 // Play the metronome
                 if let Some(metronome) = &mut self.metronome {
                     metronome.advance(met_bufs);
                 }
 
-                // Play our loops
-
-                if self.time >= 0 {
-                    self.play_loops(&mut out_64_vec);
-                    let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
-
-                    // Record input to active loop
-                    looper.process_input(
-                        self.time as u64,
-                        &[
-                            &in_bufs[0][buf_index..frames as usize],
-                            &in_bufs[1][buf_index..frames as usize],
-                        ],
-                    );
-                }
+                self.time += frames as i64;
             }
         }
 

@@ -36,6 +36,15 @@ mod sample;
 mod session;
 
 fn setup_logger() -> Result<(), fern::InitError> {
+
+    let stdout_config = fern::Dispatch::new()
+        .chain(io::stdout())
+        .level(log::LevelFilter::Error);
+
+    let file_config = fern::Dispatch::new()
+        .chain(fern::log_file("output.log")?)
+        .level(log::LevelFilter::Info);
+
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -46,10 +55,10 @@ fn setup_logger() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
-        .chain(std::io::stdout())
-        .chain(fern::log_file("output.log")?)
+        .chain(stdout_config)
+        .chain(file_config)
         .apply()?;
+
     Ok(())
 }
 

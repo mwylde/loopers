@@ -151,6 +151,70 @@ mod tests {
     }
 
     #[test]
+    fn test_overdub() {
+        install_test_logger();
+
+        let mut l = Looper::new(1);
+        l.backend.as_mut().unwrap().enable_crossfading = false;
+
+        l.transition_to(LooperMode::Record);
+        process_until_done(&mut l);
+
+        let mut input_left = vec![0f32; TRANSFER_BUF_SIZE];
+        let mut input_right = vec![0f32; TRANSFER_BUF_SIZE];
+        for i in 0..TRANSFER_BUF_SIZE {
+            input_left[i] = i as f32 + 1.0;
+            input_right[i] = -(i as f32 + 1.0);
+        }
+
+        let mut t = 0 as i64;
+
+        l.process_input(t as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+
+        let mut o = [vec![0f64; TRANSFER_BUF_SIZE], vec![0f64; TRANSFER_BUF_SIZE]];
+        l.process_output(FrameTime(t), &mut o);
+        process_until_done(&mut l);
+
+        t += TRANSFER_BUF_SIZE as i64;
+
+        for (l, r) in o[0].iter().zip(&o[1]) {
+            assert_eq!(*l, 0.0);
+            assert_eq!(*r, 0.0);
+        }
+
+        l.transition_to(LooperMode::Overdub);
+        process_until_done(&mut l);
+
+        // first record our overdub
+        l.process_input(t as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+        let mut o = [vec![0f64; 4], vec![0f64; 4]];
+        l.process_output(FrameTime(t), &mut o);
+        process_until_done(&mut l);
+
+        t += TRANSFER_BUF_SIZE as i64;
+
+        for (i, (l, r)) in o[0].iter().zip(&o[1]).enumerate() {
+            assert_eq!(*l, (i + 1) as f64);
+            assert_eq!(*r, -((i + 1) as f64));
+        }
+
+        // on the next go-around, it should be played back
+        l.process_input(t as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+        let mut o = [vec![0f64; 4], vec![0f64; 4]];
+        l.process_output(FrameTime(t), &mut o);
+        process_until_done(&mut l);
+
+        for (i, (l, r)) in o[0].iter().zip(&o[1]).enumerate() {
+            let v = ((i + 1) * 2) as f64;
+            assert_eq!(*l, v);
+            assert_eq!(*r, -v);
+        }
+    }
+
+    #[test]
     fn test_non_harmonious_lengths() {
         install_test_logger();
 
@@ -160,6 +224,7 @@ mod tests {
         let buf_size = 128;
 
         let mut l = Looper::new(2);
+        l.backend.as_mut().unwrap().enable_crossfading = false;
         l.transition_to(LooperMode::Record);
 
         let mut input_left = vec![1f32; buf_size];
@@ -226,6 +291,38 @@ mod tests {
                 assert_eq!(o[0][i], 2f64);
                 assert_eq!(o[1][i], -2f64);
 
+            }
+        }
+
+        // now we play from the beginning
+        l.set_time(FrameTime(0));
+        process_until_done(&mut l);
+        l.transition_to(LooperMode::Playing);
+        process_until_done(&mut l);
+
+        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
+        l.process_output(FrameTime(0), &mut o);
+        process_until_done(&mut l);
+
+        for i in 0..buf_size {
+            assert_eq!(o[0][i], 1f64);
+            assert_eq!(o[1][i], -1f64);
+        }
+
+        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
+        l.process_output(FrameTime(buf_size as i64), &mut o);
+        process_until_done(&mut l);
+
+        for i in 0..buf_size {
+            if i < buf_size - 100 {
+                assert_eq!(o[0][i], 4f64);
+                assert_eq!(o[1][i], -4f64);
+            } else if i < 100 {
+                assert_eq!(o[0][i], 2.0f64);
+                assert_eq!(o[1][i], -2.0f64);
+            } else {
+                assert_eq!(o[0][i], 1.0f64);
+                assert_eq!(o[1][i], -1.0f64);
             }
         }
     }
@@ -476,7 +573,7 @@ mod tests {
     }
 }
 
-const CROSS_FADE_SAMPLES: usize = 64; //8192;
+const CROSS_FADE_SAMPLES: usize = 8192;
 
 struct StateMachine {
     transitions: Vec<(
@@ -507,6 +604,11 @@ impl StateMachine {
                     LooperBackend::prepare_for_overdubbing,
                 ),
                 (vec![], vec![Record], LooperBackend::prepare_for_recording),
+                (
+                    vec![],
+                    vec![None],
+                    LooperBackend::stop,
+                ),
             ],
         }
     }
@@ -569,6 +671,8 @@ struct LooperBackend {
     pub mode: LooperMode,
     pub deleted: bool,
 
+    enable_crossfading: bool,
+
     out_time: FrameTime,
     in_time: FrameTime,
 
@@ -601,7 +705,7 @@ impl LooperBackend {
     }
 
     fn handle_msg(&mut self, msg: ControlMessage) -> bool /* continue */ {
-        info!("[{}] got control message: {:?}", self.id, msg);
+        debug!("[{}] got control message: {:?}", self.id, msg);
         match msg {
             ControlMessage::InputDataReady { id, size } => {
                 let mut read = 0;
@@ -694,7 +798,7 @@ impl LooperBackend {
 
                 debug!(
                     "[OUTPUT] t = {} [{}; {}] (in time = {})",
-                    self.out_time.0, buf.data[0][0], TRANSFER_BUF_SIZE, self.in_time.0
+                    self.out_time.0, buf.data[0][0], buf.size, self.in_time.0
                 );
 
                 self.out_time.0 += TRANSFER_BUF_SIZE as i64;
@@ -706,6 +810,11 @@ impl LooperBackend {
         // update our out time to the loop length so that we don't bother outputting a bunch of
         // of wasted data
         self.out_time = FrameTime(self.length_in_samples() as i64);
+    }
+
+    fn stop(&mut self, _: LooperMode) {
+        self.in_time = FrameTime(0);
+        self.out_time = FrameTime(0);
     }
 
     // state transition functions
@@ -732,14 +841,16 @@ impl LooperBackend {
                     right[i] = self.input_buffer.buffer[1][(i + read_start) % len as usize];
                 }
 
-                s.xfade(
-                    CROSS_FADE_SAMPLES,
-                    0,
-                    write_start,
-                    &[&left, &right],
-                    XfadeDirection::IN,
-                    sample::norm,
-                );
+                if self.enable_crossfading {
+                    s.xfade(
+                        CROSS_FADE_SAMPLES,
+                        0,
+                        write_start,
+                        &[&left, &right],
+                        XfadeDirection::IN,
+                        sample::norm,
+                    );
+                }
             } else {
                 warn!("Couldn't post crossfade because start was wrong");
             }
@@ -819,14 +930,16 @@ impl LooperBackend {
             debug!("crossfading beginning at time {}", time_in_samples);
             if let Some(s) = self.samples.get_mut(self.xfade_sample_idx) {
                 // this assumes that things are sample-aligned
-                s.xfade(
-                    CROSS_FADE_SAMPLES,
-                    CROSS_FADE_SAMPLES as u64 - self.xfade_samples_left as u64,
-                    (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
-                    inputs,
-                    XfadeDirection::OUT,
-                    sample::norm,
-                );
+                if self.enable_crossfading {
+                    s.xfade(
+                        CROSS_FADE_SAMPLES,
+                        CROSS_FADE_SAMPLES as u64 - self.xfade_samples_left as u64,
+                        (CROSS_FADE_SAMPLES - self.xfade_samples_left) as u64,
+                        inputs,
+                        XfadeDirection::OUT,
+                        sample::norm,
+                    );
+                }
                 self.xfade_samples_left =
                     (self.xfade_samples_left as i64 - inputs[0].len() as i64).max(0) as usize;
             } else {
@@ -908,6 +1021,7 @@ impl Looper {
             samples,
             mode: LooperMode::None,
             deleted: false,
+            enable_crossfading: true,
             out_time: FrameTime(0),
             in_time: FrameTime(0),
             // input buffer is used to record _before_ actual recording starts, and will be xfaded
@@ -986,6 +1100,7 @@ impl Looper {
                 break;
             }
         }
+        self.in_progress_output = None;
         self.channel
             .send(ControlMessage::SetTime(time))
             .expect("channel closed");
@@ -1030,11 +1145,6 @@ impl Looper {
         let mut time = time;
         let mut out_idx = 0;
 
-        // let mut in_progress = None;
-        // std::mem::swap(&mut self.in_progress_output, &mut in_progress);
-        //
-        // in_progress = in_progress.or_else(|| self.in_queue.pop().ok());
-
         let mut missing = 0;
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
@@ -1053,53 +1163,6 @@ impl Looper {
             error!("needed output but queue was empty in looper {} (missed {} samples)",
                    self.id, missing);
         }
-
-        // while out_idx < outputs[0].len() {
-        //     if let Some(buf) = in_progress.or_else(|| self.in_queue.pop().ok()) {
-        //         if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdub {
-        //             if (buf.time.0 + buf.size as i64) < time {
-        //                 debug!(
-        //                     "skipping old data for looper id {} (time is {}, waiting for {})",
-        //                     self.id, buf.time.0, time
-        //                 );
-        //             } else if buf.time.0 > time {
-        //                 error!(
-        //                     "data is in future for looper id {} (time is {}, needed {})",
-        //                     self.id, buf.time.0, time
-        //                 );
-        //                 break;
-        //             } else {
-        //                 assert!(buf.time.0 <= time);
-        //                 let still_needed = outputs[0].len() - out_idx;
-        //                 let start = (time - buf.time.0) as usize;
-        //                 let end = (start + still_needed).min(buf.size);
-        //
-        //                 debug!("outputting time {}", buf.time.0 + start as i64);
-        //                 for c in 0..2 {
-        //                     let mut o_i = out_idx;
-        //                     for i in start..end {
-        //                         outputs[c][o_i] += buf.data[c][i] as f64;
-        //                         o_i += 1;
-        //                     }
-        //                 }
-        //
-        //                 time += (end - start) as i64;
-        //                 out_idx += end - start;
-        //
-        //                 if end < buf.size {
-        //                     // we still have data to be read from this buffer for the next iteration
-        //                     self.in_progress_output = Some(buf);
-        //                 }
-        //             }
-        //         }
-        //     } else {
-        //         // TODO: handle missing data
-        //         if self.mode != LooperMode::Record {
-        //             error!("needed output but queue was empty in looper {}", self.id);
-        //         }
-        //         break;
-        //     }
-        // }
 
         match self.channel.try_send(ControlMessage::ReadOutput(time)) {
             Err(TrySendError::Disconnected(_)) => panic!("channel closed"),
