@@ -254,8 +254,10 @@ mod tests {
         verify_length(&l, len as u64);
 
         // then give the rest and process output
-        l.process_input(time as u64, &[&input_left[100..buf_size],
-            &input_right[100..buf_size]]);
+        l.process_input(
+            time as u64,
+            &[&input_left[100..buf_size], &input_right[100..buf_size]],
+        );
         process_until_done(&mut l);
 
         l.process_output(FrameTime(time), &mut o);
@@ -266,13 +268,12 @@ mod tests {
             if t < buf_size + 100 {
                 assert_eq!(o[0][i], 0f64);
                 assert_eq!(o[1][i], 0f64);
-            } else if t % len < buf_size  {
+            } else if t % len < buf_size {
                 assert_eq!(o[0][i], 1f64);
                 assert_eq!(o[1][i], -1f64);
             } else {
                 assert_eq!(o[0][i], 2f64);
                 assert_eq!(o[1][i], -2f64);
-
             }
         }
 
@@ -290,7 +291,6 @@ mod tests {
             } else {
                 assert_eq!(o[0][i], 2f64);
                 assert_eq!(o[1][i], -2f64);
-
             }
         }
 
@@ -588,11 +588,7 @@ impl StateMachine {
         use LooperMode::*;
         StateMachine {
             transitions: vec![
-                (
-                    vec![Record],
-                    vec![],
-                    LooperBackend::finish_recording,
-                ),
+                (vec![Record], vec![], LooperBackend::finish_recording),
                 (
                     vec![Record, Overdub],
                     vec![],
@@ -604,11 +600,7 @@ impl StateMachine {
                     LooperBackend::prepare_for_overdubbing,
                 ),
                 (vec![], vec![Record], LooperBackend::prepare_for_recording),
-                (
-                    vec![],
-                    vec![None],
-                    LooperBackend::stop,
-                ),
+                (vec![], vec![None], LooperBackend::stop),
             ],
         }
     }
@@ -650,7 +642,7 @@ struct TransferBuf<DATA: Copy> {
     data: [[DATA; TRANSFER_BUF_SIZE]; 2],
 }
 
-impl <DATA: Copy> TransferBuf<DATA> {
+impl<DATA: Copy> TransferBuf<DATA> {
     pub fn contains_t(&self, time: FrameTime) -> bool {
         return time.0 >= self.time.0 && time.0 < self.time.0 + self.size as i64;
     }
@@ -1107,7 +1099,9 @@ impl Looper {
     }
 
     fn output_for_t(&mut self, t: FrameTime) -> Option<(f64, f64)> {
-        let mut cur = self.in_progress_output.or_else(|| self.in_queue.pop().ok())?;
+        let mut cur = self
+            .in_progress_output
+            .or_else(|| self.in_queue.pop().ok())?;
         self.in_progress_output = Some(cur);
 
         loop {
@@ -1160,8 +1154,10 @@ impl Looper {
         }
 
         if self.mode != LooperMode::Record && missing > 0 {
-            error!("needed output but queue was empty in looper {} (missed {} samples)",
-                   self.id, missing);
+            error!(
+                "needed output but queue was empty in looper {} (missed {} samples)",
+                self.id, missing
+            );
         }
 
         match self.channel.try_send(ControlMessage::ReadOutput(time)) {

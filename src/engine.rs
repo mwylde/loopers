@@ -518,7 +518,6 @@ impl Engine {
                     }
                 }
 
-
                 if self.time >= 0 {
                     // record rest of input
                     let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();

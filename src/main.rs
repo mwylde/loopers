@@ -36,7 +36,6 @@ mod sample;
 mod session;
 
 fn setup_logger() -> Result<(), fern::InitError> {
-
     let stdout_config = fern::Dispatch::new()
         .chain(io::stdout())
         .level(log::LevelFilter::Error);
@@ -61,7 +60,6 @@ fn setup_logger() -> Result<(), fern::InitError> {
 
     Ok(())
 }
-
 
 fn main() {
     if let Err(e) = setup_logger() {
