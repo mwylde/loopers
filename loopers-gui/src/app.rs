@@ -2,12 +2,13 @@ use skia_safe::{
     BlendMode, Canvas, ClipOp, Color, Font, Paint, Path, Point, Rect, TextBlob, Typeface, Vector,
 };
 
-use crate::{AppData, FrameTime};
+use crate::{AppData};
 
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
 use std::cmp::Ordering;
 use std::time::Duration;
+use loopers_common::music::FrameTime;
 
 #[allow(dead_code)]
 enum AnimationFunction {
@@ -56,7 +57,7 @@ impl Animation {
     }
 }
 
-pub struct UI {
+pub struct MainPage {
     loopers: Vec<LooperView>,
     beat_animation: Option<Animation>,
     bottom_bar: BottomBarView,
@@ -67,9 +68,9 @@ const WAVEFORM_OFFSET_X: f32 = 100.0;
 const WAVEFORM_WIDTH: f32 = 650.0;
 const WAVEFORM_ZERO_RATIO: f32 = 0.25;
 
-impl UI {
+impl MainPage {
     pub fn new() -> Self {
-        UI {
+        MainPage {
             loopers: vec![],
             beat_animation: None,
             bottom_bar: BottomBarView::new(),
@@ -117,19 +118,19 @@ impl UI {
         canvas.draw_rect(Rect::new(0.0, 10.0, x, h), &paint);
 
         // draw play head bar
-        let beat = data.tempo.beat(data.time);
-        let bom = data.time_signature.beat_of_measure(beat);
+        let beat = data.engine_state.metric_structure.tempo.beat(data.engine_state.time);
+        let bom = data.engine_state.metric_structure.time_signature.beat_of_measure(beat);
 
         if bom == 0 {
             if self.beat_animation.is_none() {
                 self.beat_animation = Some(Animation::new(
-                    data.time,
+                    data.engine_state.time,
                     Duration::from_millis(500),
                     AnimationFunction::EaseOutCubic,
                 ));
             }
 
-            let v = self.beat_animation.as_ref().unwrap().value(data.time);
+            let v = self.beat_animation.as_ref().unwrap().value(data.engine_state.time);
             paint.set_stroke_width(3.0 + ((1.0 - v) * 5.0));
         } else {
             self.beat_animation = None;
@@ -168,7 +169,7 @@ impl BottomBarView {
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
         canvas.draw_str(
-            &format!("{} bpm", data.tempo.bpm() as u32),
+            &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32),
             Point::new(10.0, h - 12.0),
             &font,
             &text_paint,
@@ -176,10 +177,10 @@ impl BottomBarView {
 
         let mut x = 130.0;
 
-        let current_beat = data.tempo.beat(data.time);
-        let beat_of_measure = data.time_signature.beat_of_measure(current_beat);
-        let measure = data.time_signature.measure(current_beat);
-        for beat in 0..data.time_signature.upper {
+        let current_beat = data.engine_state.metric_structure.tempo.beat(data.engine_state.time);
+        let beat_of_measure = data.engine_state.metric_structure.time_signature.beat_of_measure(current_beat);
+        let measure = data.engine_state.metric_structure.time_signature.measure(current_beat);
+        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             if beat == beat_of_measure {
@@ -193,7 +194,7 @@ impl BottomBarView {
             x += 30.0;
         }
 
-        let mut ms = data.time.to_ms();
+        let mut ms = data.engine_state.time.to_ms();
         let mut negative = "";
         if ms < 0.0 {
             negative = "-";
@@ -240,7 +241,7 @@ impl LooperView {
     fn draw(&mut self, canvas: &mut Canvas, data: &AppData, index: usize) {
         let looper = &data.loopers[index];
 
-        let ratio = (data.time.0 % looper.length.0) as f32 / looper.length.0 as f32;
+        let ratio = (data.engine_state.time.0 % looper.length.0) as f32 / looper.length.0 as f32;
         draw_circle_indicator(canvas, looper.state.color(), ratio, 25.0, 25.0, 25.0);
 
         canvas.save();
@@ -350,12 +351,13 @@ impl WaveformView {
             let mut beat_p = Path::new();
             let mut bar_p = Path::new();
 
-            let samples_per_beat = FrameTime::from_ms(1000.0 / (data.tempo.bpm() / 60.0) as f64);
+            let samples_per_beat = FrameTime::from_ms(1000.0 /
+                (data.engine_state.metric_structure.tempo.bpm() / 60.0) as f64);
             let number_of_beats = looper.length.0 / samples_per_beat.0;
             for i in 0..number_of_beats {
                 let x = i as f32 * full_w / number_of_beats as f32;
 
-                if i % data.time_signature.upper as i64 == 0 {
+                if i % data.engine_state.metric_structure.time_signature.upper as i64 == 0 {
                     bar_p.move_to(Point::new(x, 5.0));
                     bar_p.line_to(Point::new(x, h - 5.0));
                 } else {
@@ -397,7 +399,7 @@ impl WaveformView {
         bar_outer_paint.set_color(Color::from_argb(130, 0, 0, 0));
         bar_outer_paint.set_stroke_width(4.0);
 
-        let mut x = -self.time_to_x(data.time, w);
+        let mut x = -self.time_to_x(data.engine_state.time, w);
         while x < w * 2.0 {
             if x + full_w > 0.0 && x < w {
                 canvas.save();

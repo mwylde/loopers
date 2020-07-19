@@ -9,18 +9,18 @@ use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::{ContextBuilder, GlProfile};
 
-use crate::{AppData, FrameTime};
+use crate::{Gui};
 use gl::types::*;
 use gl_rs as gl;
 
-use std::ops::Sub;
+
 use std::thread;
 use std::time::{Duration, Instant};
 
 pub const WIDTH: i32 = 800;
 pub const HEIGHT: i32 = 600;
 
-pub fn skia_main(data: AppData) {
+pub fn skia_main(mut gui: Gui) {
     let el = EventLoop::new();
     let wb = WindowBuilder::new()
         .with_title("loopers-gui")
@@ -81,8 +81,7 @@ pub fn skia_main(data: AppData) {
     let sf = windowed_context.window().scale_factor() as f32;
     surface.canvas().scale((sf, sf));
 
-    let mut data = data;
-    let start_time = Instant::now();
+    let _start_time = Instant::now();
 
     let inter_frame_time = Duration::from_micros(1_000_000 / 60);
 
@@ -91,16 +90,12 @@ pub fn skia_main(data: AppData) {
     let mut frame_times = vec![0; 60];
     let mut frame_counter = 0;
 
-    let mut ui = crate::app::UI::new();
-
     let mut paused = false;
 
     el.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
 
-        if !paused {
-            data.time = FrameTime::from_ms(Instant::now().sub(start_time).as_secs_f64() * 1000.0);
-        }
+        gui.update();
 
         #[allow(deprecated)]
         match event {
@@ -138,7 +133,7 @@ pub fn skia_main(data: AppData) {
 
                     canvas.clear(Color::BLACK);
 
-                    ui.draw(&mut canvas, &data);
+                    gui.draw(&mut canvas);
 
                     let mut paint = Paint::default();
                     paint.set_color(Color::from_rgb(255, 255, 255));

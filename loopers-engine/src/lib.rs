@@ -21,6 +21,8 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use loopers_common::{GuiCommand, EngineStateSnapshot};
+use crossbeam_channel::{Sender, TrySendError};
 
 pub mod gui;
 pub mod looper;
@@ -39,22 +41,6 @@ struct Trigger {
     command: Command,
 }
 
-#[derive(Copy, Clone)]
-pub struct MetricStructure {
-    pub time_signature: TimeSignature,
-    pub tempo: Tempo,
-}
-
-impl MetricStructure {
-    pub fn new(upper: u8, lower: u8, bpm: f32) -> Option<MetricStructure> {
-        let time_signature = TimeSignature::new(upper, lower)?;
-        Some(MetricStructure {
-            time_signature,
-            tempo: Tempo::from_bpm(bpm),
-        })
-    }
-}
-
 pub struct Engine {
     config: Config,
 
@@ -64,6 +50,8 @@ pub struct Engine {
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
+    
+    gui_sender: Option<Sender<GuiCommand>>,
 
     loopers: Vec<Looper>,
     active: u32,
@@ -103,6 +91,7 @@ impl Engine {
         config: Config,
         gui_output: Arc<SegQueue<State>>,
         gui_input: Arc<SegQueue<Command>>,
+        gui_sender: Option<Sender<GuiCommand>>,
         beat_normal: Vec<f32>,
         beat_emphasis: Vec<f32>,
         restore: bool,
@@ -117,6 +106,7 @@ impl Engine {
 
             gui_output,
             gui_input,
+            gui_sender,
             loopers: vec![Looper::new(0).start()],
             active: 0,
             id_counter: 1,
@@ -561,6 +551,22 @@ impl Engine {
         }
 
         // Update GUI
+        if let Some(gui_sender) = &self.gui_sender {
+            match gui_sender.try_send(GuiCommand::StateSnapshot(EngineStateSnapshot {
+                time: FrameTime(self.time),
+                metric_structure: self.metric_structure,
+                active_looper: self.active,
+                looper_count: self.loopers.len(),
+            })) {
+                Ok(_) => {},
+                Err(TrySendError::Full(_)) => {
+                    warn!("GUI message queue is full");
+                },
+                Err(TrySendError::Disconnected(_)) => {
+                    panic!("GUI message queue is disconnected");
+                }
+            }
+        }
 
         // TODO: make this async or non-allocating
         let gui_output = &mut self.gui_output;

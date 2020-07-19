@@ -36,6 +36,7 @@ dirs = "2"
 
 loopers-common = { path = "../loopers-common" }
 loopers-engine = { path = "../loopers-engine" }
+loopers-gui = { path = "../loopers-gui" }
 
 [features]
 fail-on-warnings = []

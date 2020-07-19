@@ -19,6 +19,7 @@ use loopers_common::config;
 use loopers_engine::midi::MidiEvent;
 use loopers_engine::{gui, Engine};
 use std::{fs, io, thread};
+use loopers_gui::Gui;
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -55,6 +56,7 @@ fn main() {
         .version("0.0.1")
         .author("Micah Wylde <micah@micahw.com>")
         .arg(Arg::with_name("restore").long("restore"))
+        .arg(Arg::with_name("gui").long("gui"))
         .get_matches();
 
     let restore = matches.is_present("restore");
@@ -69,6 +71,12 @@ fn main() {
         info!("window exited... shutting down");
         std::process::exit(0);
     });
+
+    let new_gui = if matches.is_present("gui") {
+        Some(Gui::new())
+    } else {
+        None
+    };
 
     // read config
     let mut config_path = dirs::config_dir().unwrap();
@@ -144,6 +152,7 @@ fn main() {
         config.to_config(),
         output,
         input,
+        new_gui.as_ref().map(|g| g.get_sender()),
         beat_normal,
         beat_empahsis,
         restore,
@@ -188,13 +197,16 @@ fn main() {
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
 
-    // Wait for user input to quit
-    println!("Type q to quit...");
-    loop {
-        let mut user_input = String::new();
-        io::stdin().read_line(&mut user_input).ok();
-        if user_input == "q" {
-            break;
+    // start the gui
+    if let Some(gui) = new_gui {
+        gui.start();
+    } else {
+        loop {
+            let mut user_input = String::new();
+            io::stdin().read_line(&mut user_input).ok();
+            if user_input == "q" {
+                break;
+            }
         }
     }
 

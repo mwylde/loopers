@@ -89,6 +89,10 @@ impl TimeSignature {
     pub fn beat_of_measure(&self, beat: i64) -> u8 {
         beat.rem_euclid(self.upper as i64) as u8
     }
+
+    pub fn measure(&self, beat: i64) -> i64 {
+        beat / self.lower as i64
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -122,3 +126,21 @@ impl Tempo {
         FrameTime((cur as f64 / beats_per_sample) as i64)
     }
 }
+
+#[derive(Copy, Clone, Debug)]
+pub struct MetricStructure {
+    pub time_signature: TimeSignature,
+    pub tempo: Tempo,
+}
+
+impl MetricStructure {
+    pub fn new(upper: u8, lower: u8, bpm: f32) -> Option<MetricStructure> {
+        let time_signature = TimeSignature::new(upper, lower)?;
+        Some(MetricStructure {
+            time_signature,
+            tempo: Tempo::from_bpm(bpm),
+        })
+    }
+}
+
+
