@@ -2,18 +2,13 @@ mod app;
 mod protos;
 mod skia;
 
-
-
-
-
 use skia_safe::{Color, Canvas};
 
-
-use loopers_common::music::{FrameTime};
-use crossbeam_channel::{Receiver, bounded, Sender, TryRecvError};
-use loopers_common::{EngineStateSnapshot, GuiCommand};
-
+use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
+use crossbeam_channel::{TryRecvError};
 use crate::app::MainPage;
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver};
+use std::collections::HashMap;
 
 
 #[allow(unused)]
@@ -49,6 +44,7 @@ type Waveform = [Vec<f32>; 2];
 
 #[derive(Clone)]
 pub struct LooperData {
+    id: u32,
     length: FrameTime,
     state: LoopState,
     waveform: Waveform,
@@ -57,32 +53,40 @@ pub struct LooperData {
 #[derive(Clone)]
 pub struct AppData {
     engine_state: EngineStateSnapshot,
-    loopers: Vec<LooperData>,
+    loopers: HashMap<u32, LooperData>,
 }
 
 pub struct Gui {
-    state: Option<AppData>,
-    sender: Sender<GuiCommand>,
-    receiver: Receiver<GuiCommand>,
+    state: AppData,
+    receiver: GuiReceiver,
+    initialized: bool,
 
     root: MainPage,
 }
 
 impl Gui {
-    pub fn new() -> Gui {
-        let (tx, rx) = bounded(10);
-
+    pub fn new(receiver: GuiReceiver) -> Gui {
         Gui {
-            state: None,
-            sender: tx,
-            receiver: rx,
+            state: AppData {
+                engine_state: EngineStateSnapshot {
+                    time: FrameTime(0),
+                    metric_structure: MetricStructure {
+                        time_signature: TimeSignature {
+                            upper: 4,
+                            lower: 4,
+                        },
+                        tempo: Tempo::from_bpm(120.0),
+                    },
+                    active_looper: 0,
+                    looper_count: 0
+                },
+                loopers: HashMap::new(),
+            },
+            receiver,
 
+            initialized: false,
             root: MainPage::new(),
         }
-    }
-
-    pub fn get_sender(&self) -> Sender<GuiCommand> {
-        self.sender.clone()
     }
 
     pub fn start(self) {
@@ -91,22 +95,25 @@ impl Gui {
 
     pub fn update(&mut self) {
         loop {
-            match self.receiver.try_recv() {
+            match self.receiver.cmd_channel.try_recv() {
                 Ok(GuiCommand::StateSnapshot(state)) => {
-                    if self.state.is_none() {
-                        self.state = Some(AppData {
-                            engine_state: state,
-                            loopers: vec![],
-                        })
-                    } else {
-                        self.state.as_mut().unwrap().engine_state = state;
-                    }
+                    self.state.engine_state = state;
+                    self.initialized = true;
                 },
-                Ok(GuiCommand::AddLooper(_id)) => {
-                   // todo
+                Ok(GuiCommand::AddLooper(id)) => {
+                    self.state.loopers.entry(id)
+                        .or_insert_with(|| LooperData {
+                            id,
+                            length: FrameTime(0),
+                            state: LoopState::Stop,
+                            waveform: [vec![], vec![]],
+                        });
                 }
-                Ok(GuiCommand::RemoveLooper(_id)) => {
-                    // todo
+                Ok(GuiCommand::RemoveLooper(id)) => {
+                    self.state.loopers.remove(&id);
+                }
+                Ok(GuiCommand::LooperStateChange(_id, _state)) => {
+
                 }
                 Err(TryRecvError::Empty) => {
                     break;
@@ -119,8 +126,8 @@ impl Gui {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) {
-        if let Some(state) = &self.state {
-            self.root.draw(canvas, state);
+        if self.initialized {
+            self.root.draw(canvas, &self.state);
         }
     }
 }

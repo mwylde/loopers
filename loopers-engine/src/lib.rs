@@ -21,8 +21,7 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use loopers_common::{GuiCommand, EngineStateSnapshot};
-use crossbeam_channel::{Sender, TrySendError};
+use loopers_common::gui_channel::{GuiSender, GuiCommand, EngineStateSnapshot};
 
 pub mod gui;
 pub mod looper;
@@ -51,7 +50,7 @@ pub struct Engine {
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
     
-    gui_sender: Option<Sender<GuiCommand>>,
+    gui_sender: GuiSender,
 
     loopers: Vec<Looper>,
     active: u32,
@@ -91,7 +90,7 @@ impl Engine {
         config: Config,
         gui_output: Arc<SegQueue<State>>,
         gui_input: Arc<SegQueue<Command>>,
-        gui_sender: Option<Sender<GuiCommand>>,
+        gui_sender: GuiSender,
         beat_normal: Vec<f32>,
         beat_emphasis: Vec<f32>,
         restore: bool,
@@ -553,22 +552,12 @@ impl Engine {
         }
 
         // Update GUI
-        if let Some(gui_sender) = &self.gui_sender {
-            match gui_sender.try_send(GuiCommand::StateSnapshot(EngineStateSnapshot {
+        self.gui_sender.send_update(GuiCommand::StateSnapshot(EngineStateSnapshot {
                 time: FrameTime(self.time),
                 metric_structure: self.metric_structure,
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
-            })) {
-                Ok(_) => {},
-                Err(TrySendError::Full(_)) => {
-                    warn!("GUI message queue is full");
-                },
-                Err(TrySendError::Disconnected(_)) => {
-                    panic!("GUI message queue is disconnected");
-                }
-            }
-        }
+        }));
 
         // TODO: make this async or non-allocating
         let gui_output = &mut self.gui_output;

@@ -9,7 +9,7 @@ use std::thread;
 use loopers_common::error::SaveLoadError;
 use loopers_common::music::*;
 use loopers_common::protos::*;
-use loopers_common::GuiCommand;
+use loopers_common::gui_channel::{GuiCommand, GuiSender};
 
 #[cfg(test)]
 mod tests {
@@ -85,7 +85,7 @@ mod tests {
     fn test_new() {
         install_test_logger();
 
-        let looper = Looper::new(1, None);
+        let looper = Looper::new(1, GuiSender::disconnected());
         verify_mode(&looper, LooperMode::None);
         assert_eq!(1, looper.id);
         assert_eq!(0, looper.length_in_samples());
@@ -95,7 +95,7 @@ mod tests {
     fn test_transitions() {
         install_test_logger();
 
-        let mut looper = Looper::new(1, None);
+        let mut looper = Looper::new(1, GuiSender::disconnected());
 
         verify_mode(&looper, LooperMode::None);
 
@@ -129,7 +129,7 @@ mod tests {
     fn test_io() {
         install_test_logger();
 
-        let mut l = Looper::new(1, None);
+        let mut l = Looper::new(1, GuiSender::disconnected());
         l.transition_to(LooperMode::Record);
         process_until_done(&mut l);
 
@@ -156,7 +156,7 @@ mod tests {
     fn test_overdub() {
         install_test_logger();
 
-        let mut l = Looper::new(1, None);
+        let mut l = Looper::new(1, GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.transition_to(LooperMode::Record);
@@ -225,7 +225,7 @@ mod tests {
 
         let buf_size = 128;
 
-        let mut l = Looper::new(2, None);
+        let mut l = Looper::new(2, GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
         l.transition_to(LooperMode::Record);
 
@@ -333,7 +333,7 @@ mod tests {
     fn test_post_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, None);
+        let mut l = Looper::new(1, GuiSender::disconnected());
         l.transition_to(LooperMode::Record);
         process_until_done(&mut l);
 
@@ -412,7 +412,7 @@ mod tests {
     fn test_pre_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, None);
+        let mut l = Looper::new(1, GuiSender::disconnected());
 
         let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
         let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
@@ -536,7 +536,7 @@ mod tests {
             input_right2.push(sample / 2.0);
         }
 
-        let mut l = Looper::new(5, None);
+        let mut l = Looper::new(5, GuiSender::disconnected());
 
         l.transition_to(LooperMode::Record);
         process_until_done(&mut l);
@@ -556,7 +556,7 @@ mod tests {
 
         let state = rx.recv().unwrap().unwrap();
 
-        let deserialized = Looper::from_serialized(&state, dir.path(), None).unwrap();
+        let deserialized = Looper::from_serialized(&state, dir.path(), GuiSender::disconnected()).unwrap();
 
         assert_eq!(l.id, deserialized.id);
 
@@ -678,7 +678,7 @@ pub struct LooperBackend {
     in_queue: Arc<ArrayQueue<TransferBuf<f32>>>,
     out_queue: Arc<ArrayQueue<TransferBuf<f64>>>,
 
-    gui_output: Option<Sender<GuiCommand>>,
+    gui_sender: GuiSender,
 
     // Visible for benchmark
     pub channel: Receiver<ControlMessage>,
@@ -907,19 +907,7 @@ impl LooperBackend {
 
         STATE_MACHINE.handle_transition(self, mode);
 
-        self.send_to_gui(|| GuiCommand::LooperStateChange(self.id, self.mode));
-    }
-
-    fn send_to_gui(&mut self, msg: fn() -> GuiCommand) {
-        if let Some(c) = &self.gui_output {
-            match c.send_timeout().try_send(msg()) {
-                Ok(_) => {},
-                Err(TrySendError::Full(_)) => {
-
-                },
-
-            }
-        }
+        self.gui_sender.send_update(GuiCommand::LooperStateChange(self.id, self.mode));
     }
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
@@ -1023,11 +1011,11 @@ pub struct Looper {
 }
 
 impl Looper {
-    pub fn new(id: u32, gui_output: Option<Sender<GuiCommand>>) -> Looper {
+    pub fn new(id: u32, gui_output: GuiSender) -> Looper {
         Self::new_with_samples(id, vec![], gui_output)
     }
 
-    fn new_with_samples(id: u32, samples: Vec<Sample>, gui_output: Option<Sender<GuiCommand>>) -> Looper {
+    fn new_with_samples(id: u32, samples: Vec<Sample>, gui_sender: GuiSender) -> Looper {
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
@@ -1053,7 +1041,7 @@ impl Looper {
             xfade_sample_idx: 0,
             in_queue: record_queue.clone(),
             out_queue: play_queue.clone(),
-            gui_output,
+            gui_sender,
             channel: r,
         };
 
@@ -1077,7 +1065,7 @@ impl Looper {
     }
 
     pub fn from_serialized(state: &SavedLooper, path: &Path,
-                           gui_output: Option<Sender<GuiCommand>>) -> Result<Looper, SaveLoadError> {
+                           gui_output: GuiSender) -> Result<Looper, SaveLoadError> {
         let mut samples = vec![];
         for sample_path in &state.samples {
             let mut reader = hound::WavReader::open(&path.join(sample_path))?;

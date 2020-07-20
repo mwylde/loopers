@@ -20,6 +20,7 @@ use loopers_engine::midi::MidiEvent;
 use loopers_engine::{gui, Engine};
 use std::{fs, io, thread};
 use loopers_gui::Gui;
+use loopers_common::gui_channel::GuiSender;
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -72,10 +73,11 @@ fn main() {
         std::process::exit(0);
     });
 
-    let new_gui = if matches.is_present("gui") {
-        Some(Gui::new())
+    let (new_gui, gui_sender) = if matches.is_present("gui") {
+        let (sender, receiver) = GuiSender::new();
+        (Some(Gui::new(receiver)), sender)
     } else {
-        None
+        (None, GuiSender::disconnected())
     };
 
     // read config
@@ -152,7 +154,7 @@ fn main() {
         config.to_config(),
         output,
         input,
-        new_gui.as_ref().map(|g| g.get_sender()),
+        gui_sender,
         beat_normal,
         beat_empahsis,
         restore,

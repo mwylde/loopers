@@ -2,13 +2,14 @@ use skia_safe::{
     BlendMode, Canvas, ClipOp, Color, Font, Paint, Path, Point, Rect, TextBlob, Typeface, Vector,
 };
 
-use crate::{AppData};
+use crate::{AppData, LooperData};
 
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
 use std::cmp::Ordering;
 use std::time::Duration;
 use loopers_common::music::FrameTime;
+use std::collections::{BTreeMap};
 
 #[allow(dead_code)]
 enum AnimationFunction {
@@ -58,7 +59,7 @@ impl Animation {
 }
 
 pub struct MainPage {
-    loopers: Vec<LooperView>,
+    loopers: BTreeMap<u32, LooperView>,
     beat_animation: Option<Animation>,
     bottom_bar: BottomBarView,
 }
@@ -71,24 +72,35 @@ const WAVEFORM_ZERO_RATIO: f32 = 0.25;
 impl MainPage {
     pub fn new() -> Self {
         MainPage {
-            loopers: vec![],
+            loopers: BTreeMap::new(),
             beat_animation: None,
             bottom_bar: BottomBarView::new(),
         }
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData) {
-        if self.loopers.is_empty() {
-            for _ in &data.loopers {
-                self.loopers.push(LooperView::new());
-            }
+        // add views for new loopers
+        for id in data.loopers.keys() {
+            self.loopers.entry(*id)
+                .or_insert_with(|| LooperView::new(*id));
         }
 
-        for (i, looper) in self.loopers.iter_mut().enumerate() {
+        // remove deleted loopers
+        let remove: Vec<u32> = self.loopers.keys()
+            .filter(|id| !data.loopers.contains_key(id))
+            .map(|id| *id)
+            .collect();
+
+        for id in remove {
+            self.loopers.remove(&id);
+        }
+
+
+        for (i, (id, looper)) in self.loopers.iter_mut().enumerate() {
             canvas.save();
             canvas.translate(Vector::new(0.0, i as f32 * 90.0));
 
-            looper.draw(canvas, data, i);
+            looper.draw(canvas, data, &data.loopers[id]);
 
             canvas.restore();
         }
@@ -228,18 +240,20 @@ impl BottomBarView {
 }
 
 struct LooperView {
+    id: u32,
     waveform_view: WaveformView,
 }
 
 impl LooperView {
-    fn new() -> Self {
+    fn new(id: u32) -> Self {
         Self {
+            id,
             waveform_view: WaveformView::new(),
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, index: usize) {
-        let looper = &data.loopers[index];
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData) {
+        assert_eq!(self.id, looper.id);
 
         let ratio = (data.engine_state.time.0 % looper.length.0) as f32 / looper.length.0 as f32;
         draw_circle_indicator(canvas, looper.state.color(), ratio, 25.0, 25.0, 25.0);
@@ -247,7 +261,7 @@ impl LooperView {
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
         self.waveform_view
-            .draw(canvas, data, index, WAVEFORM_WIDTH, LOOPER_HEIGHT);
+            .draw(canvas, data, &looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
 
         canvas.restore();
     }
@@ -310,9 +324,7 @@ impl WaveformView {
         1.0 / (self.time_width.0 as f32 / w) * offset_time
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, index: usize, w: f32, h: f32) {
-        let looper = &data.loopers[index];
-
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData, w: f32, h: f32) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_color(Color::from_rgb(0, 65, 122));
