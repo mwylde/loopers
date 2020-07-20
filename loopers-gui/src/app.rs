@@ -10,6 +10,27 @@ use std::cmp::Ordering;
 use std::time::Duration;
 use loopers_common::music::FrameTime;
 use std::collections::{BTreeMap};
+use loopers_common::protos::LooperMode;
+
+fn color_for_mode(mode: LooperMode) -> Color {
+    match mode {
+        LooperMode::Record => Color::from_rgb(255, 0, 0),
+        LooperMode::Ready => Color::from_rgb(255, 50, 0), // TODO: fixme
+        LooperMode::Overdub => Color::from_rgb(0, 255, 255),
+        LooperMode::Playing => Color::from_rgb(0, 255, 0),
+        LooperMode::None => Color::from_rgb(135, 135, 135),
+    }
+}
+
+fn dark_color_for_mode(mode: LooperMode) -> Color {
+    match mode {
+        LooperMode::Record => Color::from_rgb(210, 45, 45),
+        LooperMode::Ready => Color::from_rgb(150, 30, 255), // TODO: fixme
+        LooperMode::Overdub => Color::from_rgb(0, 255, 255),
+        LooperMode::Playing => Color::from_rgb(0, 213, 0),
+        LooperMode::None => Color::from_rgb(65, 65, 65),
+    }
+}
 
 #[allow(dead_code)]
 enum AnimationFunction {
@@ -255,8 +276,13 @@ impl LooperView {
     fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData) {
         assert_eq!(self.id, looper.id);
 
-        let ratio = (data.engine_state.time.0 % looper.length.0) as f32 / looper.length.0 as f32;
-        draw_circle_indicator(canvas, looper.state.color(), ratio, 25.0, 25.0, 25.0);
+        let ratio = if looper.length == 0 {
+            0f32
+        } else {
+            (data.engine_state.time.0 % looper.length as i64) as f32 / looper.length as f32
+        };
+
+        draw_circle_indicator(canvas, color_for_mode(looper.state), ratio, 25.0, 25.0, 25.0);
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
@@ -273,27 +299,13 @@ fn path_for_channel(d: &[f32], w: f32, h: f32, flip: bool) -> Vec<(f32, f32)> {
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
         .unwrap() as f32;
 
-    let size = 2048;
-
-    let mut path = Vec::with_capacity((d.len() / size + 1) as usize);
+    let mut path = Vec::with_capacity(d.len());
 
     let flip = if flip { 1.0 } else { 0.0 };
 
-    for t in (0..d.len()).step_by(size as usize) {
+    for t in 0..d.len() {
         let x = ((t as f32) / d.len() as f32) * w;
-
-        let mut p = 0.0;
-        let mut count = 0;
-        for j in 0..size {
-            let i = (t + j) as usize % d.len();
-            if d[i] > 0.0 {
-                count += 1;
-                p += d[i];
-            }
-        }
-        p = p / count as f32;
-
-        let y = (flip - (p as f32) / max).abs();
+        let y = (flip - (d[t] as f32) / max).abs();
 
         path.push((x, y * h));
     }
@@ -331,9 +343,9 @@ impl WaveformView {
 
         canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &paint);
 
-        let full_w = (looper.length.0 as f32 / self.time_width.0 as f32) * w;
+        let full_w = (looper.length as f32 / self.time_width.0 as f32) * w;
 
-        if self.path.is_none() {
+        if self.path.is_none() && looper.length > 0 {
             let p_l = path_for_channel(&looper.waveform[0], full_w, h - 10.0, true);
             let p_r = path_for_channel(&looper.waveform[1], full_w, h - 10.0, false);
 
@@ -359,13 +371,13 @@ impl WaveformView {
             self.path = Some(p);
         }
 
-        if self.bar_lines.is_none() {
+        if self.bar_lines.is_none() && looper.length > 0 {
             let mut beat_p = Path::new();
             let mut bar_p = Path::new();
 
             let samples_per_beat = FrameTime::from_ms(1000.0 /
                 (data.engine_state.metric_structure.tempo.bpm() / 60.0) as f64);
-            let number_of_beats = looper.length.0 / samples_per_beat.0;
+            let number_of_beats = looper.length as i64 / samples_per_beat.0;
             for i in 0..number_of_beats {
                 let x = i as f32 * full_w / number_of_beats as f32;
 
@@ -382,7 +394,7 @@ impl WaveformView {
             self.bar_lines = Some(bar_p);
         }
 
-        paint.set_color(looper.state.dark_color());
+        paint.set_color(dark_color_for_mode(looper.state));
         paint.set_style(Style::StrokeAndFill);
 
         canvas.save();
@@ -412,18 +424,26 @@ impl WaveformView {
         bar_outer_paint.set_stroke_width(4.0);
 
         let mut x = -self.time_to_x(data.engine_state.time, w);
-        while x < w * 2.0 {
+        while full_w > 0.0 && x < w * 2.0 {
             if x + full_w > 0.0 && x < w {
                 canvas.save();
                 canvas.translate(Vector::new(x, 0.0));
-                canvas.draw_path(self.path.as_ref().unwrap(), &paint);
 
-                // draw beats
-                canvas.draw_path(self.beat_lines.as_ref().unwrap(), &beat_paint);
+                if let Some(path) = &self.path {
+                    canvas.draw_path(path, &paint);
+                }
 
-                // draw bar lines
-                canvas.draw_path(self.bar_lines.as_ref().unwrap(), &bar_outer_paint);
-                canvas.draw_path(self.bar_lines.as_ref().unwrap(), &bar_paint);
+                if let Some(beat_lines) = &self.beat_lines {
+                    // draw beats
+                    canvas.draw_path(beat_lines, &beat_paint);
+                }
+
+                if let Some(bar_lines) = &self.bar_lines {
+                    // draw bar lines
+                    canvas.draw_path(bar_lines, &bar_outer_paint);
+                    canvas.draw_path(bar_lines, &bar_paint);
+                }
+
                 canvas.restore();
             }
 

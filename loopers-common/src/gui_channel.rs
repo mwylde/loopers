@@ -10,10 +10,13 @@ pub struct EngineStateSnapshot {
     pub looper_count: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
+pub type Waveform = [Vec<f32>; 2];
+
+#[derive(Clone, Debug)]
 pub enum GuiCommand {
     StateSnapshot(EngineStateSnapshot),
     AddLooper(u32),
+    AddLooperWithSamples(u32, u64, Box<Waveform>),
     RemoveLooper(u32),
 
     LooperStateChange(u32, LooperMode),

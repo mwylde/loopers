@@ -1,52 +1,24 @@
+#[macro_use]
+extern crate log;
+
 mod app;
 mod protos;
 mod skia;
 
-use skia_safe::{Color, Canvas};
+use skia_safe::Canvas;
 
 use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
 use crossbeam_channel::{TryRecvError};
 use crate::app::MainPage;
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver};
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform};
 use std::collections::HashMap;
-
-
-#[allow(unused)]
-#[derive(Clone, PartialEq)]
-pub enum LoopState {
-    Record,
-    Overdub,
-    Play,
-    Stop,
-}
-
-impl LoopState {
-    fn color(&self) -> Color {
-        match self {
-            LoopState::Record => Color::from_rgb(255, 0, 0),
-            LoopState::Overdub => Color::from_rgb(0, 255, 255),
-            LoopState::Play => Color::from_rgb(0, 255, 0),
-            LoopState::Stop => Color::from_rgb(135, 135, 135),
-        }
-    }
-
-    fn dark_color(&self) -> Color {
-        match self {
-            LoopState::Record => Color::from_rgb(210, 45, 45),
-            LoopState::Overdub => Color::from_rgb(0, 255, 255),
-            LoopState::Play => Color::from_rgb(0, 213, 0),
-            LoopState::Stop => Color::from_rgb(65, 65, 65),
-        }
-    }
-}
-
-type Waveform = [Vec<f32>; 2];
+use loopers_common::protos::LooperMode;
 
 #[derive(Clone)]
 pub struct LooperData {
     id: u32,
-    length: FrameTime,
-    state: LoopState,
+    length: u64,
+    state: LooperMode,
     waveform: Waveform,
 }
 
@@ -101,19 +73,30 @@ impl Gui {
                     self.initialized = true;
                 },
                 Ok(GuiCommand::AddLooper(id)) => {
-                    self.state.loopers.entry(id)
-                        .or_insert_with(|| LooperData {
-                            id,
-                            length: FrameTime(0),
-                            state: LoopState::Stop,
-                            waveform: [vec![], vec![]],
-                        });
+                    self.state.loopers.insert(id, LooperData {
+                        id,
+                        length: 0,
+                        state: LooperMode::None,
+                        waveform: [vec![], vec![]],
+                    });
+                }
+                Ok(GuiCommand::AddLooperWithSamples(id, length, waveform)) => {
+                    self.state.loopers.insert(id, LooperData {
+                        id,
+                        length,
+                        state: LooperMode::None,
+                        waveform: *waveform,
+                    });
                 }
                 Ok(GuiCommand::RemoveLooper(id)) => {
                     self.state.loopers.remove(&id);
                 }
-                Ok(GuiCommand::LooperStateChange(_id, _state)) => {
-
+                Ok(GuiCommand::LooperStateChange(id, mode)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.state = mode;
+                    } else {
+                        warn!("Got looper state change for unknown looper {}", id);
+                    }
                 }
                 Err(TryRecvError::Empty) => {
                     break;

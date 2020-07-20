@@ -9,7 +9,7 @@ use std::thread;
 use loopers_common::error::SaveLoadError;
 use loopers_common::music::*;
 use loopers_common::protos::*;
-use loopers_common::gui_channel::{GuiCommand, GuiSender};
+use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform};
 
 #[cfg(test)]
 mod tests {
@@ -636,6 +636,8 @@ pub enum ControlMessage {
 
 const TRANSFER_BUF_SIZE: usize = 32;
 
+const WAVEFORM_DOWNSAMPLE: usize = 2048;
+
 #[derive(Clone, Copy)]
 struct TransferBuf<DATA: Copy> {
     id: u64,
@@ -992,6 +994,31 @@ impl LooperBackend {
     }
 }
 
+fn compute_waveform(samples: &[Sample], downsample: usize) -> Waveform {
+    let len = samples[0].length() as usize;
+    let size = len / downsample + 1;
+    let mut out = [Vec::with_capacity(size), Vec::with_capacity(size)];
+
+    for c in 0..2 {
+        for t in (0..len).step_by(downsample) {
+            let mut p = 0.0f64;
+            let end = downsample.min(len - t);
+            for s in samples {
+                for j in 0..end {
+                    let i = t as usize + j;
+                    let v = s.buffer[c][i] as f64;
+
+                    p += (v * v);
+                }
+            }
+
+            out[c].push((p / (samples.len() as f64 * end as f64)).sqrt() as f32);
+        }
+    }
+
+    out
+}
+
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
 // driven by a state machine, which controls how it responds to input buffers (e.g., by recording
 // or overdubbing to its internal buffers) and output buffers (e.g., by playing).
@@ -1015,13 +1042,21 @@ impl Looper {
         Self::new_with_samples(id, vec![], gui_output)
     }
 
-    fn new_with_samples(id: u32, samples: Vec<Sample>, gui_sender: GuiSender) -> Looper {
+    fn new_with_samples(id: u32, samples: Vec<Sample>, mut gui_sender: GuiSender) -> Looper {
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
         let (s, r) = bounded(100);
 
         let length = samples.get(0).map(|s| s.length()).unwrap_or(0);
+
+        if samples.is_empty() {
+            gui_sender.send_update(GuiCommand::AddLooper(id));
+        } else {
+            gui_sender.send_update(GuiCommand::AddLooperWithSamples(
+                id, length,
+                Box::new(compute_waveform(&samples, WAVEFORM_DOWNSAMPLE))));
+        }
 
         let backend = LooperBackend {
             id,
@@ -1045,9 +1080,7 @@ impl Looper {
             channel: r,
         };
 
-        // backend.start();
-
-        let looper = Looper {
+        Looper {
             id,
             backend: Some(backend),
             mode: LooperMode::None,
@@ -1059,9 +1092,7 @@ impl Looper {
             channel: s,
 
             in_progress_output: None,
-        };
-
-        looper
+        }
     }
 
     pub fn from_serialized(state: &SavedLooper, path: &Path,
