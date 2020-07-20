@@ -106,8 +106,8 @@ impl Engine {
 
             gui_output,
             gui_input,
-            gui_sender,
-            loopers: vec![Looper::new(0).start()],
+            gui_sender: gui_sender.clone(),
+            loopers: vec![Looper::new(0, gui_sender).start()],
             active: 0,
             id_counter: 1,
 
@@ -301,7 +301,8 @@ impl Engine {
         self.loopers.clear();
 
         for l in session.loopers {
-            let looper = Looper::from_serialized(&l, dir)?.start();
+            let looper = Looper::from_serialized(
+                &l, dir, self.gui_sender.clone())?.start();
             self.session_saver.add_looper(&looper);
             self.loopers.push(looper);
         }
@@ -322,7 +323,8 @@ impl Engine {
                                 self.set_time(FrameTime(0));
                             }
                             GlobalCommandType::AddLooper => {
-                                let looper = Looper::new(self.id_counter).start();
+                                let looper = Looper::new(
+                                    self.id_counter, self.gui_sender.clone()).start();
                                 self.session_saver.add_looper(&looper);
                                 self.loopers.push(looper);
                                 self.active = self.id_counter;
