@@ -9,7 +9,8 @@ use std::thread;
 use loopers_common::error::SaveLoadError;
 use loopers_common::music::*;
 use loopers_common::protos::*;
-use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform};
+use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE};
+use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 
 #[cfg(test)]
 mod tests {
@@ -636,8 +637,6 @@ pub enum ControlMessage {
 
 const TRANSFER_BUF_SIZE: usize = 32;
 
-const WAVEFORM_DOWNSAMPLE: usize = 2048;
-
 #[derive(Clone, Copy)]
 struct TransferBuf<DATA: Copy> {
     id: u64,
@@ -658,6 +657,90 @@ impl<DATA: Copy> TransferBuf<DATA> {
         } else {
             None
         }
+    }
+}
+
+fn compute_waveform(samples: &[Sample], downsample: usize) -> Waveform {
+    let len = samples[0].length() as usize;
+    let size = len / downsample + 1;
+    let mut out = [Vec::with_capacity(size), Vec::with_capacity(size)];
+
+    for c in 0..2 {
+        for t in (0..len).step_by(downsample) {
+            let mut p = 0f64;
+            let end = downsample.min(len - t);
+            for s in samples {
+                for j in 0..end {
+                    let i = t as usize + j;
+                    p += s.buffer[c][i].abs() as f64;
+                }
+            }
+
+            out[c].push((p as f64 / (samples.len() as f64 * end as f64)) as f32);
+        }
+    }
+
+    out
+}
+
+struct WaveformGenerator {
+    id: u32,
+    start_time: FrameTime,
+    acc: [f64; 2],
+    size: usize,
+}
+
+impl WaveformGenerator {
+    fn new(id: u32) -> Self {
+        WaveformGenerator {
+            id,
+            start_time: FrameTime(0),
+            acc: [0.0, 0.0],
+            size: 0,
+        }
+    }
+
+    fn add_buf(&mut self, mode: LooperMode, time: FrameTime, samples: &[&[f64]],
+               looper_length: u64, sender: &mut GuiSender) {
+        if !(self.start_time.0..self.start_time.0 + WAVEFORM_DOWNSAMPLE as i64).contains(&time.0) {
+            // there are no samples in this buffer that we can add, so we'll just send on the
+            // partial buffer
+            debug!("sending partial buffer to GUI because we got a newer one \
+            (cur time = {}, buf time = {})", self.start_time.0, time.0);
+            self.flush(mode, looper_length, sender);
+            self.start_time = time;
+        }
+
+        for i in 0..samples[0].len() {
+            if self.size < WAVEFORM_DOWNSAMPLE {
+                for c in 0..2 {
+                    self.acc[c] += samples[c][i].abs();
+                }
+                self.size += 1;
+            } else {
+                self.flush(mode, looper_length, sender);
+                self.start_time = FrameTime(time.0 + i as i64);
+            }
+        }
+    }
+
+    fn flush(&mut self, mode: LooperMode, looper_length: u64, sender: &mut GuiSender) {
+        let s = [
+            (self.acc[0] / self.size as f64).min(1.0) as f32,
+            (self.acc[1] / self.size as f64).min(1.0) as f32
+        ];
+        match mode {
+            LooperMode::Record => {
+                sender.send_update(AddNewSample(self.id, self.start_time, s, looper_length));
+            },
+            LooperMode::Overdub => {
+                sender.send_update(AddOverdubSample(self.id, self.start_time, s));
+            },
+            _ => {}
+        }
+
+        self.acc = [0.0, 0.0];
+        self.size = 0;
     }
 }
 
@@ -684,6 +767,8 @@ pub struct LooperBackend {
 
     // Visible for benchmark
     pub channel: Receiver<ControlMessage>,
+
+    waveform_generator: WaveformGenerator,
 }
 
 impl LooperBackend {
@@ -921,6 +1006,22 @@ impl LooperBackend {
                 .last_mut()
                 .expect("No samples for looper in overdub mode");
             s.overdub(time_in_samples % len, inputs);
+
+            // TODO: this logic should probably be abstracted out into Sample so it can be reused
+            //       between here and fill_output
+            let mut wv = [vec![0f64; inputs[0].len()], vec![0f64; inputs[0].len()]];
+            for c in 0..2 {
+                for i in 0..inputs[0].len() {
+                    for s in &self.samples {
+                        wv[c][i] += s.buffer[c][(time_in_samples as usize + i) % s.length() as usize] as f64;
+                    }
+                }
+            }
+            self.waveform_generator.add_buf(self.mode,
+                                            FrameTime(time_in_samples as i64),
+                                            &[&wv[0], &wv[1]],
+                                            self.length_in_samples(),
+                                            &mut self.gui_sender);
         } else if self.mode == LooperMode::Record {
             // in record mode, we extend the current buffer with the new samples
             let s = self
@@ -928,6 +1029,19 @@ impl LooperBackend {
                 .last_mut()
                 .expect("No samples for looper in record mode");
             s.record(inputs);
+
+            // TODO: this allocation isn't really necessary
+            let mut wv = [vec![0f64; inputs[0].len()], vec![0f64; inputs[0].len()]];
+            for (c, vs) in inputs.iter().enumerate() {
+                for (i, v) in vs.iter().enumerate() {
+                    wv[c][i] = *v as f64;
+                }
+            }
+            self.waveform_generator.add_buf(self.mode,
+                                            FrameTime(time_in_samples as i64),
+                                            &[&wv[0], &wv[1]],
+                                            self.length_in_samples(),
+                                            &mut self.gui_sender);
         } else {
             // record to our circular input buffer, which will be used to cross-fade the end
             self.input_buffer
@@ -994,31 +1108,6 @@ impl LooperBackend {
     }
 }
 
-fn compute_waveform(samples: &[Sample], downsample: usize) -> Waveform {
-    let len = samples[0].length() as usize;
-    let size = len / downsample + 1;
-    let mut out = [Vec::with_capacity(size), Vec::with_capacity(size)];
-
-    for c in 0..2 {
-        for t in (0..len).step_by(downsample) {
-            let mut p = 0.0f64;
-            let end = downsample.min(len - t);
-            for s in samples {
-                for j in 0..end {
-                    let i = t as usize + j;
-                    let v = s.buffer[c][i] as f64;
-
-                    p += (v * v);
-                }
-            }
-
-            out[c].push((p / (samples.len() as f64 * end as f64)).sqrt() as f32);
-        }
-    }
-
-    out
-}
-
 // The Looper struct encapsulates behavior similar to a single hardware looper. Internally, it is
 // driven by a state machine, which controls how it responds to input buffers (e.g., by recording
 // or overdubbing to its internal buffers) and output buffers (e.g., by playing).
@@ -1078,6 +1167,7 @@ impl Looper {
             out_queue: play_queue.clone(),
             gui_sender,
             channel: r,
+            waveform_generator: WaveformGenerator::new(id),
         };
 
         Looper {

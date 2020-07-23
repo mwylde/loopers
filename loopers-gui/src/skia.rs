@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 pub const WIDTH: i32 = 800;
 pub const HEIGHT: i32 = 600;
 
+const FPS: u64 = 30;
+
 pub fn skia_main(mut gui: Gui) {
     let el = EventLoop::new();
     let wb = WindowBuilder::new()
@@ -83,7 +85,7 @@ pub fn skia_main(mut gui: Gui) {
 
     let _start_time = Instant::now();
 
-    let inter_frame_time = Duration::from_micros(1_000_000 / 60);
+    let inter_frame_time = Duration::from_micros(1_000_000 / FPS);
 
     let mut last_time = Instant::now();
 

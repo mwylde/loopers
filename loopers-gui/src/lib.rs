@@ -10,7 +10,7 @@ use skia_safe::Canvas;
 use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
 use crossbeam_channel::{TryRecvError};
 use crate::app::MainPage;
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform};
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE};
 use std::collections::HashMap;
 use loopers_common::protos::LooperMode;
 
@@ -96,6 +96,22 @@ impl Gui {
                         l.state = mode;
                     } else {
                         warn!("Got looper state change for unknown looper {}", id);
+                    }
+                }
+                Ok(GuiCommand::AddNewSample(id, _time, sample, new_len)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.waveform[0].push(sample[0]);
+                        l.waveform[1].push(sample[1]);
+                        l.length = new_len;
+                    }
+                }
+                Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        if time.0 >= 0 {
+                            let i = (time.0 as usize / WAVEFORM_DOWNSAMPLE) % l.waveform[0].len();
+                            l.waveform[0][i] = sample[0];
+                            l.waveform[1][i] = sample[1];
+                        }
                     }
                 }
                 Err(TryRecvError::Empty) => {

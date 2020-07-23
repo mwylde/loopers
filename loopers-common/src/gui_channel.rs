@@ -2,6 +2,8 @@ use crate::music::{FrameTime, MetricStructure};
 use crate::protos::LooperMode;
 use crossbeam_channel::{bounded, Sender, Receiver, TrySendError};
 
+pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
+
 #[derive(Copy, Clone, Debug)]
 pub struct EngineStateSnapshot {
     pub time: FrameTime,
@@ -20,6 +22,9 @@ pub enum GuiCommand {
     RemoveLooper(u32),
 
     LooperStateChange(u32, LooperMode),
+
+    AddNewSample(u32, FrameTime, [f32; 2], u64),
+    AddOverdubSample(u32, FrameTime, [f32; 2]),
 }
 
 pub struct GuiSender {

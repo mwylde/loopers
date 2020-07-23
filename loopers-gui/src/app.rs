@@ -6,7 +6,6 @@ use crate::{AppData, LooperData};
 
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
-use std::cmp::Ordering;
 use std::time::Duration;
 use loopers_common::music::FrameTime;
 use std::collections::{BTreeMap};
@@ -294,20 +293,17 @@ impl LooperView {
 }
 
 fn path_for_channel(d: &[f32], w: f32, h: f32, flip: bool) -> Vec<(f32, f32)> {
-    let max = *d
-        .iter()
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-        .unwrap() as f32;
-
     let mut path = Vec::with_capacity(d.len());
 
-    let flip = if flip { 1.0 } else { 0.0 };
+    let flip = if flip { -1.0 } else { 1.0 };
 
     for t in 0..d.len() {
-        let x = ((t as f32) / d.len() as f32) * w;
-        let y = (flip - (d[t] as f32) / max).abs();
+        let v = (d[t] as f32  * 3.0).abs().min(1.0);
 
-        path.push((x, y * h));
+        let x = ((t as f32) / d.len() as f32) * w;
+        let y = v * h * flip / 2.0 +  h / 2.0;
+
+        path.push((x, y));
     }
 
     path
@@ -345,9 +341,9 @@ impl WaveformView {
 
         let full_w = (looper.length as f32 / self.time_width.0 as f32) * w;
 
-        if self.path.is_none() && looper.length > 0 {
-            let p_l = path_for_channel(&looper.waveform[0], full_w, h - 10.0, true);
-            let p_r = path_for_channel(&looper.waveform[1], full_w, h - 10.0, false);
+        if /*self.path.is_none() &&*/ looper.length > 0 {
+            let p_l = path_for_channel(&looper.waveform[0], full_w, h - 1.0, true);
+            let p_r = path_for_channel(&looper.waveform[1], full_w, h - 1.0, false);
 
             let mut p = Path::new();
             p.move_to(Point::new(0.0, h / 2.0));
@@ -360,18 +356,18 @@ impl WaveformView {
             }
 
             if let Some((x, y)) = &p_r.last() {
-                p.line_to(Point::new(*x, *y + 10.0));
+                p.line_to(Point::new(*x, *y));
             }
 
             for (x, y) in p_r.iter().rev() {
-                p.line_to(Point::new(*x, *y + 10.0));
+                p.line_to(Point::new(*x, *y));
             }
             p.close();
 
             self.path = Some(p);
         }
 
-        if self.bar_lines.is_none() && looper.length > 0 {
+        if /*self.bar_lines.is_none() &&*/ looper.length > 0 {
             let mut beat_p = Path::new();
             let mut bar_p = Path::new();
 
@@ -394,7 +390,6 @@ impl WaveformView {
             self.bar_lines = Some(bar_p);
         }
 
-        paint.set_color(dark_color_for_mode(looper.state));
         paint.set_style(Style::StrokeAndFill);
 
         canvas.save();
@@ -429,6 +424,12 @@ impl WaveformView {
                 canvas.save();
                 canvas.translate(Vector::new(x, 0.0));
 
+                if x < full_w {
+                    paint.set_color(color_for_mode(looper.state));
+                } else {
+                    paint.set_color(dark_color_for_mode(looper.state));
+                }
+
                 if let Some(path) = &self.path {
                     canvas.draw_path(path, &paint);
                 }
@@ -445,6 +446,10 @@ impl WaveformView {
                 }
 
                 canvas.restore();
+            }
+
+            if looper.state == LooperMode::Record {
+                break;
             }
 
             x += full_w;
