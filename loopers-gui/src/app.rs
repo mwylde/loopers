@@ -1,6 +1,4 @@
-use skia_safe::{
-    BlendMode, Canvas, ClipOp, Color, Font, Paint, Path, Point, Rect, TextBlob, Typeface, Vector,
-};
+use skia_safe::{BlendMode, Canvas, ClipOp, Color, Font, Paint, Path, Point, Rect, TextBlob, Typeface, Vector, Surface, Image};
 
 use crate::{AppData, LooperData};
 
@@ -292,25 +290,55 @@ impl LooperView {
     }
 }
 
-fn path_for_channel(d: &[f32], w: f32, h: f32, flip: bool) -> Vec<(f32, f32)> {
-    let mut path = Vec::with_capacity(d.len());
+type CacheUpdaterFn = fn(cur: &mut Option<Path>, data: &AppData, looper: &LooperData) -> Path;
 
-    let flip = if flip { -1.0 } else { 1.0 };
+struct PathCache<T: Eq + Copy> {
+    path: Option<Path>,
+    image: Option<Image>,
+    image_key: (i32, i32),
+    key: Option<T>,
+    updater: CacheUpdaterFn,
+}
 
-    for t in 0..d.len() {
-        let v = (d[t] as f32  * 3.0).abs().min(1.0);
-
-        let x = ((t as f32) / d.len() as f32) * w;
-        let y = v * h * flip / 2.0 +  h / 2.0;
-
-        path.push((x, y));
+impl <T: Eq + Copy> PathCache<T> {
+    fn new(updater: CacheUpdaterFn) -> PathCache<T> {
+        PathCache {
+            path: None,
+            image: None,
+            image_key: (-1, -1),
+            key: None,
+            updater,
+        }
     }
 
-    path
+    fn update(&mut self, key: T, data: &AppData, looper: &LooperData) {
+        if self.key.is_none() || self.key.unwrap() != key {
+            let mut old_path = None;
+            std::mem::swap(&mut self.path, &mut old_path);
+            self.path = Some((self.updater)(&mut old_path, data, looper));
+            self.image = None;
+        }
+    }
+
+    fn draw_to_image(&mut self, paint: &Paint, w: f32, h: f32) -> &Option<Image> {
+        let size = (w as i32, h as i32);
+        if let Some(path) = &self.path {
+            if self.image.is_none() || self.image_key != size {
+                let mut surface = Surface::new_raster_n32_premul(size).unwrap();
+                surface.canvas().scale((w, h));
+                surface.canvas().draw_path(path, paint);
+                let image = surface.image_snapshot();
+                self.image = Some(image);
+                self.image_key = size;
+            }
+        }
+
+        &self.image
+    }
 }
 
 struct WaveformView {
-    path: Option<Path>,
+    waveform: PathCache<(u64, FrameTime)>,
     bar_lines: Option<Path>,
     beat_lines: Option<Path>,
     time_width: FrameTime,
@@ -319,7 +347,7 @@ struct WaveformView {
 impl WaveformView {
     fn new() -> Self {
         Self {
-            path: None,
+            waveform: PathCache::new(Self::path_for_waveform),
             bar_lines: None,
             beat_lines: None,
             time_width: FrameTime::from_ms(12_000.0),
@@ -332,6 +360,49 @@ impl WaveformView {
         1.0 / (self.time_width.0 as f32 / w) * offset_time
     }
 
+    fn path_for_channel(d: &[f32], flip: bool) -> Vec<(f32, f32)> {
+        let mut path = Vec::with_capacity(d.len());
+
+        let flip = if flip { -1.0 } else { 1.0 };
+
+        for t in 0..d.len() {
+            let v = (d[t] as f32  * 3.0).abs().min(1.0);
+
+            let x = (t as f32) / d.len() as f32 * 1000.0;
+            let y = (v * flip + 1.0) / 2.0 * 1000.0;
+
+            path.push((x, y));
+        }
+
+        path
+    }
+
+    fn path_for_waveform(_: &mut Option<Path>, _: &AppData, looper: &LooperData) -> Path {
+        let p_l = Self::path_for_channel(&looper.waveform[0], true);
+        let p_r = Self::path_for_channel(&looper.waveform[1], false);
+
+        let mut p = Path::new();
+        p.move_to(Point::new(0.0, 0.5));
+        for (x, y) in &p_l {
+            p.line_to(Point::new(*x, *y));
+        }
+
+        if let Some((x, y)) = &p_l.last() {
+            p.line_to(Point::new(*x, *y));
+        }
+
+        if let Some((x, y)) = &p_r.last() {
+            p.line_to(Point::new(*x, *y));
+        }
+
+        for (x, y) in p_r.iter().rev() {
+            p.line_to(Point::new(*x, *y));
+        }
+        p.close();
+
+        p
+    }
+
     fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData, w: f32, h: f32) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -341,30 +412,24 @@ impl WaveformView {
 
         let full_w = (looper.length as f32 / self.time_width.0 as f32) * w;
 
-        if /*self.path.is_none() &&*/ looper.length > 0 {
-            let p_l = path_for_channel(&looper.waveform[0], full_w, h - 1.0, true);
-            let p_r = path_for_channel(&looper.waveform[1], full_w, h - 1.0, false);
+        canvas.save();
 
-            let mut p = Path::new();
-            p.move_to(Point::new(0.0, h / 2.0));
-            for (x, y) in &p_l {
-                p.line_to(Point::new(*x, *y));
+        canvas.clip_rect(
+            Rect::new(0.0, 0.0, w, h),
+            Some(ClipOp::Intersect),
+            Some(false),
+        );
+
+        if looper.length > 0 {
+            self.waveform.update((looper.length, looper.last_time), data, looper);
+
+            // draw waveform
+            paint.set_color(dark_color_for_mode(looper.state));
+            paint.set_style(Style::StrokeAndFill);
+
+            if let Some(image) = self.waveform.draw_to_image(&paint, full_w, h) {
+                canvas.draw_image(image, (0.0, 0.0), None);
             }
-
-            if let Some((x, y)) = &p_l.last() {
-                p.line_to(Point::new(*x, *y));
-            }
-
-            if let Some((x, y)) = &p_r.last() {
-                p.line_to(Point::new(*x, *y));
-            }
-
-            for (x, y) in p_r.iter().rev() {
-                p.line_to(Point::new(*x, *y));
-            }
-            p.close();
-
-            self.path = Some(p);
         }
 
         if /*self.bar_lines.is_none() &&*/ looper.length > 0 {
@@ -390,15 +455,6 @@ impl WaveformView {
             self.bar_lines = Some(bar_p);
         }
 
-        paint.set_style(Style::StrokeAndFill);
-
-        canvas.save();
-
-        canvas.clip_rect(
-            Rect::new(0.0, 0.0, w, h),
-            Some(ClipOp::Intersect),
-            Some(false),
-        );
 
         let mut beat_paint = Paint::default();
         beat_paint
@@ -423,16 +479,6 @@ impl WaveformView {
             if x + full_w > 0.0 && x < w {
                 canvas.save();
                 canvas.translate(Vector::new(x, 0.0));
-
-                if x < full_w {
-                    paint.set_color(color_for_mode(looper.state));
-                } else {
-                    paint.set_color(dark_color_for_mode(looper.state));
-                }
-
-                if let Some(path) = &self.path {
-                    canvas.draw_path(path, &paint);
-                }
 
                 if let Some(beat_lines) = &self.beat_lines {
                     // draw beats

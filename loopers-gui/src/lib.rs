@@ -18,6 +18,7 @@ use loopers_common::protos::LooperMode;
 pub struct LooperData {
     id: u32,
     length: u64,
+    last_time: FrameTime,
     state: LooperMode,
     waveform: Waveform,
 }
@@ -76,6 +77,7 @@ impl Gui {
                     self.state.loopers.insert(id, LooperData {
                         id,
                         length: 0,
+                        last_time: FrameTime(0),
                         state: LooperMode::None,
                         waveform: [vec![], vec![]],
                     });
@@ -84,6 +86,7 @@ impl Gui {
                     self.state.loopers.insert(id, LooperData {
                         id,
                         length,
+                        last_time: FrameTime(length as i64 - 1),
                         state: LooperMode::None,
                         waveform: *waveform,
                     });
@@ -98,11 +101,13 @@ impl Gui {
                         warn!("Got looper state change for unknown looper {}", id);
                     }
                 }
-                Ok(GuiCommand::AddNewSample(id, _time, sample, new_len)) => {
+                Ok(GuiCommand::AddNewSample(id, time, sample, new_len)) => {
+                    // TODO: use time to ensure we're synced
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         l.waveform[0].push(sample[0]);
                         l.waveform[1].push(sample[1]);
                         l.length = new_len;
+                        l.last_time = time;
                     }
                 }
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
@@ -111,6 +116,7 @@ impl Gui {
                             let i = (time.0 as usize / WAVEFORM_DOWNSAMPLE) % l.waveform[0].len();
                             l.waveform[0][i] = sample[0];
                             l.waveform[1][i] = sample[1];
+                            l.last_time = time;
                         }
                     }
                 }

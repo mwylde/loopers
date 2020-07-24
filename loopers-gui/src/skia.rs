@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 pub const WIDTH: i32 = 800;
 pub const HEIGHT: i32 = 600;
 
-const FPS: u64 = 30;
+const FPS: u64 = 60;
 
 pub fn skia_main(mut gui: Gui) {
     let el = EventLoop::new();
