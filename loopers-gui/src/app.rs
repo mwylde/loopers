@@ -9,7 +9,7 @@ use loopers_common::music::{FrameTime, MetricStructure};
 use std::collections::{BTreeMap};
 use loopers_common::protos::LooperMode;
 use skia_safe::gpu::SurfaceOrigin;
-use glutin::platform::unix::x11::util::EnvVarDPI::Scale;
+
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
@@ -348,17 +348,9 @@ impl <T: Eq + Copy> DrawCache<T> {
     }
 }
 
-struct WaveformCacheData {
-    data: AppData,
-    looper: LooperData,
-    time_width: FrameTime,
-}
-
 struct WaveformView {
     waveform: DrawCache<(u64, FrameTime, LooperMode)>,
     beats: DrawCache<MetricStructure>,
-    bar_lines: Option<Path>,
-    beat_lines: Option<Path>,
     time_width: FrameTime,
 }
 
@@ -367,8 +359,6 @@ impl WaveformView {
         Self {
             waveform: DrawCache::new(Self::draw_waveform),
             beats: DrawCache::new(Self::draw_beats),
-            bar_lines: None,
-            beat_lines: None,
             time_width: FrameTime::from_ms(12_000.0),
         }
     }
@@ -537,7 +527,7 @@ impl WaveformView {
 
         // draw bar and beat lines
         {
-            let mut x = -self.time_to_x(data.engine_state.time, w)
+            let x = -self.time_to_x(data.engine_state.time, w)
                 .rem_euclid(w);
             canvas.translate((x, 0.0));
             self.beats.draw(data.engine_state.metric_structure,
