@@ -18,6 +18,8 @@ use crate::app::MainPage;
 use loopers_common::protos::LooperMode;
 use loopers_common::protos::Command;
 
+const SHOW_BUTTONS: bool = true;
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MouseEventType {
     MouseDown(MouseButton),
@@ -43,6 +45,7 @@ pub struct LooperData {
 pub struct AppData {
     engine_state: EngineStateSnapshot,
     loopers: HashMap<u32, LooperData>,
+    show_buttons: bool,
 }
 
 pub struct Gui {
@@ -71,6 +74,7 @@ impl Gui {
                     looper_count: 0
                 },
                 loopers: HashMap::new(),
+                show_buttons: SHOW_BUTTONS,
             },
             receiver,
 

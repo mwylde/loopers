@@ -7,11 +7,12 @@ use skia_safe::paint::Style;
 use std::time::Duration;
 use loopers_common::music::{FrameTime, MetricStructure};
 use std::collections::{BTreeMap};
-use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType};
+use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType, LooperCommandType, LooperCommand, TargetNumber};
 use skia_safe::gpu::SurfaceOrigin;
 use winit::event::MouseButton;
 use crossbeam_channel::Sender;
 use loopers_common::protos::command::CommandOneof;
+use loopers_common::protos::looper_command::TargetOneof;
 
 
 fn color_for_mode(mode: LooperMode) -> Color {
@@ -89,12 +90,10 @@ enum ButtonState {
 }
 
 trait Button {
-    fn clicked(&mut self, button: MouseButton, sender: &mut Sender<Command>);
-
     fn set_state(&mut self, state: ButtonState);
 
-    fn handle_event(&mut self, canvas: &Canvas, bounds: &Rect,
-                    sender: &mut Sender<Command>, event: Option<GuiEvent>) {
+    fn handle_event<F: FnOnce(MouseButton)>(&mut self, canvas: &Canvas, bounds: &Rect,
+                    on_click: F, event: Option<GuiEvent>) -> () {
         if let Some(event) = event {
             match event {
                 GuiEvent::MouseEvent(typ, pos) => {
@@ -105,7 +104,7 @@ trait Button {
                                 self.set_state(ButtonState::Pressed);
                             },
                             MouseEventType::MouseUp(button) => {
-                                self.clicked(button, sender);
+                                on_click(button);
                                 self.set_state(ButtonState::Default);
                             },
                             MouseEventType::Moved => {
@@ -157,7 +156,17 @@ impl AddButton {
         p.move_to((15.0, 0.0));
         p.line_to((15.0, 30.0));
 
-        self.handle_event(canvas, p.bounds(), sender, last_event);
+        let on_click = |button: MouseButton| {
+            if button == MouseButton::Left {
+                sender.send(Command {
+                    command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
+                        command: GlobalCommandType::AddLooper as i32,
+                    }))
+                }).unwrap();
+            };
+        };
+
+        self.handle_event(canvas, p.bounds(), on_click, last_event);
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -178,16 +187,6 @@ impl AddButton {
 }
 
 impl Button for AddButton {
-    fn clicked(&mut self, button: MouseButton, sender: &mut Sender<Command>) {
-        if button == MouseButton::Left {
-            sender.send(Command {
-                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
-                    command: GlobalCommandType::AddLooper as i32,
-                }))
-            }).unwrap();
-        }
-    }
-
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
     }
@@ -225,7 +224,7 @@ impl MainPage {
             canvas.save();
             canvas.translate(Vector::new(0.0, i as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN)));
 
-            looper.draw(canvas, data, &data.loopers[id]);
+            looper.draw(canvas, data, &data.loopers[id], sender, last_event);
 
             canvas.restore();
         }
@@ -369,9 +368,72 @@ impl BottomBarView {
     }
 }
 
+struct ControlButton {
+    state: ButtonState,
+    text: TextBlob,
+    color: Color,
+}
+
+impl ControlButton {
+    fn new(text: &str, color: Color) -> Self {
+        let text = TextBlob::new(
+            text,&Font::new(Typeface::default(), 16.0),
+        ).unwrap();
+
+        ControlButton {
+            state: ButtonState::Default,
+            text,
+            color,
+        }
+    }
+
+    fn draw<F: FnOnce(MouseButton) -> ()>(&mut self, canvas: &mut Canvas, is_active: bool,
+                                           on_click: F, last_event: Option<GuiEvent>) -> Rect {
+        let bounds = self.text.bounds().with_outset((2.0, 0.0));
+
+        self.handle_event(canvas, &bounds, on_click, last_event);
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_style(Style::Stroke);
+
+        paint.set_color(match self.state {
+            ButtonState::Default => self.color,
+            ButtonState::Hover => Color::from_rgb(130, 130, 130),
+            ButtonState::Pressed => Color::from_rgb(30, 255, 30),
+        });
+
+        paint.set_stroke_width(2.0);
+
+        paint.set_style(if is_active {
+            Style::Fill
+        } else {
+            Style::Stroke
+        });
+
+        canvas.draw_rect(&bounds, &paint);
+
+        let mut text_paint = Paint::default();
+        text_paint.set_anti_alias(true);
+        text_paint.set_color(Color::WHITE);
+
+        canvas.draw_text_blob(&self.text, (2.0, 0.0), &text_paint);
+
+        bounds
+    }
+}
+
+impl Button for ControlButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.state = state;
+    }
+}
+
+
 struct LooperView {
     id: u32,
     waveform_view: WaveformView,
+    buttons: Vec<(LooperMode, ControlButton)>,
 }
 
 impl LooperView {
@@ -379,10 +441,16 @@ impl LooperView {
         Self {
             id,
             waveform_view: WaveformView::new(),
+            buttons: vec![
+                (LooperMode::Record, ControlButton::new("record", color_for_mode(LooperMode::Record))),
+                (LooperMode::Overdub, ControlButton::new("overdub", color_for_mode(LooperMode::Overdub))),
+                (LooperMode::Playing, ControlButton::new("play", color_for_mode(LooperMode::Playing))),
+            ]
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData) {
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData,
+            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
         assert_eq!(self.id, looper.id);
 
         let ratio = if looper.length == 0 || looper.state == LooperMode::Record {
@@ -399,6 +467,47 @@ impl LooperView {
             .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
 
         canvas.restore();
+
+        if data.show_buttons {
+            let mut x = WAVEFORM_OFFSET_X + 22.0;
+            for (mode, button) in &mut self.buttons {
+                canvas.save();
+                canvas.translate((x, LOOPER_HEIGHT + 45.0));
+                let bounds = button.draw(canvas, looper.state == *mode, |button| {
+                    if button == MouseButton::Left {
+                        use LooperMode::*;
+                        let command = match (looper.state, mode) {
+                            (Record,  Record) => Some(LooperCommandType::EnableOverdub),
+                            (_,       Record) => Some(LooperCommandType::EnableRecord),
+                            (Overdub, Overdub) => Some(LooperCommandType::EnablePlay),
+                            (_,       Overdub) => Some(LooperCommandType::EnableOverdub),
+                            (Playing, Playing) => Some(LooperCommandType::Stop),
+                            (_,       Playing) => Some(LooperCommandType::EnablePlay),
+                            (s, t) => {
+                                warn!("unhandled button state ({:?}, {:?})", s, t);
+                                Option::None
+                            }
+                        };
+
+                        if let Some(command) = command {
+                            if let Err(e) = sender.send(Command {
+                                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
+                                    command_type: command as i32,
+                                    target_oneof: Some(TargetOneof::TargetNumber(TargetNumber {
+                                        looper_number: looper.id,
+                                    })),
+                                }))
+                            }) {
+                                error!("Failed to send command: {:?}", e);
+                            }
+                        }
+                    }
+                }, last_event);
+                canvas.restore();
+
+                x += bounds.width() + 15.0;
+            }
+        }
     }
 }
 
