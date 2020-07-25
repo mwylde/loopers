@@ -1,3 +1,5 @@
+use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
+
 const SAMPLE_RATE: f64 = 44.100;
 
 #[cfg(test)]
@@ -68,6 +70,10 @@ impl FrameTime {
     pub fn to_ms(&self) -> f64 {
         (self.0 as f64) / SAMPLE_RATE
     }
+
+    pub fn to_waveform(&self) -> i64 {
+        self.0 / WAVEFORM_DOWNSAMPLE as i64
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -127,7 +133,7 @@ impl Tempo {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetricStructure {
     pub time_signature: TimeSignature,
     pub tempo: Tempo,
