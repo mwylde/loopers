@@ -1150,6 +1150,7 @@ dependencies = [
  "prost 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "prost-build 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "skia-safe 0.29.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winit 0.22.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

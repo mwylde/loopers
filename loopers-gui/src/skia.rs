@@ -9,7 +9,7 @@ use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::{ContextBuilder, GlProfile};
 
-use crate::{Gui};
+use crate::{Gui, GuiEvent, MouseEventType};
 use gl::types::*;
 use gl_rs as gl;
 
@@ -92,7 +92,10 @@ pub fn skia_main(mut gui: Gui) {
     let mut frame_times = vec![0; 60];
     let mut frame_counter = 0;
 
+    let mut mouse_position = None;
     let mut paused = false;
+
+    let mut last_event = None;
 
     el.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -126,6 +129,19 @@ pub fn skia_main(mut gui: Gui) {
                             _ => {}
                         }
                     }
+                },
+                WindowEvent::CursorMoved { position, ..} => {
+                    mouse_position = Some(position);
+                    last_event = Some(GuiEvent::MouseEvent(MouseEventType::Moved, position));
+                },
+                WindowEvent::MouseInput { state, button, .. } => {
+                    if let Some(pos) = mouse_position {
+                        let typ = match state {
+                            ElementState::Pressed => MouseEventType::MouseDown(button),
+                            ElementState::Released => MouseEventType::MouseUp(button),
+                        };
+                        last_event = Some(GuiEvent::MouseEvent(typ, pos));
+                    };
                 }
                 _ => (),
             },
@@ -135,7 +151,8 @@ pub fn skia_main(mut gui: Gui) {
 
                     canvas.clear(Color::BLACK);
 
-                    gui.draw(&mut canvas);
+                    gui.draw(&mut canvas, last_event);
+                    last_event = None;
 
                     let mut paint = Paint::default();
                     paint.set_color(Color::from_rgb(255, 255, 255));

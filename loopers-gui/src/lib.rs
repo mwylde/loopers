@@ -9,10 +9,26 @@ use skia_safe::Canvas;
 
 use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
 use crossbeam_channel::{TryRecvError};
-use crate::app::MainPage;
 use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE};
+use glutin::dpi::PhysicalPosition;
+use winit::event::MouseButton;
 use std::collections::HashMap;
+
+use crate::app::MainPage;
+
 use loopers_common::protos::LooperMode;
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum MouseEventType {
+    MouseDown(MouseButton),
+    MouseUp(MouseButton),
+    Moved,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum GuiEvent {
+    MouseEvent(MouseEventType, PhysicalPosition<f64>),
+}
 
 #[derive(Clone)]
 pub struct LooperData {
@@ -130,9 +146,9 @@ impl Gui {
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas) {
+    pub fn draw(&mut self, canvas: &mut Canvas, last_event: Option<GuiEvent>) {
         if self.initialized {
-            self.root.draw(canvas, &self.state);
+            self.root.draw(canvas, &self.state, last_event);
         }
     }
 }

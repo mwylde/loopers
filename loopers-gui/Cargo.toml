@@ -14,6 +14,8 @@ prost = "0.6"
 skia-safe = {version = "0.29", features = ["gl"]}
 
 glutin = "0.24"
+winit = "0.22"
+
 gl-rs = { package = "gl", version = "0.14.0" }
 crossbeam-queue = "0.2"
 crossbeam-channel = "0.4"

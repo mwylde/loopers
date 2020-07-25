@@ -1,6 +1,6 @@
 use skia_safe::*;
 
-use crate::{AppData, LooperData};
+use crate::{AppData, LooperData, GuiEvent, MouseEventType};
 
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
@@ -9,6 +9,7 @@ use loopers_common::music::{FrameTime, MetricStructure};
 use std::collections::{BTreeMap};
 use loopers_common::protos::LooperMode;
 use skia_safe::gpu::SurfaceOrigin;
+use winit::event::MouseButton;
 
 
 fn color_for_mode(mode: LooperMode) -> Color {
@@ -78,16 +79,112 @@ impl Animation {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum ButtonState {
+    Default,
+    Hover,
+    Pressed,
+}
+
+trait Button {
+    fn clicked(&mut self, button: MouseButton);
+
+    fn set_state(&mut self, state: ButtonState);
+
+    fn handle_event(&mut self, canvas: &Canvas, bounds: &Rect, event: Option<GuiEvent>) {
+        if let Some(event) = event {
+            match event {
+                GuiEvent::MouseEvent(typ, pos) => {
+                    let point = canvas.total_matrix().invert().unwrap().map_point((pos.x as f32, pos.y as f32));
+                    if bounds.contains(point) {
+                        match typ {
+                            MouseEventType::MouseDown(MouseButton::Left) => {
+                                self.set_state(ButtonState::Pressed);
+                            },
+                            MouseEventType::MouseUp(button) => {
+                                self.clicked(button);
+                                self.set_state(ButtonState::Default);
+                            },
+                            MouseEventType::Moved => {
+                                self.set_state(ButtonState::Hover);
+                            },
+                            _ => {}
+                        }
+                    } else {
+                        self.set_state(ButtonState::Default);
+                    }
+                },
+            }
+        }
+
+    }
+}
+
 pub struct MainPage {
     loopers: BTreeMap<u32, LooperView>,
     beat_animation: Option<Animation>,
     bottom_bar: BottomBarView,
+    add_button: AddButton,
 }
 
+const LOOPER_MARGIN: f32 = 10.0;
 const LOOPER_HEIGHT: f32 = 80.0;
 const WAVEFORM_OFFSET_X: f32 = 100.0;
 const WAVEFORM_WIDTH: f32 = 650.0;
 const WAVEFORM_ZERO_RATIO: f32 = 0.25;
+
+struct AddButton {
+    state: ButtonState,
+}
+
+impl AddButton {
+    fn new() -> Self {
+        AddButton {
+            state: ButtonState::Default,
+        }
+    }
+
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, last_event: Option<GuiEvent>) {
+        canvas.save();
+        canvas.translate((35.0, (LOOPER_HEIGHT + LOOPER_MARGIN) * data.loopers.len() as f32 + 50.0));
+
+        let mut p = Path::new();
+        p.move_to((0.0, 15.0));
+        p.line_to((30.0, 15.0));
+        p.move_to((15.0, 0.0));
+        p.line_to((15.0, 30.0));
+
+        self.handle_event(canvas, p.bounds(), last_event);
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_style(Style::Stroke);
+
+        paint.set_color(match self.state {
+            ButtonState::Default => Color::from_rgb(180, 180, 180),
+            ButtonState::Hover => Color::from_rgb(255, 255, 255),
+            ButtonState::Pressed => Color::from_rgb(30, 255, 30),
+        });
+
+        paint.set_stroke_width(5.0);
+
+
+        canvas.draw_path(&p, &paint);
+        canvas.restore();
+    }
+}
+
+impl Button for AddButton {
+    fn clicked(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            println!("add button clicked!!");
+        }
+    }
+
+    fn set_state(&mut self, state: ButtonState) {
+        self.state = state;
+    }
+}
 
 impl MainPage {
     pub fn new() -> Self {
@@ -95,10 +192,11 @@ impl MainPage {
             loopers: BTreeMap::new(),
             beat_animation: None,
             bottom_bar: BottomBarView::new(),
+            add_button: AddButton::new(),
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData) {
+    pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData, last_event: Option<GuiEvent>) {
         // add views for new loopers
         for id in data.loopers.keys() {
             self.loopers.entry(*id)
@@ -115,10 +213,9 @@ impl MainPage {
             self.loopers.remove(&id);
         }
 
-
         for (i, (id, looper)) in self.loopers.iter_mut().enumerate() {
             canvas.save();
-            canvas.translate(Vector::new(0.0, i as f32 * 90.0));
+            canvas.translate(Vector::new(0.0, i as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN)));
 
             looper.draw(canvas, data, &data.loopers[id]);
 
@@ -127,7 +224,7 @@ impl MainPage {
 
         // draw play head
         let x = WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO;
-        let h = self.loopers.len() as f32 * (LOOPER_HEIGHT + 10.0);
+        let h = self.loopers.len() as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN);
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 0.0));
@@ -173,6 +270,11 @@ impl MainPage {
 
         canvas.draw_path(&path, &paint);
         canvas.restore();
+
+        // draw the looper add button if we have fewer than 5 loopers
+        if self.loopers.len() < 5 {
+            self.add_button.draw(canvas, data, last_event);
+        }
 
         // draw the bottom bar
         canvas.save();
