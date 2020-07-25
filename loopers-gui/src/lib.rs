@@ -2,13 +2,12 @@
 extern crate log;
 
 mod app;
-mod protos;
 mod skia;
 
 use skia_safe::Canvas;
 
 use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
-use crossbeam_channel::{TryRecvError};
+use crossbeam_channel::{TryRecvError, Sender};
 use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE};
 use glutin::dpi::PhysicalPosition;
 use winit::event::MouseButton;
@@ -17,6 +16,7 @@ use std::collections::HashMap;
 use crate::app::MainPage;
 
 use loopers_common::protos::LooperMode;
+use loopers_common::protos::Command;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MouseEventType {
@@ -48,13 +48,14 @@ pub struct AppData {
 pub struct Gui {
     state: AppData,
     receiver: GuiReceiver,
+    sender: Sender<Command>,
     initialized: bool,
 
     root: MainPage,
 }
 
 impl Gui {
-    pub fn new(receiver: GuiReceiver) -> Gui {
+    pub fn new(receiver: GuiReceiver, sender: Sender<Command>) -> Gui {
         Gui {
             state: AppData {
                 engine_state: EngineStateSnapshot {
@@ -72,6 +73,8 @@ impl Gui {
                 loopers: HashMap::new(),
             },
             receiver,
+
+            sender,
 
             initialized: false,
             root: MainPage::new(),
@@ -148,7 +151,7 @@ impl Gui {
 
     pub fn draw(&mut self, canvas: &mut Canvas, last_event: Option<GuiEvent>) {
         if self.initialized {
-            self.root.draw(canvas, &self.state, last_event);
+            self.root.draw(canvas, &self.state, &mut self.sender, last_event);
         }
     }
 }

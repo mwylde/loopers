@@ -22,6 +22,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use loopers_common::gui_channel::{GuiSender, GuiCommand, EngineStateSnapshot};
+use crossbeam_channel::{Receiver};
 
 pub mod gui;
 pub mod looper;
@@ -49,6 +50,8 @@ pub struct Engine {
 
     gui_output: Arc<SegQueue<State>>,
     gui_input: Arc<SegQueue<Command>>,
+
+    command_input: Receiver<Command>,
     
     gui_sender: GuiSender,
 
@@ -91,6 +94,7 @@ impl Engine {
         gui_output: Arc<SegQueue<State>>,
         gui_input: Arc<SegQueue<Command>>,
         gui_sender: GuiSender,
+        command_input: Receiver<Command>,
         beat_normal: Vec<f32>,
         beat_emphasis: Vec<f32>,
         restore: bool,
@@ -106,6 +110,8 @@ impl Engine {
             gui_output,
             gui_input,
             gui_sender: gui_sender.clone(),
+            command_input,
+
             loopers: vec![Looper::new(0, gui_sender).start()],
             active: 0,
             id_counter: 1,
@@ -420,6 +426,16 @@ impl Engine {
                 self.handle_command(&c, false);
             } else {
                 break;
+            }
+        }
+
+        // Update state from new gui
+        loop {
+            match self.command_input.try_recv() {
+                Ok(c) => {
+                    self.handle_command(&c, false);
+                },
+                Err(_) => break,
             }
         }
 

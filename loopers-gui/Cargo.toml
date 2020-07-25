@@ -21,6 +21,3 @@ crossbeam-queue = "0.2"
 crossbeam-channel = "0.4"
 
 loopers-common = { path = "../loopers-common" }
-
-[build-dependencies]
-prost-build = "0.6"

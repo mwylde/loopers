@@ -21,6 +21,7 @@ use loopers_engine::{gui, Engine};
 use std::{fs, io, thread};
 use loopers_gui::Gui;
 use loopers_common::gui_channel::GuiSender;
+use crossbeam_channel::bounded;
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -73,9 +74,11 @@ fn main() {
         std::process::exit(0);
     });
 
+    let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
+
     let (new_gui, gui_sender) = if matches.is_present("gui") {
         let (sender, receiver) = GuiSender::new();
-        (Some(Gui::new(receiver)), sender)
+        (Some(Gui::new(receiver, gui_to_engine_sender)), sender)
     } else {
         (None, GuiSender::disconnected())
     };
@@ -155,6 +158,7 @@ fn main() {
         output,
         input,
         gui_sender,
+        gui_to_engine_receiver,
         beat_normal,
         beat_empahsis,
         restore,

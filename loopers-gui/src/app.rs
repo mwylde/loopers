@@ -7,9 +7,11 @@ use skia_safe::paint::Style;
 use std::time::Duration;
 use loopers_common::music::{FrameTime, MetricStructure};
 use std::collections::{BTreeMap};
-use loopers_common::protos::LooperMode;
+use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType};
 use skia_safe::gpu::SurfaceOrigin;
 use winit::event::MouseButton;
+use crossbeam_channel::Sender;
+use loopers_common::protos::command::CommandOneof;
 
 
 fn color_for_mode(mode: LooperMode) -> Color {
@@ -87,11 +89,12 @@ enum ButtonState {
 }
 
 trait Button {
-    fn clicked(&mut self, button: MouseButton);
+    fn clicked(&mut self, button: MouseButton, sender: &mut Sender<Command>);
 
     fn set_state(&mut self, state: ButtonState);
 
-    fn handle_event(&mut self, canvas: &Canvas, bounds: &Rect, event: Option<GuiEvent>) {
+    fn handle_event(&mut self, canvas: &Canvas, bounds: &Rect,
+                    sender: &mut Sender<Command>, event: Option<GuiEvent>) {
         if let Some(event) = event {
             match event {
                 GuiEvent::MouseEvent(typ, pos) => {
@@ -102,7 +105,7 @@ trait Button {
                                 self.set_state(ButtonState::Pressed);
                             },
                             MouseEventType::MouseUp(button) => {
-                                self.clicked(button);
+                                self.clicked(button, sender);
                                 self.set_state(ButtonState::Default);
                             },
                             MouseEventType::Moved => {
@@ -144,7 +147,7 @@ impl AddButton {
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, last_event: Option<GuiEvent>) {
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
         canvas.save();
         canvas.translate((35.0, (LOOPER_HEIGHT + LOOPER_MARGIN) * data.loopers.len() as f32 + 50.0));
 
@@ -154,7 +157,7 @@ impl AddButton {
         p.move_to((15.0, 0.0));
         p.line_to((15.0, 30.0));
 
-        self.handle_event(canvas, p.bounds(), last_event);
+        self.handle_event(canvas, p.bounds(), sender, last_event);
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -175,9 +178,13 @@ impl AddButton {
 }
 
 impl Button for AddButton {
-    fn clicked(&mut self, button: MouseButton) {
+    fn clicked(&mut self, button: MouseButton, sender: &mut Sender<Command>) {
         if button == MouseButton::Left {
-            println!("add button clicked!!");
+            sender.send(Command {
+                command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
+                    command: GlobalCommandType::AddLooper as i32,
+                }))
+            }).unwrap();
         }
     }
 
@@ -196,7 +203,8 @@ impl MainPage {
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData, last_event: Option<GuiEvent>) {
+    pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>,
+                last_event: Option<GuiEvent>) {
         // add views for new loopers
         for id in data.loopers.keys() {
             self.loopers.entry(*id)
@@ -273,7 +281,7 @@ impl MainPage {
 
         // draw the looper add button if we have fewer than 5 loopers
         if self.loopers.len() < 5 {
-            self.add_button.draw(canvas, data, last_event);
+            self.add_button.draw(canvas, data, sender, last_event);
         }
 
         // draw the bottom bar
