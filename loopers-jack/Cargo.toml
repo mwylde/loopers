@@ -8,13 +8,6 @@ edition = "2018"
 
 [dependencies]
 jack = "0.6"
-tokio = "0.1"
-tower-request-modifier = { git = "https://github.com/tower-rs/tower-http" }
-tower-hyper = { git = "https://github.com/tower-rs/tower-hyper" }
-hyper = "0.12"
-tower-grpc = { git = "https://github.com/tower-rs/tower-grpc", features = ["tower-hyper"] }
-tower-service = "0.2"
-tower-util = "0.1"
 
 futures = "0.1"
 bytes = "0.4"

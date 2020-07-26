@@ -8,17 +8,14 @@ extern crate futures;
 extern crate jack;
 extern crate serde;
 extern crate serde_yaml;
-extern crate tokio;
-extern crate tower_grpc;
-extern crate tower_hyper;
 #[macro_use]
 extern crate log;
 
 use clap::{App, Arg};
 use loopers_common::config;
 use loopers_engine::midi::MidiEvent;
-use loopers_engine::{gui, Engine};
-use std::{fs, io, thread};
+use loopers_engine::Engine;
+use std::{fs, io};
 use loopers_gui::Gui;
 use loopers_common::gui_channel::GuiSender;
 use crossbeam_channel::bounded;
@@ -66,13 +63,6 @@ fn main() {
     if restore {
         info!("Restoring previous session");
     }
-
-    let (gui, output, input) = gui::Gui::new();
-    thread::spawn(move || {
-        gui.run();
-        info!("window exited... shutting down");
-        std::process::exit(0);
-    });
 
     let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
 
@@ -155,8 +145,6 @@ fn main() {
 
     let mut engine = Engine::new(
         config.to_config(),
-        output,
-        input,
         gui_sender,
         gui_to_engine_receiver,
         beat_normal,

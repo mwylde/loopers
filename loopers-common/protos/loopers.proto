@@ -2,11 +2,6 @@ syntax = "proto3";
 
 package protos;
 
-service Looper {
-    rpc GetState(GetStateReq) returns (stream State) {}
-    rpc Command(CommandReq) returns (CommandResp) {}
-}
-
 enum LooperMode {
     NONE = 0;
     READY = 1;
