@@ -2,10 +2,9 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
-use loopers_common::music::FrameTime;
-use loopers_common::protos::LooperMode;
 use loopers_engine::looper::Looper;
 use loopers_common::gui_channel::GuiSender;
+use loopers_common::api::{LooperMode, FrameTime};
 
 pub fn looper_benchmark(c: &mut Criterion) {
     let samples = [vec![0f32; 128], vec![0f32; 128]];
@@ -25,7 +24,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let mut l = Looper::new(1, GuiSender::disconnected());
-                l.transition_to(LooperMode::Record);
+                l.transition_to(LooperMode::Recording);
                 l.process_input(0, &[&samples[0], &samples[1]]);
                 l.backend.as_mut().unwrap().process_until_done();
                 l.transition_to(LooperMode::Playing);
@@ -44,7 +43,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let mut l = Looper::new(1, GuiSender::disconnected());
-                l.transition_to(LooperMode::Record);
+                l.transition_to(LooperMode::Recording);
                 l.backend.as_mut().unwrap().process_until_done();
                 l
             },

@@ -7,7 +7,6 @@ extern crate dirs;
 extern crate futures;
 extern crate jack;
 extern crate serde;
-extern crate serde_yaml;
 #[macro_use]
 extern crate log;
 
@@ -19,6 +18,8 @@ use std::{fs, io};
 use loopers_gui::Gui;
 use loopers_common::gui_channel::GuiSender;
 use crossbeam_channel::bounded;
+use std::fs::File;
+use loopers_common::config::{MidiMapping};
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -75,26 +76,24 @@ fn main() {
 
     // read config
     let mut config_path = dirs::config_dir().unwrap();
-    config_path.push("loopers/config.yaml");
+    config_path.push("loopers/config.toml");
     let mut config: config::Config = fs::read_to_string(config_path)
-        .map(|s| serde_yaml::from_str(&s).expect("Failed to parse config file"))
+        .map(|s| toml::from_str(&s).expect("Failed to parse config file"))
         .unwrap_or(config::Config {
             midi_mappings: vec![],
         });
 
     let mut mapping_path = dirs::config_dir().unwrap();
     mapping_path.push("loopers/midi_mappings.tsv");
-    let mappings = fs::read_to_string(mapping_path).map(|s| {
-        s.lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(config::MidiMapping::from_line)
-            .map(|m| m.expect("Failed to map line"))
-            .collect::<Vec<config::MidiMapping>>()
-    });
-
-    if let Ok(mappings) = mappings {
-        config.midi_mappings.extend(&mappings);
+    if let Ok(file) = File::open(&mapping_path) {
+        match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
+            Ok(mms) => config.midi_mappings.extend(mms),
+            Err(e) => {
+                error!("Failed to load midi mappings: {:?}", e);
+            }
+        }
     }
+
 
     info!("Config: {:#?}", config);
 
@@ -144,7 +143,7 @@ fn main() {
         .unwrap();
 
     let mut engine = Engine::new(
-        config.to_config(),
+        config,
         gui_sender,
         gui_to_engine_receiver,
         beat_normal,

@@ -89,6 +89,7 @@ pub enum Command {
 
     Start,
     Stop,
+    Reset,
     SetTime(FrameTime),
 
     AddLooper,
@@ -106,6 +107,7 @@ impl Command {
         match command {
             "Start" => Ok(Command::Start),
             "Stop" => Ok(Command::Stop),
+            "Reset" => Ok(Command::Reset),
 
             "SetTime" => {
                 args.get(0)

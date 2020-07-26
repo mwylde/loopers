@@ -227,7 +227,7 @@ impl Engine {
         };
     }
 
-    fn load_session(&mut self, path: &Path) -> Result<(), SaveLoadError> {
+    fn load_session(&mut self, _path: &Path) -> Result<(), SaveLoadError> {
         unimplemented!()
         // let mut file = File::open(&path)?;
         // let mut buf = Vec::new();
@@ -277,6 +277,12 @@ impl Engine {
             Stop => {
                 self.state = EngineState::Stopped;
             }
+            Reset => {
+                if let Some(m) = &mut self.metronome {
+                    m.reset();
+                }
+                self.set_time(FrameTime(-(self.measure_len().0 as i64)));
+            }
             SetTime(time) => {
                 self.set_time(*time)
             }
@@ -314,7 +320,7 @@ impl Engine {
                 }
             }
             SetMetronomeLevel(l) => {
-                if *l >= 0 && *l <= 100 {
+                if *l <= 100 {
                     if let Some(metronome) = &mut self.metronome {
                         metronome.set_volume(*l as f32 / 100.0);
                     }
@@ -357,7 +363,7 @@ impl Engine {
     // Step 2: Handle commands
     // Step 3: Play current samples
     // Step 4: Record
-    // Step 5: (async) Update GUI
+    // Step 5: Update GUI
     pub fn process(
         &mut self,
         in_bufs: [&[f32]; 2],
@@ -395,14 +401,8 @@ impl Engine {
             in_bufs[1].iter().map(|v| *v as f64).collect(),
         ];
 
-        let measure_len = self.measure_len();
         {
-            if self.state == EngineState::Stopped && self.triggers.is_empty() {
-                if let Some(m) = &mut self.metronome {
-                    m.reset();
-                }
-                self.set_time(FrameTime(-(measure_len.0 as i64)));
-            } else {
+            if self.state == EngineState::Active {
                 // process triggers
                 let prev_beat_of_measure = self
                     .metric_structure
@@ -446,11 +446,11 @@ impl Engine {
                 // our buffer size is. We do that by splitting up the input into two pieces: the part
                 // before beat 0 and the part after.
                 if self.time >= 0 && !beat0_triggers.is_empty() {
-                    if stopped {
-                        // if we were previously stopped, we will cheat a bit and reset the time to
-                        // *exactly* 0 (it will be something between 0 and frame_size)
-                        self.set_time(FrameTime(0));
-                    }
+                    // if stopped {
+                    //     // if we were previously stopped, we will cheat a bit and reset the time to
+                    //     // *exactly* 0 (it will be something between 0 and frame_size)
+                    //     self.set_time(FrameTime(0));
+                    // }
 
                     let next_beat_time = self
                         .metric_structure
@@ -469,10 +469,11 @@ impl Engine {
                     pre_size = (next_beat_time.0 - self.time) as usize;
 
                     if pre_size > 0 {
+                        let time = self.time as u64;
                         if let Some(looper) = self.looper_by_id_mut(active) {
                             // Record input to active loop
                             looper.process_input(
-                                self.time as u64,
+                                time,
                                 &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
                             );
 
@@ -486,9 +487,10 @@ impl Engine {
 
                 if self.time >= 0 {
                     // record rest of input
+                    let time = self.time as u64;
                     if let Some(looper) = self.looper_by_id_mut(active) {
                         looper.process_input(
-                            self.time as u64 + pre_size as u64,
+                            time + pre_size as u64,
                             &[
                                 &in_bufs[0][pre_size..frames as usize],
                                 &in_bufs[1][pre_size..frames as usize],

@@ -37,7 +37,7 @@ impl SessionSaver {
             loop {
                 match rx.recv() {
                     Ok(SessionCommand::SaveSession(ms, path)) => {
-                        Self::execute_save_session(ms, *path, &loopers)
+                        Self::execute_save_session(ms, (*path).clone(), &loopers)
                             // TODO: handle this properly
                             .unwrap();
                     }

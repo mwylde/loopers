@@ -12,8 +12,7 @@ jack = "0.6"
 futures = "0.1"
 bytes = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8"
-
+toml = "0.5"
 clap = "2.33.0"
 
 log = "0.4"
