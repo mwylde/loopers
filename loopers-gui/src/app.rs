@@ -105,7 +105,7 @@ trait Button {
                             },
                             MouseEventType::MouseUp(button) => {
                                 on_click(button);
-                                self.set_state(ButtonState::Default);
+                                self.set_state(ButtonState::Hover);
                             },
                             MouseEventType::Moved => {
                                 self.set_state(ButtonState::Hover);
@@ -220,18 +220,21 @@ impl MainPage {
             self.loopers.remove(&id);
         }
 
-        for (i, (id, looper)) in self.loopers.iter_mut().enumerate() {
+        let mut y = 0.0;
+        for  (id, looper) in self.loopers.iter_mut() {
             canvas.save();
-            canvas.translate(Vector::new(0.0, i as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN)));
+            canvas.translate(Vector::new(0.0, y));
 
-            looper.draw(canvas, data, &data.loopers[id], sender, last_event);
+            let size = looper.draw(canvas, data, &data.loopers[id], sender, last_event);
+
+            y += size.height + LOOPER_MARGIN + 10.0;
 
             canvas.restore();
         }
 
         // draw play head
         let x = WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO;
-        let h = self.loopers.len() as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN);
+        let h = y - 10.0;
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 0.0));
@@ -246,12 +249,6 @@ impl MainPage {
         }
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-
-        // draw overlay to darken time that is past
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        paint.set_color(Color::from_argb(120, 0, 0, 0));
-        canvas.draw_rect(Rect::new(0.0, 10.0, x, h), &paint);
 
         // draw play head bar
         let beat = data.engine_state.metric_structure.tempo.beat(data.engine_state.time);
@@ -371,25 +368,35 @@ impl BottomBarView {
 struct ControlButton {
     state: ButtonState,
     text: TextBlob,
+    text_size: Size,
     color: Color,
+    width: f32,
+    height: f32,
 }
 
 impl ControlButton {
-    fn new(text: &str, color: Color) -> Self {
+    fn new(text: &str, color: Color, width: f32, height: f32) -> Self {
+        let font = Font::new(Typeface::default(), 16.0);
+
+        let text_size = font.measure_str(text, None).1.size();
+
         let text = TextBlob::new(
-            text,&Font::new(Typeface::default(), 16.0),
+            text,&font,
         ).unwrap();
 
         ControlButton {
             state: ButtonState::Default,
             text,
+            text_size,
             color,
+            width,
+            height
         }
     }
 
     fn draw<F: FnOnce(MouseButton) -> ()>(&mut self, canvas: &mut Canvas, is_active: bool,
                                            on_click: F, last_event: Option<GuiEvent>) -> Rect {
-        let bounds = self.text.bounds().with_outset((2.0, 0.0));
+        let bounds = Rect::new(0.0, 0.0, self.width, self.height);
 
         self.handle_event(canvas, &bounds, on_click, last_event);
 
@@ -417,7 +424,10 @@ impl ControlButton {
         text_paint.set_anti_alias(true);
         text_paint.set_color(Color::WHITE);
 
-        canvas.draw_text_blob(&self.text, (2.0, 0.0), &text_paint);
+        let x = self.width * 0.5 - self.text_size.width * 0.5;
+        let y = self.height * 0.5 + self.text_size.height * 0.5 - 2.0;
+
+        canvas.draw_text_blob(&self.text, (x, y), &text_paint);
 
         bounds
     }
@@ -433,24 +443,36 @@ impl Button for ControlButton {
 struct LooperView {
     id: u32,
     waveform_view: WaveformView,
-    buttons: Vec<(LooperMode, ControlButton)>,
+    buttons: Vec<Vec<(LooperMode, ControlButton)>>,
+    state: ButtonState,
 }
 
 impl LooperView {
     fn new(id: u32) -> Self {
+        let button_height = LOOPER_HEIGHT * 0.5 - 15.0;
         Self {
             id,
             waveform_view: WaveformView::new(),
             buttons: vec![
-                (LooperMode::Record, ControlButton::new("record", color_for_mode(LooperMode::Record))),
-                (LooperMode::Overdub, ControlButton::new("overdub", color_for_mode(LooperMode::Overdub))),
-                (LooperMode::Playing, ControlButton::new("play", color_for_mode(LooperMode::Playing))),
-            ]
+                vec![
+                    // top row
+                    (LooperMode::Record, ControlButton::new(
+                        "record",  color_for_mode(LooperMode::Record), 100.0, button_height)),
+                    (LooperMode::Playing, ControlButton::new(
+                        "solo",  color_for_mode(LooperMode::Playing), 100.0, button_height)),
+                ],
+                vec![
+                    (LooperMode::Overdub, ControlButton::new(
+                        "overdub", color_for_mode(LooperMode::Overdub), 100.0, button_height)),
+                    (LooperMode::Playing, ControlButton::new(
+                        "playing", color_for_mode(LooperMode::Playing), 100.0, button_height)),
+                ]],
+            state: ButtonState::Default,
         }
     }
 
     fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData,
-            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
+            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
         assert_eq!(self.id, looper.id);
 
         let ratio = if looper.length == 0 || looper.state == LooperMode::Record {
@@ -463,51 +485,85 @@ impl LooperView {
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
-        self.waveform_view
+        let size = self.waveform_view
             .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
+        // sets our state, which tells us if the mouse is hovering
+        self.handle_event(canvas, &Rect::from_size(size), |_| {}, last_event);
+
+        if data.show_buttons && (self.state == ButtonState::Hover || self.state == ButtonState::Pressed) {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_color(Color::from_argb(200, 0, 0, 0));
+            canvas.draw_rect(Rect::new(0.0, 0.0, WAVEFORM_WIDTH, LOOPER_HEIGHT), &paint);
+
+            let mut y = 7.0;
+            for row in &mut self.buttons {
+                let mut x = 200.0;
+                let mut button_height = 0f32;
+
+                for (mode, button) in row {
+                    canvas.save();
+                    canvas.translate((x, y));
+                    let on_click = |button| {
+                        let mode = *mode;
+                        if button == MouseButton::Left {
+                            use LooperMode::*;
+                            let command = match (looper.state, mode) {
+                                (Record,  Record) => Some(LooperCommandType::EnableOverdub),
+                                (_,       Record) => Some(LooperCommandType::EnableRecord),
+                                (Overdub, Overdub) => Some(LooperCommandType::EnablePlay),
+                                (_,       Overdub) => Some(LooperCommandType::EnableOverdub),
+                                (Playing, Playing) => Some(LooperCommandType::Stop),
+                                (_,       Playing) => Some(LooperCommandType::EnablePlay),
+                                (s, t) => {
+                                    warn!("unhandled button state ({:?}, {:?})", s, t);
+                                    Option::None
+                                }
+                            };
+
+                            if let Some(command) = command {
+                                if let Err(e) = sender.send(Command {
+                                    command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
+                                        command_type: command as i32,
+                                        target_oneof: Some(TargetOneof::TargetNumber(TargetNumber {
+                                            looper_number: looper.id,
+                                        })),
+                                    }))
+                                }) {
+                                    error!("Failed to send command: {:?}", e);
+                                }
+                            }
+                        }
+                    };
+
+                    let bounds = button.draw(canvas, looper.state == *mode, on_click, last_event);
+                    canvas.restore();
+
+                    x += bounds.width() + 15.0;
+                    button_height = button_height.max(bounds.height());
+                }
+
+                y += button_height + 10.0;
+            }
+        } else {
+            // draw overlay to darken time that is past
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_color(Color::from_argb(120, 0, 0, 0));
+            canvas.draw_rect(Rect::new(0.0, 0.0,
+                                       WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
+                                       LOOPER_HEIGHT), &paint);
+        }
 
         canvas.restore();
 
-        if data.show_buttons {
-            let mut x = WAVEFORM_OFFSET_X + 22.0;
-            for (mode, button) in &mut self.buttons {
-                canvas.save();
-                canvas.translate((x, LOOPER_HEIGHT + 45.0));
-                let bounds = button.draw(canvas, looper.state == *mode, |button| {
-                    if button == MouseButton::Left {
-                        use LooperMode::*;
-                        let command = match (looper.state, mode) {
-                            (Record,  Record) => Some(LooperCommandType::EnableOverdub),
-                            (_,       Record) => Some(LooperCommandType::EnableRecord),
-                            (Overdub, Overdub) => Some(LooperCommandType::EnablePlay),
-                            (_,       Overdub) => Some(LooperCommandType::EnableOverdub),
-                            (Playing, Playing) => Some(LooperCommandType::Stop),
-                            (_,       Playing) => Some(LooperCommandType::EnablePlay),
-                            (s, t) => {
-                                warn!("unhandled button state ({:?}, {:?})", s, t);
-                                Option::None
-                            }
-                        };
+        Size::new(WAVEFORM_OFFSET_X + WAVEFORM_WIDTH, LOOPER_HEIGHT)
+    }
+}
 
-                        if let Some(command) = command {
-                            if let Err(e) = sender.send(Command {
-                                command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
-                                    command_type: command as i32,
-                                    target_oneof: Some(TargetOneof::TargetNumber(TargetNumber {
-                                        looper_number: looper.id,
-                                    })),
-                                }))
-                            }) {
-                                error!("Failed to send command: {:?}", e);
-                            }
-                        }
-                    }
-                }, last_event);
-                canvas.restore();
-
-                x += bounds.width() + 15.0;
-            }
-        }
+impl Button for LooperView {
+    fn set_state(&mut self, state: ButtonState) {
+        self.state = state;
     }
 }
 
@@ -683,7 +739,7 @@ impl WaveformView {
         canvas.draw_path(&bar_p, &bar_paint);
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData, w: f32, h: f32) {
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData, w: f32, h: f32) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_color(Color::from_rgb(0, 65, 122));
@@ -758,6 +814,8 @@ impl WaveformView {
 
 
         canvas.restore();
+
+        Size::new(w, h)
     }
 }
 
