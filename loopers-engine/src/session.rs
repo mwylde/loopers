@@ -1,7 +1,6 @@
 use crate::looper;
 use crate::looper::Looper;
 use crate::{last_session_path, MetricStructure};
-use bytes::BytesMut;
 use chrono::Local;
 use crossbeam_channel::{bounded, Sender, TrySendError};
 use std::collections::HashMap;
@@ -11,22 +10,21 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use prost::Message;
-
-use loopers_common::error::SaveLoadError;
-use loopers_common::protos::SavedSession;
+use crate::error::SaveLoadError;
+use loopers_common::api::SavedSession;
+use std::sync::Arc;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub enum Command {
-    SaveSession(MetricStructure, PathBuf),
+pub enum SessionCommand {
+    SaveSession(MetricStructure, Arc<PathBuf>),
     AddLooper(u32, Sender<looper::ControlMessage>),
     RemoveLooper(u32),
 }
 
 #[derive(Clone)]
 pub struct SessionSaver {
-    channel: Sender<Command>,
+    channel: Sender<SessionCommand>,
 }
 
 impl SessionSaver {
@@ -38,15 +36,15 @@ impl SessionSaver {
 
             loop {
                 match rx.recv() {
-                    Ok(Command::SaveSession(ms, path)) => {
-                        Self::execute_save_session(ms, path, &loopers)
+                    Ok(SessionCommand::SaveSession(ms, path)) => {
+                        Self::execute_save_session(ms, *path, &loopers)
                             // TODO: handle this properly
                             .unwrap();
                     }
-                    Ok(Command::AddLooper(id, tx)) => {
+                    Ok(SessionCommand::AddLooper(id, tx)) => {
                         loopers.insert(id, tx);
                     }
-                    Ok(Command::RemoveLooper(id)) => {
+                    Ok(SessionCommand::RemoveLooper(id)) => {
                         loopers.remove(&id);
                     }
                     Err(_) => {
@@ -73,9 +71,7 @@ impl SessionSaver {
 
         let mut session = SavedSession {
             save_time: now.timestamp_millis(),
-            time_signature_upper: metric_structure.time_signature.upper as u64,
-            time_signature_lower: metric_structure.time_signature.lower as u64,
-            tempo_mbpm: metric_structure.tempo.mbpm,
+            metric_structure,
             loopers: Vec::with_capacity(loopers.len()),
         };
 
@@ -104,10 +100,7 @@ impl SessionSaver {
 
         path.push("project.loopers");
         let mut file = File::create(&path)?;
-
-        let mut buf = BytesMut::with_capacity(session.encoded_len());
-        session.encode(&mut buf)?;
-        file.write_all(&buf)?;
+        writeln!(file, "{}", toml::to_string(&session).unwrap())?;
 
         // save our last session
         let config_path = last_session_path()?;
@@ -119,23 +112,23 @@ impl SessionSaver {
 
     pub fn add_looper(&mut self, looper: &Looper) {
         self.channel
-            .send(Command::AddLooper(looper.id, looper.channel()))
+            .send(SessionCommand::AddLooper(looper.id, looper.channel()))
             .expect("channel closed!");
     }
 
     pub fn remove_looper(&mut self, id: u32) {
         self.channel
-            .send(Command::RemoveLooper(id))
+            .send(SessionCommand::RemoveLooper(id))
             .expect("channel closed");
     }
 
     pub fn save_session(
         &mut self,
         metric_structure: MetricStructure,
-        path: PathBuf,
+        path: Arc<PathBuf>,
     ) -> Result<(), SaveLoadError> {
         self.channel
-            .try_send(Command::SaveSession(metric_structure, path))
+            .try_send(SessionCommand::SaveSession(metric_structure, path))
             .map_err(|err| match err {
                 TrySendError::Full(_) => SaveLoadError::ChannelFull,
                 TrySendError::Disconnected(_) => SaveLoadError::ChannelClosed,

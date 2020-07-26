@@ -18,6 +18,7 @@ prost = "0.5"
 futures = "0.1"
 dirs = "2"
 log = "0.4"
+toml = "0.5"
 
 loopers-common = { path = "../loopers-common" }
 

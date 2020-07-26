@@ -2,9 +2,8 @@
 extern crate log;
 
 pub mod config;
-pub mod error;
 pub mod music;
-pub mod protos;
+pub mod api;
 pub mod gui_channel;
 
 pub fn clamp<T: PartialOrd + Copy>(v: T, min: T, max: T) -> T {

@@ -1,126 +1,72 @@
-use crate::protos;
-use crate::protos::{GlobalCommandType, LooperCommandType};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::str::FromStr;
+use crate::api::Command;
+use std::fs::File;
+use csv::StringRecord;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MidiMapping {
-    pub controller: u8,
+    pub channel: u8,
     pub data: u8,
     pub command: Command,
 }
 
 impl MidiMapping {
-    pub fn from_line(line: &str) -> io::Result<MidiMapping> {
-        let err = |err: &'static str| io::Error::new(io::ErrorKind::Other, err);
+    pub fn from_file(name: &str, file: &File) -> io::Result<Vec<MidiMapping>> {
+        let mut rdr = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(false)
+            .from_reader(file);
 
-        let mut cs = line.split_ascii_whitespace();
-        let controller = cs
-            .next()
-            .ok_or(err("No controller field"))
-            .and_then(|c| u8::from_str(c).map_err(|_| err("Channel is not a number")))?;
+        let mut mappings = vec![];
+        let mut caught_error = false;
 
-        let data = cs
-            .next()
-            .ok_or(err("No data field"))
-            .and_then(|c| u8::from_str(c).map_err(|_| err("Data is not a number")))?;
+        for result in rdr.records() {
+            let record = result?;
 
-        let command_name = cs.next().ok_or(err("No command field"))?;
-
-        let target = cs.next();
-
-        let mut buf = String::new();
-        buf.push_str(&format!("controller: {}\n", controller));
-        buf.push_str(&format!("data: {}\n", data));
-        buf.push_str("command:\n");
-        buf.push_str(&format!("  command: {}\n", command_name));
-        if let Some(target) = target {
-            if let Ok(i) = u32::from_str(target) {
-                buf.push_str(&format!("  target:\n    Number: {}\n", i))
-            } else {
-                buf.push_str(&format!("  target: {}", target));
+            match Self::from_record(&record) {
+                Ok(mm) => mappings.push(mm),
+                Err(err) => {
+                    caught_error = true;
+                    if let Some(pos) = record.position() {
+                        error!("Failed to load midi mapping on line {}: {}", pos.line(), err);
+                    } else {
+                        error!("Failed to load midi mapping: {}", err);
+                    }
+                },
             }
         }
 
-        // println!("MAPPING\n-----------------\n{}", buf);
-
-        serde_yaml::from_str(&buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        if caught_error {
+            Err(io::Error::new(io::ErrorKind::Other,
+                               format!("Failed to parse midi mappings from {}", name)))
+        } else {
+            Ok(mappings)
+        }
     }
-}
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
-// #[serde(untagged)]
-pub enum LooperCommandTarget {
-    All,
-    Selected,
-    Number(u32),
-}
+    fn from_record(record: &StringRecord) -> Result<MidiMapping, String> {
+        let channel = record.get(0).ok_or("No channel field".to_string())
+            .and_then(|c| u8::from_str(c).map_err(|_| "Channel is not a number".to_string()))?;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[serde(untagged)]
-pub enum Command {
-    LooperCommand {
-        command: LooperCommandType,
-        target: LooperCommandTarget,
-    },
-    GlobalCommand {
-        command: GlobalCommandType,
-    },
-}
+        let data = record.get(1).ok_or("No data field".to_string())
+            .and_then(|c| u8::from_str(c).map_err(|_| "Data is not a number".to_string()))?;
 
-impl Config {
-    pub fn to_config(&self) -> protos::Config {
-        let midi_mappings: Vec<protos::MidiMapping> = self
-            .midi_mappings
-            .iter()
-            .map(|m| {
-                let command = match &m.command {
-                    Command::LooperCommand { command, target } => protos::Command {
-                        command_oneof: Some(protos::command::CommandOneof::LooperCommand(
-                            protos::LooperCommand {
-                                command_type: *command as i32,
-                                target_oneof: Some(match target {
-                                    LooperCommandTarget::All => {
-                                        protos::looper_command::TargetOneof::TargetAll(
-                                            protos::TargetAll {},
-                                        )
-                                    }
-                                    LooperCommandTarget::Selected => {
-                                        protos::looper_command::TargetOneof::TargetSelected(
-                                            protos::TargetSelected {},
-                                        )
-                                    }
-                                    LooperCommandTarget::Number(i) => {
-                                        protos::looper_command::TargetOneof::TargetNumber(
-                                            protos::TargetNumber { looper_number: *i },
-                                        )
-                                    }
-                                }),
-                            },
-                        )),
-                    },
-                    Command::GlobalCommand { command } => protos::Command {
-                        command_oneof: Some(protos::command::CommandOneof::GlobalCommand(
-                            protos::GlobalCommand {
-                                command: *command as i32,
-                            },
-                        )),
-                    },
-                };
-                return protos::MidiMapping {
-                    controller_number: m.controller as u32,
-                    data: m.data as u32,
-                    command: Some(command),
-                };
-            })
-            .collect();
+        let args: Vec<&str> = record.iter().skip(3).collect();
 
-        return protos::Config { midi_mappings };
+        let command = record.get(2).ok_or("No command field".to_string())
+            .and_then(|c| Command::from_str(c, &args))?;
+
+        Ok(MidiMapping {
+            channel,
+            data,
+            command
+        })
     }
 }

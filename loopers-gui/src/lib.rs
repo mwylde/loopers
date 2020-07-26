@@ -7,7 +7,7 @@ mod widgets;
 
 use skia_safe::Canvas;
 
-use loopers_common::music::{FrameTime, MetricStructure, TimeSignature, Tempo};
+use loopers_common::music::{MetricStructure, TimeSignature, Tempo};
 use crossbeam_channel::{TryRecvError, Sender};
 use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE};
 use glutin::dpi::PhysicalPosition;
@@ -15,9 +15,7 @@ use winit::event::MouseButton;
 use std::collections::HashMap;
 
 use crate::app::MainPage;
-
-use loopers_common::protos::LooperMode;
-use loopers_common::protos::Command;
+use loopers_common::api::{FrameTime, LooperMode, Command};
 
 const SHOW_BUTTONS: bool = true;
 
@@ -102,7 +100,7 @@ impl Gui {
                         id,
                         length: 0,
                         last_time: FrameTime(0),
-                        state: LooperMode::None,
+                        state: LooperMode::Playing,
                         waveform: [vec![], vec![]],
                     });
                 }
@@ -111,7 +109,7 @@ impl Gui {
                         id,
                         length,
                         last_time: FrameTime(length as i64 - 1),
-                        state: LooperMode::None,
+                        state: LooperMode::Playing,
                         waveform: *waveform,
                     });
                 }

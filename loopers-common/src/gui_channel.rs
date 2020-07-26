@@ -1,6 +1,6 @@
-use crate::music::{FrameTime, MetricStructure};
-use crate::protos::LooperMode;
+use crate::music::{MetricStructure};
 use crossbeam_channel::{bounded, Sender, Receiver, TrySendError};
+use crate::api::{LooperMode, FrameTime};
 
 pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
 

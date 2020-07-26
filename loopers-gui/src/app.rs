@@ -5,35 +5,34 @@ use crate::{AppData, LooperData, GuiEvent};
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
 use std::time::Duration;
-use loopers_common::music::{FrameTime, MetricStructure};
+use loopers_common::music::{MetricStructure};
 use std::collections::{BTreeMap};
-use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType, LooperCommandType, LooperCommand, TargetNumber, SaveSessionCommand, LoadSessionCommand};
 use skia_safe::gpu::SurfaceOrigin;
 use winit::event::MouseButton;
 use crossbeam_channel::Sender;
-use loopers_common::protos::command::CommandOneof;
-use loopers_common::protos::looper_command::TargetOneof;
 use crate::widgets::{ButtonState, ControlButton, draw_circle_indicator, Button};
 use std::path::PathBuf;
+use loopers_common::api::{LooperMode, FrameTime, Command, LooperCommand, LooperTarget};
+use std::sync::Arc;
 
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Record => Color::from_rgb(255, 0, 0),
-        LooperMode::Ready => Color::from_rgb(255, 50, 0), // TODO: fixme
-        LooperMode::Overdub => Color::from_rgb(0, 255, 255),
+        LooperMode::Recording => Color::from_rgb(255, 0, 0),
+        LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
         LooperMode::Playing => Color::from_rgb(0, 255, 0),
-        LooperMode::None => Color::from_rgb(135, 135, 135),
+        LooperMode::Soloed => Color::from_rgb(0, 255, 0),
+        LooperMode::Muted => Color::from_rgb(135, 135, 135),
     }
 }
 
 fn dark_color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Record => Color::from_rgb(210, 45, 45),
-        LooperMode::Ready => Color::from_rgb(150, 30, 255), // TODO: fixme
-        LooperMode::Overdub => Color::from_rgb(0, 255, 255),
+        LooperMode::Recording => Color::from_rgb(210, 45, 45),
+        LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
         LooperMode::Playing => Color::from_rgb(0, 213, 0),
-        LooperMode::None => Color::from_rgb(65, 65, 65),
+        LooperMode::Soloed => Color::from_rgb(0, 213, 0),
+        LooperMode::Muted => Color::from_rgb(65, 65, 65),
     }
 }
 
@@ -121,11 +120,8 @@ impl AddButton {
 
         let on_click = |button: MouseButton| {
             if button == MouseButton::Left {
-                sender.send(Command {
-                    command_oneof: Some(CommandOneof::GlobalCommand(GlobalCommand {
-                        command: GlobalCommandType::AddLooper as i32,
-                    }))
-                }).unwrap();
+                // TODO: don't unwrap
+                sender.send(Command::AddLooper).unwrap();
             };
         };
 
@@ -371,10 +367,8 @@ impl BottomButtonView {
                         BottomButtonBehavior::Save => {
                             if let Some(mut home_dir) = dirs::home_dir() {
                                 home_dir.push("looper-sessions");
-                                if let Err(e) = sender.send(Command {
-                                    command_oneof: Some(CommandOneof::SaveSessionCommand(SaveSessionCommand {
-                                        path: home_dir.to_string_lossy().to_string(),
-                                    }))}) {
+                                if let Err(e) = sender.send(
+                                    Command::SaveSession(Arc::new(home_dir))) {
                                     error!("failed to send save command to engine: {:?}", e);
                                 }
                             } else {
@@ -389,11 +383,8 @@ impl BottomButtonView {
 
                             if let Some(file) = tinyfiledialogs::open_file_dialog(
                                 "Open", &dir, Some((&["*.loopers"][..], "loopers project files"))) {
-                                if let Err(e) = sender.send(Command {
-                                    command_oneof: Some(CommandOneof::LoadSessionCommand(LoadSessionCommand {
-                                        path: file,
-                                    })),
-                                }) {
+                                if let Err(e) =
+                                sender.send(Command::LoadSession(Arc::new(PathBuf::from(file)))) {
                                     error!("failed to send load command to engine: {:?}", e);
                                 }
                             }
@@ -428,14 +419,14 @@ impl LooperView {
             buttons: vec![
                 vec![
                     // top row
-                    (LooperMode::Record, ControlButton::new(
-                        "record",  color_for_mode(LooperMode::Record), Some(100.0), button_height)),
-                    (LooperMode::Playing, ControlButton::new(
-                        "solo",  color_for_mode(LooperMode::Playing), Some(100.0), button_height)),
+                    (LooperMode::Recording, ControlButton::new(
+                        "record",  color_for_mode(LooperMode::Recording), Some(100.0), button_height)),
+                    (LooperMode::Soloed, ControlButton::new(
+                        "solo",  color_for_mode(LooperMode::Soloed), Some(100.0), button_height)),
                 ],
                 vec![
-                    (LooperMode::Overdub, ControlButton::new(
-                        "overdub", color_for_mode(LooperMode::Overdub), Some(100.0), button_height)),
+                    (LooperMode::Overdubbing, ControlButton::new(
+                        "overdub", color_for_mode(LooperMode::Overdubbing), Some(100.0), button_height)),
                     (LooperMode::Playing, ControlButton::new(
                         "playing", color_for_mode(LooperMode::Playing), Some(100.0), button_height)),
                 ]],
@@ -447,7 +438,7 @@ impl LooperView {
             sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
         assert_eq!(self.id, looper.id);
 
-        let ratio = if looper.length == 0 || looper.state == LooperMode::Record {
+        let ratio = if looper.length == 0 || looper.state == LooperMode::Recording {
             0f32
         } else {
             (data.engine_state.time.0 % looper.length as i64) as f32 / looper.length as f32
@@ -481,27 +472,21 @@ impl LooperView {
                         if button == MouseButton::Left {
                             use LooperMode::*;
                             let command = match (looper.state, mode) {
-                                (Record,  Record) => Some(LooperCommandType::EnableOverdub),
-                                (_,       Record) => Some(LooperCommandType::EnableRecord),
-                                (Overdub, Overdub) => Some(LooperCommandType::EnablePlay),
-                                (_,       Overdub) => Some(LooperCommandType::EnableOverdub),
-                                (Playing, Playing) => Some(LooperCommandType::Stop),
-                                (_,       Playing) => Some(LooperCommandType::EnablePlay),
+                                (Recording,   Recording) => Some(LooperCommand::Overdub),
+                                (_,           Recording) => Some(LooperCommand::Record),
+                                (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
+                                (_,           Overdubbing) => Some(LooperCommand::Overdub),
+                                (Playing,     Playing) => Some(LooperCommand::Mute),
+                                (_,           Playing) => Some(LooperCommand::Play),
                                 (s, t) => {
                                     warn!("unhandled button state ({:?}, {:?})", s, t);
-                                    Option::None
+                                    None
                                 }
                             };
 
                             if let Some(command) = command {
-                                if let Err(e) = sender.send(Command {
-                                    command_oneof: Some(CommandOneof::LooperCommand(LooperCommand {
-                                        command_type: command as i32,
-                                        target_oneof: Some(TargetOneof::TargetNumber(TargetNumber {
-                                            looper_number: looper.id,
-                                        })),
-                                    }))
-                                }) {
+                                if let Err(e) = sender.send(
+                                    Command::Looper(command, LooperTarget::Id(looper.id))) {
                                     error!("Failed to send command: {:?}", e);
                                 }
                             }
@@ -729,7 +714,7 @@ impl WaveformView {
 
         // draw waveform
         if looper.length > 0 {
-            if looper.state == LooperMode::Record {
+            if looper.state == LooperMode::Recording {
                 let pre_width = self.time_width.to_waveform() as f32 * WAVEFORM_ZERO_RATIO;
                 // we're only going to render the part of the waveform that's in the past
                 let len = (pre_width as usize).min(looper.waveform[0].len());
@@ -744,7 +729,7 @@ impl WaveformView {
                     width, h);
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
-                paint.set_color(dark_color_for_mode(LooperMode::Record));
+                paint.set_color(dark_color_for_mode(LooperMode::Recording));
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
@@ -757,13 +742,13 @@ impl WaveformView {
 
                         self.waveform.draw((looper.length, looper.last_time, looper.state),
                                            data, looper, self.time_width, full_w, h,
-                                           looper.state != LooperMode::Record &&
-                                               looper.state != LooperMode::Overdub, canvas);
+                                           looper.state != LooperMode::Recording &&
+                                               looper.state != LooperMode::Overdubbing, canvas);
 
                         canvas.restore();
                     }
 
-                    if looper.state == LooperMode::Record {
+                    if looper.state == LooperMode::Recording {
                         break;
                     }
 

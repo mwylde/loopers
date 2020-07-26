@@ -1,10 +1,10 @@
-use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
-
-const SAMPLE_RATE: f64 = 44.100;
+use serde::{Deserialize, Serialize};
+use crate::api::{FrameTime, SAMPLE_RATE};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::FrameTime;
 
     #[test]
     fn test_frametime() {
@@ -59,24 +59,7 @@ mod tests {
     }
 }
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct FrameTime(pub i64);
-
-impl FrameTime {
-    pub fn from_ms(ms: f64) -> FrameTime {
-        FrameTime((ms * SAMPLE_RATE) as i64)
-    }
-
-    pub fn to_ms(&self) -> f64 {
-        (self.0 as f64) / SAMPLE_RATE
-    }
-
-    pub fn to_waveform(&self) -> i64 {
-        self.0 / WAVEFORM_DOWNSAMPLE as i64
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TimeSignature {
     pub upper: u8,
     pub lower: u8,
@@ -101,7 +84,7 @@ impl TimeSignature {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tempo {
     pub mbpm: u64,
 }
@@ -133,7 +116,7 @@ impl Tempo {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetricStructure {
     pub time_signature: TimeSignature,
     pub tempo: Tempo,

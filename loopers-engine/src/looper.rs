@@ -6,11 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
 
-use loopers_common::error::SaveLoadError;
-use loopers_common::music::*;
-use loopers_common::protos::*;
+use loopers_common::api::{LooperMode, FrameTime, LooperCommand, SavedLooper};
 use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE};
 use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
+use crate::error::SaveLoadError;
 
 #[cfg(test)]
 mod tests {
@@ -87,7 +86,7 @@ mod tests {
         install_test_logger();
 
         let looper = Looper::new(1, GuiSender::disconnected());
-        verify_mode(&looper, LooperMode::None);
+        verify_mode(&looper, LooperMode::Playing);
         assert_eq!(1, looper.id);
         assert_eq!(0, looper.length_in_samples());
     }
@@ -98,17 +97,17 @@ mod tests {
 
         let mut looper = Looper::new(1, GuiSender::disconnected());
 
-        verify_mode(&looper, LooperMode::None);
+        verify_mode(&looper, LooperMode::Playing);
 
-        looper.transition_to(LooperMode::Record);
+        looper.transition_to(LooperMode::Recording);
         process_until_done(&mut looper);
-        verify_mode(&looper, LooperMode::Record);
+        verify_mode(&looper, LooperMode::Recording);
         assert_eq!(1, looper.backend.as_ref().unwrap().samples.len());
 
         let data = [vec![1.0f32, 1.0], vec![-1.0, -1.0]];
         looper.process_input(0, &[&data[0], &data[1]]);
         process_until_done(&mut looper);
-        looper.transition_to(LooperMode::Overdub);
+        looper.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut looper);
 
         assert_eq!(2, looper.backend.as_ref().unwrap().samples.len());
@@ -120,7 +119,7 @@ mod tests {
         process_until_done(&mut looper);
         verify_mode(&looper, LooperMode::Playing);
 
-        looper.transition_to(LooperMode::Record);
+        looper.transition_to(LooperMode::Recording);
         process_until_done(&mut looper);
         assert_eq!(1, looper.backend.as_ref().unwrap().samples.len());
         verify_length(&looper, 0);
@@ -131,7 +130,7 @@ mod tests {
         install_test_logger();
 
         let mut l = Looper::new(1, GuiSender::disconnected());
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
         let input_left = vec![1f32, 2.0, 3.0, 4.0];
@@ -160,7 +159,7 @@ mod tests {
         let mut l = Looper::new(1, GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
         let mut input_left = vec![0f32; TRANSFER_BUF_SIZE];
@@ -186,7 +185,7 @@ mod tests {
             assert_eq!(*r, 0.0);
         }
 
-        l.transition_to(LooperMode::Overdub);
+        l.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut l);
 
         // first record our overdub
@@ -228,7 +227,7 @@ mod tests {
 
         let mut l = Looper::new(2, GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
 
         let mut input_left = vec![1f32; buf_size];
         let mut input_right = vec![-1f32; buf_size];
@@ -250,7 +249,7 @@ mod tests {
         process_until_done(&mut l);
 
         // then transition
-        l.transition_to(LooperMode::Overdub);
+        l.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut l);
 
         let len = buf_size + 100;
@@ -335,7 +334,7 @@ mod tests {
         install_test_logger();
 
         let mut l = Looper::new(1, GuiSender::disconnected());
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
         let mut time = 0i64;
@@ -464,7 +463,7 @@ mod tests {
             time += 32;
         }
 
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
         input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
@@ -539,12 +538,12 @@ mod tests {
 
         let mut l = Looper::new(5, GuiSender::disconnected());
 
-        l.transition_to(LooperMode::Record);
+        l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
         l.process_input(0, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        l.transition_to(LooperMode::Overdub);
+        l.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut l);
         l.process_input(0, &[&input_left2, &input_right2]);
         process_until_done(&mut l);
@@ -591,19 +590,19 @@ impl StateMachine {
         use LooperMode::*;
         StateMachine {
             transitions: vec![
-                (vec![Record], vec![], LooperBackend::finish_recording),
+                (vec![Recording], vec![], LooperBackend::finish_recording),
                 (
-                    vec![Record, Overdub],
+                    vec![Recording, Overdubbing],
                     vec![],
                     LooperBackend::handle_crossfades,
                 ),
                 (
                     vec![],
-                    vec![Overdub],
+                    vec![Overdubbing],
                     LooperBackend::prepare_for_overdubbing,
                 ),
-                (vec![], vec![Record], LooperBackend::prepare_for_recording),
-                (vec![], vec![None], LooperBackend::stop),
+                (vec![], vec![Recording], LooperBackend::prepare_for_recording),
+                //(vec![], vec![None], LooperBackend::stop),
             ],
         }
     }
@@ -730,10 +729,10 @@ impl WaveformGenerator {
             (self.acc[1] / self.size as f64).min(1.0) as f32
         ];
         match mode {
-            LooperMode::Record => {
+            LooperMode::Recording => {
                 sender.send_update(AddNewSample(self.id, self.start_time, s, looper_length));
             },
-            LooperMode::Overdub => {
+            LooperMode::Overdubbing => {
                 sender.send_update(AddOverdubSample(self.id, self.start_time, s));
             },
             _ => {}
@@ -862,7 +861,7 @@ impl LooperBackend {
         let sample_len = self.length_in_samples() as usize;
         // don't fill the output if we're in record mode, because we don't know our length. the
         // timing won't be correct if we wrap around.
-        if sample_len > 0 && self.mode != LooperMode::Record && self.out_time.0 >= 0 {
+        if sample_len > 0 && self.mode != LooperMode::Recording && self.out_time.0 >= 0 {
             // make sure we don't pass our input
             while self.out_time.0 < self.in_time.0 + sample_len as i64 {
                 let mut buf = TransferBuf {
@@ -999,7 +998,7 @@ impl LooperBackend {
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
         let len = self.length_in_samples();
-        if self.mode == LooperMode::Overdub {
+        if self.mode == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
             let s = self
                 .samples
@@ -1022,7 +1021,7 @@ impl LooperBackend {
                                             &[&wv[0], &wv[1]],
                                             self.length_in_samples(),
                                             &mut self.gui_sender);
-        } else if self.mode == LooperMode::Record {
+        } else if self.mode == LooperMode::Recording {
             // in record mode, we extend the current buffer with the new samples
             let s = self
                 .samples
@@ -1089,6 +1088,7 @@ impl LooperBackend {
 
         let mut saved = SavedLooper {
             id: self.id,
+            mode: self.mode,
             samples: Vec::with_capacity(self.samples.len()),
         };
 
@@ -1101,7 +1101,7 @@ impl LooperBackend {
                 writer.write_sample(s.buffer[1][j])?;
             }
             writer.finalize()?;
-            saved.samples.push(p.to_str().unwrap().to_string());
+            saved.samples.push(p);
         }
 
         Ok(saved)
@@ -1150,7 +1150,7 @@ impl Looper {
         let backend = LooperBackend {
             id,
             samples,
-            mode: LooperMode::None,
+            mode: LooperMode::Playing,
             deleted: false,
             enable_crossfading: true,
             out_time: FrameTime(0),
@@ -1173,7 +1173,7 @@ impl Looper {
         Looper {
             id,
             backend: Some(backend),
-            mode: LooperMode::None,
+            mode: LooperMode::Playing,
             deleted: false,
             length_in_samples: length,
             msg_counter: 0,
@@ -1238,6 +1238,30 @@ impl Looper {
             .expect("channel closed");
     }
 
+    pub fn handle_command(&mut self, command: LooperCommand) {
+        use LooperCommand::*;
+        match command {
+            Record => self.transition_to(LooperMode::Recording),
+            Overdub => self.transition_to(LooperMode::Overdubbing),
+            Play => self.transition_to(LooperMode::Playing),
+            Mute => self.transition_to(LooperMode::Muted),
+            Delete => {
+                // TODO: I think I need to tell the gui this
+                //self.session_saver.remove_looper(l.id);
+                self.deleted = true;
+            }
+            RecordOverdubPlay => {
+                if self.length_in_samples() == 0 {
+                    self.transition_to(LooperMode::Recording);
+                } else if self.mode == LooperMode::Recording || self.mode == LooperMode::Playing {
+                    self.transition_to(LooperMode::Overdubbing);
+                } else {
+                    self.transition_to(LooperMode::Playing);
+                }
+            }
+        }
+    }
+
     fn output_for_t(&mut self, t: FrameTime) -> Option<(f64, f64)> {
         let mut cur = self
             .in_progress_output
@@ -1282,7 +1306,7 @@ impl Looper {
         let mut missing = 0;
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
-                if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdub {
+                if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdubbing {
                     outputs[0][out_idx] += l;
                     outputs[1][out_idx] += r;
                 }
@@ -1293,7 +1317,7 @@ impl Looper {
             time.0 += 1;
         }
 
-        if self.mode != LooperMode::Record && missing > 0 {
+        if self.mode != LooperMode::Recording && missing > 0 {
             error!(
                 "needed output but queue was empty in looper {} (missed {} samples)",
                 self.id, missing
@@ -1316,7 +1340,7 @@ impl Looper {
         let msg_id = self.msg_counter;
         self.msg_counter += 1;
 
-        if self.mode == LooperMode::Record {
+        if self.mode == LooperMode::Recording {
             // TODO: would be nice to try to find some way to verify this stays in sync with
             //       the backend
             self.length_in_samples += inputs[0].len() as u64;
@@ -1362,11 +1386,11 @@ impl Looper {
         let mut mode = mode;
         if self.length_in_samples() == 0 {
             warn!("trying to move to overdub with 0-length looper");
-            mode = LooperMode::Record;
+            mode = LooperMode::Recording;
         }
 
         // TODO: maybe want to turn this behavior into an explicit "reset" command
-        if self.mode != LooperMode::Record && mode == LooperMode::Record {
+        if self.mode != LooperMode::Recording && mode == LooperMode::Recording {
             self.length_in_samples = 0;
         }
 

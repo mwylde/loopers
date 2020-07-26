@@ -2,8 +2,8 @@ use crate::sample::PlayOutput::Done;
 use crate::sample::{Sample, SamplePlayer};
 use crate::MetricStructure;
 
-use loopers_common::music::*;
 use std::sync::Arc;
+use loopers_common::api::FrameTime;
 
 #[cfg(test)]
 mod tests {

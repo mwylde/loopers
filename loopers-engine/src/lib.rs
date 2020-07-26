@@ -8,25 +8,24 @@ use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
 use crate::sample::Sample;
 use crate::session::SessionSaver;
-use loopers_common::error::SaveLoadError;
 use loopers_common::music::*;
-use loopers_common::protos::command::CommandOneof;
-use loopers_common::protos::looper_command::TargetOneof;
-use loopers_common::protos::*;
-use prost::Message;
 use std::f32::NEG_INFINITY;
-use std::fs::{create_dir_all, read_to_string, File};
+use std::fs::{create_dir_all, read_to_string};
 use std::io;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use loopers_common::gui_channel::{GuiSender, GuiCommand, EngineStateSnapshot};
 use crossbeam_channel::{Receiver};
+use loopers_common::api::{Command, LooperCommand, LooperTarget, LooperMode, FrameTime};
+use loopers_common::config::Config;
+use crate::error::SaveLoadError;
+use std::sync::Arc;
 
 pub mod looper;
 pub mod metronome;
 pub mod midi;
 pub mod sample;
 pub mod session;
+mod error;
 
 #[derive(Eq, PartialEq)]
 enum TriggerCondition {
@@ -35,11 +34,20 @@ enum TriggerCondition {
 
 struct Trigger {
     condition: TriggerCondition,
-    command: Command,
+    command: LooperCommand,
+    target: LooperTarget,
+}
+
+#[derive(Eq, PartialEq)]
+enum EngineState {
+    Stopped,
+    Active,
 }
 
 pub struct Engine {
     config: Config,
+
+    state: EngineState,
 
     time: i64,
 
@@ -95,6 +103,7 @@ impl Engine {
         let mut engine = Engine {
             config,
 
+            state: EngineState::Stopped,
             time: 0,
 
             metric_structure,
@@ -128,12 +137,12 @@ impl Engine {
             let mut restore_fn = || {
                 let config_path = last_session_path()?;
                 let restore_path = read_to_string(config_path)?;
-                println!("Restoring from {}", restore_path);
-                engine.load_session(&LoadSessionCommand { path: restore_path })
+                info!("Restoring from {}", restore_path);
+                engine.load_session(Path::new(&restore_path))
             };
 
             if let Err(err) = restore_fn() {
-                println!("Failed to restore existing session {:?}", err);
+                warn!("Failed to restore existing session {:?}", err);
             }
         }
 
@@ -144,15 +153,21 @@ impl Engine {
         self.loopers.iter_mut().find(|l| l.id == id)
     }
 
+    fn looper_by_index_mut(&mut self, idx: u8) -> Option<&mut Looper> {
+        self.loopers.iter_mut().filter(|l| !l.deleted)
+            .skip(idx as usize)
+            .next()
+    }
+
     fn commands_from_midi(&mut self, events: &[MidiEvent]) {
         for e in events {
             debug!("midi {:?}", e);
             if e.bytes.len() >= 3 {
                 let command = self.config.midi_mappings.iter().find(|m|
-                    e.bytes[1] == m.controller_number as u8 && e.bytes[2] == m.data as u8)
+                    e.bytes[1] == m.channel as u8 && e.bytes[2] == m.data as u8)
                     .map(|m| m.command.clone());
 
-                if let Some(Some(c)) = command {
+                if let Some(c) = command {
                     self.handle_command(&c, false);
                 }
             }
@@ -160,194 +175,151 @@ impl Engine {
     }
 
     // possibly convert a loop command into a trigger
-    fn trigger_from_command(lc: &LooperCommand) -> Option<Trigger> {
-        match LooperCommandType::from_i32(lc.command_type) {
-            Some(LooperCommandType::EnableRecord)
-            | Some(LooperCommandType::EnableOverdub)
-            | Some(LooperCommandType::RecordOverdubPlay) => Some(Trigger {
+    fn trigger_from_command(lc: LooperCommand, target: LooperTarget) -> Option<Trigger> {
+        use LooperCommand::*;
+        match lc {
+            Record | Overdub | RecordOverdubPlay => Some(Trigger {
                 condition: TriggerCondition::BEAT0,
-                command: Command {
-                    command_oneof: Some(CommandOneof::LooperCommand(lc.clone())),
-                },
+                command: lc,
+                target,
             }),
             _ => None,
         }
     }
 
-    fn handle_loop_command(&mut self, lc: &LooperCommand, triggered: bool) {
-        debug!("Handling loop command: {:?}", lc);
+    fn handle_loop_command(&mut self, lc: LooperCommand, target: LooperTarget, triggered: bool) {
+        debug!("Handling loop command: {:?} for {:?}", lc, target);
 
         if !triggered {
-            if let Some(trigger) = Engine::trigger_from_command(lc) {
+            if let Some(trigger) = Engine::trigger_from_command(lc, target) {
                 self.triggers.push(trigger);
                 return;
             }
         }
 
-        let mut session_saver = self.session_saver.clone();
-
-        let loopers: Vec<&mut Looper> = match lc.target_oneof.as_ref().unwrap() {
-            TargetOneof::TargetAll(_) => self.loopers.iter_mut().collect(),
-            TargetOneof::TargetSelected(_) => {
+        match target {
+            LooperTarget::Id(id) => {
+                if let Some(l) = self.looper_by_id_mut(id) {
+                    l.handle_command(lc);
+                } else {
+                    warn!("Could not find looper with id {} while handling command {:?}", id, lc);
+                }
+            }
+            LooperTarget::Index(idx) => {
+                if let Some(l) = self.looper_by_index_mut(idx) {
+                    l.handle_command(lc);
+                } else {
+                    warn!("No looper at index {} while handling command {:?}", idx, lc);
+                }
+            }
+            LooperTarget::All => {
+                for l in &mut self.loopers {
+                    l.handle_command(lc);
+                }
+            }
+            LooperTarget::Selected => {
                 if let Some(l) = self.looper_by_id_mut(self.active) {
-                    vec![l]
+                    l.handle_command(lc);
                 } else {
-                    vec![]
-                }
-            }
-            TargetOneof::TargetNumber(t) => {
-                if let Some(l) = self.loopers.get_mut(t.looper_number as usize) {
-                    vec![l]
-                } else {
-                    vec![]
+                    error!("selected looper {} not found while handling command {:?}", self.active, lc);
                 }
             }
         };
-
-        let mut selected = None;
-
-        // TODO: warn if loopers is empty (indicating an invalid selection)
-        for l in loopers {
-            if let Some(typ) = LooperCommandType::from_i32(lc.command_type) {
-                match typ as LooperCommandType {
-                    LooperCommandType::EnableReady => {
-                        l.transition_to(LooperMode::Ready);
-                    }
-                    LooperCommandType::EnableRecord => {
-                        l.transition_to(LooperMode::Record);
-                    }
-                    LooperCommandType::EnableOverdub => {
-                        l.transition_to(LooperMode::Overdub);
-                    }
-                    LooperCommandType::EnableMutiply => {
-                        // TODO
-                    }
-                    LooperCommandType::Stop => {
-                        l.transition_to(LooperMode::None);
-                    }
-
-                    LooperCommandType::EnablePlay => {
-                        l.transition_to(LooperMode::Playing);
-                    }
-                    LooperCommandType::Select => {
-                        selected = Some(l.id);
-                    }
-                    LooperCommandType::Delete => {
-                        session_saver.remove_looper(l.id);
-                        l.deleted = true;
-                    }
-
-                    LooperCommandType::RecordOverdubPlay => {
-                        selected = Some(l.id);
-                        if l.length_in_samples() == 0 {
-                            l.transition_to(LooperMode::Record);
-                        } else if l.mode == LooperMode::Record || l.mode == LooperMode::Playing {
-                            l.transition_to(LooperMode::Overdub);
-                        } else {
-                            l.transition_to(LooperMode::Playing);
-                        }
-                    }
-                }
-            } else {
-                // TODO: log this
-            }
-        }
-
-        if let Some(id) = selected {
-            self.active = id;
-        }
     }
 
-    fn save_session(&mut self, command: &SaveSessionCommand) -> Result<(), SaveLoadError> {
-        // TODO: get rid of this allocation
-        let path = PathBuf::from(&command.path);
-        self.session_saver.save_session(self.metric_structure, path)
-    }
-
-    fn load_session(&mut self, command: &LoadSessionCommand) -> Result<(), SaveLoadError> {
-        let mut file = File::open(&command.path)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-
-        let path = Path::new(&command.path);
-        let dir = path.parent().unwrap();
-
-        let session: SavedSession = SavedSession::decode(&buf)?;
-        self.metric_structure.time_signature = TimeSignature::new(
-            session.time_signature_upper as u8,
-            session.time_signature_lower as u8,
-        )
-        .expect(&format!(
-            "Invalid time signature: {}/{}",
-            session.time_signature_upper, session.time_signature_lower
-        ));
-
-        self.metric_structure.tempo = Tempo {
-            mbpm: session.tempo_mbpm,
-        };
-
-        for l in &self.loopers {
-            self.session_saver.remove_looper(l.id);
-        }
-        self.loopers.clear();
-
-        for l in session.loopers {
-            let looper = Looper::from_serialized(
-                &l, dir, self.gui_sender.clone())?.start();
-            self.session_saver.add_looper(&looper);
-            self.loopers.push(looper);
-        }
-
-        Ok(())
+    fn load_session(&mut self, path: &Path) -> Result<(), SaveLoadError> {
+        unimplemented!()
+        // let mut file = File::open(&path)?;
+        // let mut buf = Vec::new();
+        // file.read_to_end(&mut buf)?;
+        //
+        // let path = Path::new(&command.path);
+        // let dir = path.parent().unwrap();
+        //
+        // // let session: SavedSession = SavedSession::decode(&buf)?;
+        // // self.metric_structure.time_signature = TimeSignature::new(
+        // //     session.time_signature_upper as u8,
+        // //     session.time_signature_lower as u8,
+        // // )
+        // // .expect(&format!(
+        // //     "Invalid time signature: {}/{}",
+        // //     session.time_signature_upper, session.time_signature_lower
+        // // ));
+        // //
+        // // self.metric_structure.tempo = Tempo {
+        // //     mbpm: session.tempo_mbpm,
+        // // };
+        // //
+        // // for l in &self.loopers {
+        // //     self.session_saver.remove_looper(l.id);
+        // // }
+        // // self.loopers.clear();
+        // //
+        // // for l in session.loopers {
+        // //     let looper = Looper::from_serialized(
+        // //         &l, dir, self.gui_sender.clone())?.start();
+        // //     self.session_saver.add_looper(&looper);
+        // //     self.loopers.push(looper);
+        // // }
+        //
+        // Ok(())
     }
 
     fn handle_command(&mut self, command: &Command, triggered: bool) {
-        if let Some(oneof) = &command.command_oneof {
-            match oneof {
-                CommandOneof::LooperCommand(lc) => {
-                    self.handle_loop_command(lc, triggered);
+        use Command::*;
+        match command {
+            Looper(lc, target) => {
+                self.handle_loop_command(*lc, *target, triggered);
+            }
+            Start => {
+                self.state = EngineState::Active;
+            }
+            Stop => {
+                self.state = EngineState::Stopped;
+            }
+            SetTime(time) => {
+                self.set_time(*time)
+            }
+            AddLooper => {
+                // TODO: make this non-allocating
+                let looper = crate::Looper::new(self.id_counter, self.gui_sender.clone()).start();
+                self.session_saver.add_looper(&looper);
+                self.loopers.push(looper);
+                self.active = self.id_counter;
+                self.id_counter += 1;
+            }
+            SelectLooperById(id) => {
+                if self.loopers.iter().any(|l| l.id == *id) {
+                    self.active = *id;
+                } else {
+                    warn!("tried to select non-existent looper id {}", id);
                 }
-                CommandOneof::GlobalCommand(gc) => {
-                    if let Some(typ) = GlobalCommandType::from_i32(gc.command) {
-                        match typ as GlobalCommandType {
-                            GlobalCommandType::ResetTime => {
-                                self.set_time(FrameTime(0));
-                            }
-                            GlobalCommandType::AddLooper => {
-                                let looper = Looper::new(
-                                    self.id_counter, self.gui_sender.clone()).start();
-                                self.session_saver.add_looper(&looper);
-                                self.loopers.push(looper);
-                                self.active = self.id_counter;
-                                self.id_counter += 1;
-                            }
-                            GlobalCommandType::EnableLearnMode => {
-                                self.is_learning = true;
-                            }
-                            GlobalCommandType::DisableLearnMode => {
-                                self.is_learning = false;
-                            }
-                        }
-                    }
+            }
+            SelectLooperByIndex(idx) => {
+                if let Some(l) = self.looper_by_index_mut(*idx) {
+                    self.active = l.id;
+                } else {
+                    warn!("tried to select non-existent looper index {}", idx);
                 }
-                CommandOneof::SaveSessionCommand(command) => {
-                    if let Err(e) = self.save_session(command) {
-                        error!("Failed to save session {:?}", e);
-                    }
+            }
+            SaveSession(path) => {
+                if let Err(e) = self.session_saver.save_session(
+                    self.metric_structure, Arc::clone(path)) {
+                    error!("Failed to save session {:?}", e);
                 }
-                CommandOneof::LoadSessionCommand(command) => {
-                    if let Err(e) = self.load_session(command) {
-                        error!("Failed to load session {:?}", e);
-                    }
+            }
+            LoadSession(path) => {
+                if let Err(e) = self.load_session(path) {
+                    error!("Failed to load session {:?}", e);
                 }
-                CommandOneof::MetronomeVolumeCommand(command) => {
-                    if command.volume >= 0.0 && command.volume <= 1.0 {
-                        if let Some(metronome) = &mut self.metronome {
-                            metronome.set_volume(command.volume);
-                        }
-                    } else {
-                        error!("Invalid metronome volume; must be between 0 and 1");
+            }
+            SetMetronomeLevel(l) => {
+                if *l >= 0 && *l <= 100 {
+                    if let Some(metronome) = &mut self.metronome {
+                        metronome.set_volume(*l as f32 / 100.0);
                     }
+                } else {
+                    error!("Invalid metronome volume; must be between 0 and 100");
                 }
             }
         }
@@ -357,7 +329,7 @@ impl Engine {
         if self.time >= 0 {
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted
-                    && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdub)
+                    && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdubbing)
                 {
                     looper.process_output(FrameTime(self.time as i64), outputs)
                 }
@@ -423,10 +395,9 @@ impl Engine {
             in_bufs[1].iter().map(|v| *v as f64).collect(),
         ];
 
-        let stopped = self.loopers.iter().all(|l| l.mode == LooperMode::None);
         let measure_len = self.measure_len();
         {
-            if stopped && self.triggers.is_empty() {
+            if self.state == EngineState::Stopped && self.triggers.is_empty() {
                 if let Some(m) = &mut self.metronome {
                     m.reset();
                 }
@@ -450,7 +421,7 @@ impl Engine {
                 for t in old_triggers {
                     let did_match = match t.condition {
                         TriggerCondition::BEAT0 => {
-                            (stopped || prev_beat_of_measure != 0)
+                            (self.state == EngineState::Stopped || prev_beat_of_measure != 0)
                                 && beat_of_measure == 0
                                 && self.time >= 0
                         }
@@ -459,7 +430,7 @@ impl Engine {
                     if did_match && t.condition == TriggerCondition::BEAT0 {
                         beat0_triggers.push(t);
                     } else if did_match {
-                        self.handle_command(&t.command, true);
+                        self.handle_loop_command(t.command, t.target, true);
                     } else {
                         self.triggers.push(t);
                     }
@@ -498,30 +469,32 @@ impl Engine {
                     pre_size = (next_beat_time.0 - self.time) as usize;
 
                     if pre_size > 0 {
-                        let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
+                        if let Some(looper) = self.looper_by_id_mut(active) {
+                            // Record input to active loop
+                            looper.process_input(
+                                self.time as u64,
+                                &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
+                            );
 
-                        // Record input to active loop
-                        looper.process_input(
-                            self.time as u64,
-                            &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
-                        );
+                        }
                     }
 
                     for t in beat0_triggers {
-                        self.handle_command(&t.command, true);
+                        self.handle_loop_command(t.command, t.target, true);
                     }
                 }
 
                 if self.time >= 0 {
                     // record rest of input
-                    let looper = self.loopers.iter_mut().find(|l| l.id == active).unwrap();
-                    looper.process_input(
-                        self.time as u64 + pre_size as u64,
-                        &[
-                            &in_bufs[0][pre_size..frames as usize],
-                            &in_bufs[1][pre_size..frames as usize],
-                        ],
-                    );
+                    if let Some(looper) = self.looper_by_id_mut(active) {
+                        looper.process_input(
+                            self.time as u64 + pre_size as u64,
+                            &[
+                                &in_bufs[0][pre_size..frames as usize],
+                                &in_bufs[1][pre_size..frames as usize],
+                            ],
+                        );
+                    }
 
                     // Play our loops
                     self.play_loops(&mut out_64_vec);
