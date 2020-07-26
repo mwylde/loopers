@@ -3,6 +3,7 @@ extern crate log;
 
 mod app;
 mod skia;
+mod widgets;
 
 use skia_safe::Canvas;
 

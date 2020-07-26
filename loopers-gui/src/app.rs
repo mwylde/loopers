@@ -1,18 +1,20 @@
 use skia_safe::*;
 
-use crate::{AppData, LooperData, GuiEvent, MouseEventType};
+use crate::{AppData, LooperData, GuiEvent};
 
 use crate::skia::{HEIGHT, WIDTH};
 use skia_safe::paint::Style;
 use std::time::Duration;
 use loopers_common::music::{FrameTime, MetricStructure};
 use std::collections::{BTreeMap};
-use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType, LooperCommandType, LooperCommand, TargetNumber};
+use loopers_common::protos::{LooperMode, Command, GlobalCommand, GlobalCommandType, LooperCommandType, LooperCommand, TargetNumber, SaveSessionCommand, LoadSessionCommand};
 use skia_safe::gpu::SurfaceOrigin;
 use winit::event::MouseButton;
 use crossbeam_channel::Sender;
 use loopers_common::protos::command::CommandOneof;
 use loopers_common::protos::looper_command::TargetOneof;
+use crate::widgets::{ButtonState, ControlButton, draw_circle_indicator, Button};
+use std::path::PathBuf;
 
 
 fn color_for_mode(mode: LooperMode) -> Color {
@@ -82,51 +84,12 @@ impl Animation {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum ButtonState {
-    Default,
-    Hover,
-    Pressed,
-}
-
-trait Button {
-    fn set_state(&mut self, state: ButtonState);
-
-    fn handle_event<F: FnOnce(MouseButton)>(&mut self, canvas: &Canvas, bounds: &Rect,
-                    on_click: F, event: Option<GuiEvent>) -> () {
-        if let Some(event) = event {
-            match event {
-                GuiEvent::MouseEvent(typ, pos) => {
-                    let point = canvas.total_matrix().invert().unwrap().map_point((pos.x as f32, pos.y as f32));
-                    if bounds.contains(point) {
-                        match typ {
-                            MouseEventType::MouseDown(MouseButton::Left) => {
-                                self.set_state(ButtonState::Pressed);
-                            },
-                            MouseEventType::MouseUp(button) => {
-                                on_click(button);
-                                self.set_state(ButtonState::Hover);
-                            },
-                            MouseEventType::Moved => {
-                                self.set_state(ButtonState::Hover);
-                            },
-                            _ => {}
-                        }
-                    } else {
-                        self.set_state(ButtonState::Default);
-                    }
-                },
-            }
-        }
-
-    }
-}
-
 pub struct MainPage {
     loopers: BTreeMap<u32, LooperView>,
     beat_animation: Option<Animation>,
     bottom_bar: BottomBarView,
     add_button: AddButton,
+    bottom_buttons: BottomButtonView,
 }
 
 const LOOPER_MARGIN: f32 = 10.0;
@@ -199,6 +162,7 @@ impl MainPage {
             beat_animation: None,
             bottom_bar: BottomBarView::new(),
             add_button: AddButton::new(),
+            bottom_buttons: BottomButtonView::new(),
         }
     }
 
@@ -280,10 +244,19 @@ impl MainPage {
             self.add_button.draw(canvas, data, sender, last_event);
         }
 
-        // draw the bottom bar
+        // draw the bottom bars
+        let mut bottom = HEIGHT as f32;
+        if data.show_buttons {
+            canvas.save();
+            canvas.translate((10.0, bottom - 40.0));
+            self.bottom_buttons.draw(canvas, sender, last_event);
+            canvas.restore();
+            bottom -= 40.0;
+        };
+
         canvas.save();
         let bar_height = 30.0;
-        canvas.translate(Vector::new(0.0, HEIGHT as f32 - bar_height));
+        canvas.translate(Vector::new(0.0, bottom - bar_height));
         self.bottom_bar.draw(canvas, WIDTH as f32, 30.0, data);
         canvas.restore();
     }
@@ -365,80 +338,79 @@ impl BottomBarView {
     }
 }
 
-struct ControlButton {
-    state: ButtonState,
-    text: TextBlob,
-    text_size: Size,
-    color: Color,
-    width: f32,
-    height: f32,
+#[derive(Copy, Clone)]
+enum BottomButtonBehavior {
+    Save, Load, Settings
 }
 
-impl ControlButton {
-    fn new(text: &str, color: Color, width: f32, height: f32) -> Self {
-        let font = Font::new(Typeface::default(), 16.0);
+struct BottomButtonView {
+    buttons: Vec<(BottomButtonBehavior, ControlButton)>,
+}
 
-        let text_size = font.measure_str(text, None).1.size();
-
-        let text = TextBlob::new(
-            text,&font,
-        ).unwrap();
-
-        ControlButton {
-            state: ButtonState::Default,
-            text,
-            text_size,
-            color,
-            width,
-            height
+impl BottomButtonView {
+    fn new() -> Self {
+        use BottomButtonBehavior::*;
+        BottomButtonView {
+            buttons: vec![
+                (Save, ControlButton::new("save", Color::WHITE, None, 30.0)),
+                (Load, ControlButton::new("load", Color::WHITE, None, 30.0)),
+                (Settings, ControlButton::new("settings", Color::WHITE, None, 30.0)),
+            ]
         }
     }
 
-    fn draw<F: FnOnce(MouseButton) -> ()>(&mut self, canvas: &mut Canvas, is_active: bool,
-                                           on_click: F, last_event: Option<GuiEvent>) -> Rect {
-        let bounds = Rect::new(0.0, 0.0, self.width, self.height);
+    fn draw(&mut self, canvas: &mut Canvas, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
+        let mut x = 0.0;
+        for (behavior, button) in &mut self.buttons {
+            canvas.save();
+            canvas.translate((x, 0.0));
 
-        self.handle_event(canvas, &bounds, on_click, last_event);
+            let on_click = |button: MouseButton| {
+                if button == MouseButton::Left {
+                    match behavior {
+                        BottomButtonBehavior::Save => {
+                            if let Some(mut home_dir) = dirs::home_dir() {
+                                home_dir.push("looper-sessions");
+                                if let Err(e) = sender.send(Command {
+                                    command_oneof: Some(CommandOneof::SaveSessionCommand(SaveSessionCommand {
+                                        path: home_dir.to_string_lossy().to_string(),
+                                    }))}) {
+                                    error!("failed to send save command to engine: {:?}", e);
+                                }
+                            } else {
+                                error!("Could not determine home dir");
+                            }
+                        },
+                        BottomButtonBehavior::Load => {
+                            let dir = dirs::home_dir().map(|mut dir| {
+                                dir.push("looper-sessions");
+                                dir.to_string_lossy().to_string()
+                            }).unwrap_or(PathBuf::new().to_string_lossy().to_string());
 
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        paint.set_style(Style::Stroke);
+                            if let Some(file) = tinyfiledialogs::open_file_dialog(
+                                "Open", &dir, Some((&["*.loopers"][..], "loopers project files"))) {
+                                if let Err(e) = sender.send(Command {
+                                    command_oneof: Some(CommandOneof::LoadSessionCommand(LoadSessionCommand {
+                                        path: file,
+                                    })),
+                                }) {
+                                    error!("failed to send load command to engine: {:?}", e);
+                                }
+                            }
+                        },
+                        BottomButtonBehavior::Settings => {},
+                    };
+                }
+            };
 
-        paint.set_color(match self.state {
-            ButtonState::Default => self.color,
-            ButtonState::Hover => Color::from_rgb(130, 130, 130),
-            ButtonState::Pressed => Color::from_rgb(30, 255, 30),
-        });
+            let size = button.draw(canvas, false, on_click, last_event);
+            x += size.width() + 10.0;
+            canvas.restore();
+        }
 
-        paint.set_stroke_width(2.0);
-
-        paint.set_style(if is_active {
-            Style::Fill
-        } else {
-            Style::Stroke
-        });
-
-        canvas.draw_rect(&bounds, &paint);
-
-        let mut text_paint = Paint::default();
-        text_paint.set_anti_alias(true);
-        text_paint.set_color(Color::WHITE);
-
-        let x = self.width * 0.5 - self.text_size.width * 0.5;
-        let y = self.height * 0.5 + self.text_size.height * 0.5 - 2.0;
-
-        canvas.draw_text_blob(&self.text, (x, y), &text_paint);
-
-        bounds
+        Size::new(x, 40.0)
     }
 }
-
-impl Button for ControlButton {
-    fn set_state(&mut self, state: ButtonState) {
-        self.state = state;
-    }
-}
-
 
 struct LooperView {
     id: u32,
@@ -457,15 +429,15 @@ impl LooperView {
                 vec![
                     // top row
                     (LooperMode::Record, ControlButton::new(
-                        "record",  color_for_mode(LooperMode::Record), 100.0, button_height)),
+                        "record",  color_for_mode(LooperMode::Record), Some(100.0), button_height)),
                     (LooperMode::Playing, ControlButton::new(
-                        "solo",  color_for_mode(LooperMode::Playing), 100.0, button_height)),
+                        "solo",  color_for_mode(LooperMode::Playing), Some(100.0), button_height)),
                 ],
                 vec![
                     (LooperMode::Overdub, ControlButton::new(
-                        "overdub", color_for_mode(LooperMode::Overdub), 100.0, button_height)),
+                        "overdub", color_for_mode(LooperMode::Overdub), Some(100.0), button_height)),
                     (LooperMode::Playing, ControlButton::new(
-                        "playing", color_for_mode(LooperMode::Playing), 100.0, button_height)),
+                        "playing", color_for_mode(LooperMode::Playing), Some(100.0), button_height)),
                 ]],
             state: ButtonState::Default,
         }
@@ -819,28 +791,3 @@ impl WaveformView {
     }
 }
 
-fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
-    let mut paint = Paint::default();
-    paint.set_anti_alias(true);
-    paint.set_color(color);
-    paint.set_alpha_f(0.3);
-    canvas.draw_circle(Point::new(x + r, y + r), r, &paint);
-
-    paint.set_alpha_f(1.0);
-
-    let mut path = Path::new();
-    path.move_to(Point::new(x + r, y + r));
-    path.line_to(Point::new(x + r, y));
-    path.arc_to(
-        Rect::new(x, y, x + 2.0 * r, y + 2.0 * r),
-        270.0,
-        270.0 + (p + 0.25) * 360.0,
-        true,
-    );
-    path.line_to(Point::new(x + r, y + r));
-    path.close();
-
-    paint.set_stroke_width(2.0);
-    paint.set_style(Style::StrokeAndFill);
-    canvas.draw_path(&path, &paint);
-}
