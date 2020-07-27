@@ -467,6 +467,7 @@ struct LooperView {
     waveform_view: WaveformView,
     buttons: Vec<Vec<(LooperMode, ControlButton)>>,
     state: ButtonState,
+    active_button: ActiveButton,
 }
 
 impl LooperView {
@@ -519,6 +520,7 @@ impl LooperView {
                 ],
             ],
             state: ButtonState::Default,
+            active_button: ActiveButton::new(),
         }
     }
 
@@ -538,6 +540,7 @@ impl LooperView {
             (data.engine_state.time.0 % looper.length as i64) as f32 / looper.length as f32
         };
 
+        // Draw loop completion indicate
         draw_circle_indicator(
             canvas,
             color_for_mode(looper.state),
@@ -547,11 +550,25 @@ impl LooperView {
             25.0,
         );
 
+        // Draw waveform
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
         let size = self
             .waveform_view
             .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
+
+        // draw active button
+        canvas.save();
+        canvas.translate((WAVEFORM_WIDTH + 25.0, 20.0));
+        self.active_button.draw(canvas, data.engine_state.active_looper == looper.id, |button| {
+            if button == MouseButton::Left {
+                if let Err(e) = sender.send(Command::SelectLooperById(looper.id)) {
+                    error!("Failed to send command {}", e);
+                }
+            }
+        }, last_event);
+        canvas.restore();
+
         // sets our state, which tells us if the mouse is hovering
         self.handle_event(canvas, &Rect::from_size(size), |_| {}, last_event);
 
@@ -723,6 +740,52 @@ impl<T: Eq + Copy> DrawCache<T> {
             canvas.draw_image(image, (0.0, 0.0), Some(&paint));
             canvas.restore();
         }
+    }
+}
+
+struct ActiveButton {
+    state: ButtonState,
+}
+
+impl ActiveButton {
+    fn new() -> Self {
+        Self {
+            state: ButtonState::Default,
+        }
+    }
+
+    fn draw<F: FnOnce(MouseButton) -> ()>(
+        &mut self, canvas: &mut Canvas, is_active: bool, on_click: F, last_event: Option<GuiEvent>) {
+        let bounds = Rect{
+            left: -10.0,
+            top: -10.0,
+            right: 10.0,
+            bottom: 10.0
+        };
+
+        self.handle_event(canvas, &bounds, on_click, last_event);
+
+        let mut active_paint = Paint::default();
+        active_paint.set_anti_alias(true);
+        if is_active {
+            active_paint.set_color(Color::from_rgb(160, 0, 0));
+            active_paint.set_style(Style::Fill);
+        } else {
+            active_paint.set_color(Color::from_rgb(230, 230, 230));
+            if self.state == ButtonState::Default {
+                active_paint.set_style(Style::Stroke);
+            } else {
+                active_paint.set_style(Style::Fill);
+            }
+        };
+
+        canvas.draw_circle(Point::new(0.0, 0.0), 10.0, &active_paint);
+    }
+}
+
+impl Button for ActiveButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.state = state;
     }
 }
 
