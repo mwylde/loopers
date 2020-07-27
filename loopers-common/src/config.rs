@@ -5,6 +5,49 @@ use crate::api::Command;
 use std::fs::File;
 use csv::StringRecord;
 
+#[cfg(test)]
+mod tests {
+    use tempfile::{NamedTempFile};
+    use std::io::Write;
+    use crate::config::MidiMapping;
+    use crate::api::{Command, LooperCommand, LooperTarget};
+    use std::fs::File;
+
+    #[test]
+    fn test_load_midi_mapping() {
+        let mut file = NamedTempFile::new().unwrap();
+        {
+            let file = file.as_file_mut();
+            writeln!(file, "22\t127\tRecordOverdubPlay\t0").unwrap();
+            writeln!(file, "23\t5\tMute\t3").unwrap();
+            writeln!(file, "24\t6\tStart").unwrap();
+            file.flush().unwrap();
+        }
+
+        let mapping =
+            MidiMapping::from_file(&file.path().to_string_lossy(),
+                                   &File::open(&file.path()).unwrap());
+
+        assert_eq!(vec![
+            MidiMapping {
+                channel: 22,
+                data: 127,
+                command: Command::Looper(LooperCommand::RecordOverdubPlay, LooperTarget::Index(0)),
+            },
+            MidiMapping {
+                channel: 23,
+                data: 5,
+                command: Command::Looper(LooperCommand::Mute, LooperTarget::Index(3)),
+            },
+            MidiMapping {
+                channel: 24,
+                data: 6,
+                command: Command::Start,
+            },
+        ], mapping.unwrap());
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
@@ -21,6 +64,7 @@ impl MidiMapping {
     pub fn from_file(name: &str, file: &File) -> io::Result<Vec<MidiMapping>> {
         let mut rdr = csv::ReaderBuilder::new()
             .delimiter(b'\t')
+            .flexible(true)
             .has_headers(false)
             .from_reader(file);
 

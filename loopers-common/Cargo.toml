@@ -5,7 +5,6 @@ authors = ["Micah Wylde <micah@micahw.com>"]
 edition = "2018"
 
 [dependencies]
-prost = "0.5"
 bytes = "0.4"
 serde = { version = "1.0", features = ["derive", "rc"] }
 
@@ -16,6 +15,7 @@ crossbeam-channel = "0.4"
 
 log = "0.4"
 
+tempfile = "3"
+
 [build-dependencies]
-prost-build = "0.5"
 serde = { version = "1.0", features = ["derive"] }

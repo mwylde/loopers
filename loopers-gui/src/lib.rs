@@ -134,7 +134,7 @@ impl Gui {
                 }
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
-                        if time.0 >= 0 {
+                        if time.0 >= 0 && l.waveform[0].len() > 0 {
                             let i = (time.0 as usize / WAVEFORM_DOWNSAMPLE) % l.waveform[0].len();
                             l.waveform[0][i] = sample[0];
                             l.waveform[1][i] = sample[1];

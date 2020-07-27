@@ -905,11 +905,6 @@ impl LooperBackend {
         self.out_time = FrameTime(self.length_in_samples() as i64);
     }
 
-    fn stop(&mut self, _: LooperMode) {
-        self.in_time = FrameTime(0);
-        self.out_time = FrameTime(0);
-    }
-
     // state transition functions
     fn handle_crossfades(&mut self, _next_state: LooperMode) {
         debug!("handling crossfade");
@@ -1294,7 +1289,7 @@ impl Looper {
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
     pub fn process_output(&mut self, time: FrameTime, outputs: &mut [Vec<f64>; 2]) {
-        if time.0 < 0 {
+        if time.0 < 0 || self.length_in_samples == 0 {
             return;
         }
 

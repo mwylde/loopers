@@ -22,15 +22,3 @@ impl From<io::Error> for SaveLoadError {
         SaveLoadError::IOError(err)
     }
 }
-
-impl From<prost::EncodeError> for SaveLoadError {
-    fn from(err: prost::EncodeError) -> Self {
-        SaveLoadError::OtherError(format!("Protobuf encoding error: {:?}", err))
-    }
-}
-
-impl From<prost::DecodeError> for SaveLoadError {
-    fn from(err: prost::DecodeError) -> Self {
-        SaveLoadError::OtherError(format!("Protobuf decoding error: {:?}", err))
-    }
-}

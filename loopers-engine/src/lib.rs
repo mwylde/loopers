@@ -10,15 +10,16 @@ use crate::sample::Sample;
 use crate::session::SessionSaver;
 use loopers_common::music::*;
 use std::f32::NEG_INFINITY;
-use std::fs::{create_dir_all, read_to_string};
+use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
 use std::path::{Path, PathBuf};
 use loopers_common::gui_channel::{GuiSender, GuiCommand, EngineStateSnapshot};
 use crossbeam_channel::{Receiver};
-use loopers_common::api::{Command, LooperCommand, LooperTarget, LooperMode, FrameTime};
+use loopers_common::api::{Command, LooperCommand, LooperTarget, LooperMode, FrameTime, SavedSession};
 use loopers_common::config::Config;
 use crate::error::SaveLoadError;
 use std::sync::Arc;
+use std::io::Read;
 
 pub mod looper;
 pub mod metronome;
@@ -227,42 +228,37 @@ impl Engine {
         };
     }
 
-    fn load_session(&mut self, _path: &Path) -> Result<(), SaveLoadError> {
-        unimplemented!()
-        // let mut file = File::open(&path)?;
-        // let mut buf = Vec::new();
-        // file.read_to_end(&mut buf)?;
-        //
-        // let path = Path::new(&command.path);
-        // let dir = path.parent().unwrap();
-        //
-        // // let session: SavedSession = SavedSession::decode(&buf)?;
-        // // self.metric_structure.time_signature = TimeSignature::new(
-        // //     session.time_signature_upper as u8,
-        // //     session.time_signature_lower as u8,
-        // // )
-        // // .expect(&format!(
-        // //     "Invalid time signature: {}/{}",
-        // //     session.time_signature_upper, session.time_signature_lower
-        // // ));
-        // //
-        // // self.metric_structure.tempo = Tempo {
-        // //     mbpm: session.tempo_mbpm,
-        // // };
-        // //
-        // // for l in &self.loopers {
-        // //     self.session_saver.remove_looper(l.id);
-        // // }
-        // // self.loopers.clear();
-        // //
-        // // for l in session.loopers {
-        // //     let looper = Looper::from_serialized(
-        // //         &l, dir, self.gui_sender.clone())?.start();
-        // //     self.session_saver.add_looper(&looper);
-        // //     self.loopers.push(looper);
-        // // }
-        //
-        // Ok(())
+    fn load_session(&mut self, path: &Path) -> Result<(), SaveLoadError> {
+        let mut file = File::open(&path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        let dir = path.parent().unwrap();
+
+        let mut session: SavedSession = toml::from_str(&contents).map_err(|err| {
+            debug!("Found invalid SavedSession during load: {:?}", err);
+            SaveLoadError::OtherError("Failed to restore session; file is invalid".to_string())
+        })?;
+
+        debug!("Restoring session: {:?}", session);
+
+        self.metric_structure = session.metric_structure;
+
+        for l in &self.loopers {
+            self.session_saver.remove_looper(l.id);
+        }
+        self.loopers.clear();
+
+        session.loopers.sort_by_key(|l| l.id);
+
+        for l in session.loopers {
+            let looper = Looper::from_serialized(
+                &l, dir, self.gui_sender.clone())?.start();
+            self.session_saver.add_looper(&looper);
+            self.loopers.push(looper);
+        }
+
+        Ok(())
     }
 
     fn handle_command(&mut self, command: &Command, triggered: bool) {
@@ -276,6 +272,12 @@ impl Engine {
             }
             Stop => {
                 self.state = EngineState::Stopped;
+            }
+            StartStop => {
+                self.state = match self.state {
+                    EngineState::Stopped => EngineState::Active,
+                    EngineState::Active => EngineState::Stopped,
+                };
             }
             Reset => {
                 if let Some(m) = &mut self.metronome {
@@ -391,6 +393,10 @@ impl Engine {
                 },
                 Err(_) => break,
             }
+        }
+
+        if !self.triggers.is_empty() {
+            self.state = EngineState::Active;
         }
 
         let buf_len = out_bufs[0].len();

@@ -94,7 +94,6 @@ fn main() {
         }
     }
 
-
     info!("Config: {:#?}", config);
 
     // read wav files
