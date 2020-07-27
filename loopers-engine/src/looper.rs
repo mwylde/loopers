@@ -849,7 +849,7 @@ impl LooperBackend {
                 self.transition_to(mode);
             }
             ControlMessage::SetTime(time) => {
-                self.out_time = time;
+                self.out_time = FrameTime(time.0.max(0));
                 self.in_time = time;
             }
             ControlMessage::ReadOutput(time) => {
@@ -876,8 +876,10 @@ impl LooperBackend {
         // don't fill the output if we're in record mode, because we don't know our length. the
         // timing won't be correct if we wrap around.
         if sample_len > 0 && self.mode != LooperMode::Recording && self.out_time.0 >= 0 {
-            // make sure we don't pass our input
-            while self.out_time.0 < self.in_time.0 + sample_len as i64 {
+            // make sure we don't pass our input and don't spend too much time doing this
+            let mut count = 0;
+            while self.out_time.0 < self.in_time.0 + sample_len as i64 &&
+                count < 32 && self.out_queue.len() < self.out_queue.capacity() / 2 {
                 let mut buf = TransferBuf {
                     id: 0,
                     time: self.out_time,
@@ -904,11 +906,12 @@ impl LooperBackend {
                 }
 
                 debug!(
-                    "[OUTPUT] t = {} [{}; {}] (in time = {})",
-                    self.out_time.0, buf.data[0][0], buf.size, self.in_time.0
+                    "[OUTPUT {}] t = {} [{}; {}] (in time = {})",
+                    self.id, self.out_time.0, buf.data[0][0], buf.size, self.in_time.0
                 );
 
                 self.out_time.0 += TRANSFER_BUF_SIZE as i64;
+                count += 1;
             }
         }
     }
@@ -916,6 +919,8 @@ impl LooperBackend {
     fn finish_recording(&mut self, _: LooperMode) {
         // update our out time to the loop length so that we don't bother outputting a bunch of
         // of wasted data
+
+        println!("LENGTH = {}", self.length_in_samples());
         self.out_time = FrameTime(self.length_in_samples() as i64);
     }
 
@@ -1151,7 +1156,7 @@ impl Looper {
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
-        let (s, r) = bounded(100);
+        let (s, r) = bounded(1000);
 
         let length = samples.get(0).map(|s| s.length()).unwrap_or(0);
 
@@ -1247,6 +1252,20 @@ impl Looper {
         self
     }
 
+    fn send_to_backend(&mut self, message: ControlMessage) -> bool {
+        match self.channel.try_send(message) {
+            Ok(_) => true,
+            Err(TrySendError::Full(msg)) => {
+                error!("Failed to process message {:?} in looper {}: channel is full", msg, self.id);
+                false
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                error!("Backend channel disconnected in looper {}", self.id);
+                false
+            },
+        }
+    }
+
     pub fn set_time(&mut self, time: FrameTime) {
         loop {
             if let Err(_) = self.in_queue.pop() {
@@ -1254,9 +1273,7 @@ impl Looper {
             }
         }
         self.in_progress_output = None;
-        self.channel
-            .send(ControlMessage::SetTime(time))
-            .expect("channel closed");
+        self.send_to_backend(ControlMessage::SetTime(time));
     }
 
     pub fn handle_command(&mut self, command: LooperCommand) {
@@ -1395,12 +1412,10 @@ impl Looper {
             time += TRANSFER_BUF_SIZE as u64;
         }
 
-        self.channel
-            .send(ControlMessage::InputDataReady {
+        self.send_to_backend(ControlMessage::InputDataReady {
                 id: msg_id,
                 size: inputs[0].len(),
-            })
-            .expect("channel is closed!");
+        });
     }
 
     pub fn transition_to(&mut self, mode: LooperMode) {
@@ -1410,15 +1425,14 @@ impl Looper {
             mode = LooperMode::Recording;
         }
 
-        // TODO: maybe want to turn this behavior into an explicit "reset" command
-        if self.mode != LooperMode::Recording && mode == LooperMode::Recording {
-            self.length_in_samples = 0;
-        }
+        if self.send_to_backend(ControlMessage::TransitionTo(mode)) {
+            // TODO: maybe want to turn this behavior into an explicit "reset" command
+            if self.mode != LooperMode::Recording && mode == LooperMode::Recording {
+                self.length_in_samples = 0;
+            }
 
-        self.channel
-            .send(ControlMessage::TransitionTo(mode))
-            .expect("channel is closed!");
-        self.mode = mode;
+            self.mode = mode;
+        }
     }
 
     pub fn length_in_samples(&self) -> u64 {

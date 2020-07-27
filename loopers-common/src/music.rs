@@ -34,7 +34,6 @@ mod tests {
 
         assert_eq!(-1, tempo.beat(FrameTime(-22050)));
         assert_eq!(-2, tempo.beat(FrameTime(-44100)));
-        assert_eq!(-2, tempo.beat(FrameTime(-44099)));
 
         assert_eq!(15, tempo.beat(FrameTime(352768)));
         assert_eq!(16, tempo.beat(FrameTime(352800)));
@@ -56,6 +55,43 @@ mod tests {
         assert_eq!(FrameTime(352800), ts.next_full_beat(FrameTime(352768)));
 
         assert_eq!(FrameTime(352800), ts.next_full_beat(FrameTime(352800)));
+
+        assert_eq!(FrameTime(0), ts.next_full_beat(FrameTime(0)));
+    }
+
+    #[test]
+    fn test_next_beat_consistency() {
+        let ts = TimeSignature::new(4, 4).unwrap();
+        let tempo = Tempo::from_bpm(120.0);
+
+        // test that beat_of_measure is working the same as next_full_beat
+        let time = 5644544;
+        let frames = 256;
+
+        let prev_beat_of_measure = ts
+            .beat_of_measure(tempo.beat(FrameTime(time)));
+
+        let beat_of_measure = ts
+            .beat_of_measure(tempo.beat(FrameTime(time + frames)));
+
+        assert_ne!(prev_beat_of_measure, beat_of_measure);
+
+        let next_beat_time = tempo
+            .next_full_beat(FrameTime(time));
+
+        assert!(
+            next_beat_time.0 <= time + frames as i64,
+            format!(
+                "{} > {} (time = {})",
+                next_beat_time.0,
+                time + frames as i64,
+                time
+            )
+        );
+
+        // test that we never suggest beats in the past
+        let time = 176384;
+        assert!(tempo.next_full_beat(FrameTime(time)).0 >= time);
     }
 }
 
@@ -86,33 +122,40 @@ impl TimeSignature {
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tempo {
-    pub mbpm: u64,
+    samples_per_beat: u64,
 }
 
 impl Tempo {
     pub fn from_bpm(bpm: f32) -> Tempo {
+        assert!(bpm > 0.0, "bpm must be positve");
         Tempo {
-            mbpm: (bpm * 1000f32).round() as u64,
+            samples_per_beat: ((SAMPLE_RATE * 1000.0) / (bpm as f64 / 60.0)) as u64,
         }
     }
 
     pub fn bpm(&self) -> f32 {
-        (self.mbpm as f32) / 1000f32
+        ((SAMPLE_RATE * 1000.0) / self.samples_per_beat as f64 * 60.0) as f32
+    }
+
+    pub fn samples_per_beat(&self) -> u64 {
+        self.samples_per_beat
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
-        let bps = self.bpm() / 60.0;
-        let mspb = 1000.0 / bps;
-        ((time.to_ms() as f32) / mspb).floor() as i64
+        time.0 / self.samples_per_beat as i64
     }
 
     /// Returns the exact time of the next full beat from the given `time` (e.g., the 0 time of
     /// the beat). If `time` already points to the 0 of a beat, will return `time`.
     pub fn next_full_beat(&self, time: FrameTime) -> FrameTime {
-        let beats_per_sample = (self.bpm() as f64 / 60.0) / (SAMPLE_RATE * 1000.0);
-        let cur = (time.0 as f64 * beats_per_sample).ceil();
+        let cur = self.beat(time);
+        let rem = time.0.rem_euclid(self.samples_per_beat as i64);
 
-        FrameTime((cur as f64 / beats_per_sample) as i64)
+        if rem == 0 {
+            FrameTime(cur * self.samples_per_beat as i64)
+        } else {
+            FrameTime((cur + 1) * self.samples_per_beat as i64)
+        }
     }
 }
 

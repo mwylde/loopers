@@ -30,7 +30,7 @@ pub mod midi;
 pub mod sample;
 pub mod session;
 
-#[derive(Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 enum TriggerCondition {
     BEAT0,
 }
@@ -41,7 +41,7 @@ struct Trigger {
     target: LooperTarget,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 enum EngineState {
     Stopped,
     Active,
@@ -132,6 +132,8 @@ impl Engine {
             session_saver: SessionSaver::new(),
         };
 
+        engine.reset();
+
         for l in &engine.loopers {
             engine.session_saver.add_looper(l);
         }
@@ -150,6 +152,13 @@ impl Engine {
         }
 
         engine
+    }
+
+    fn reset(&mut self) {
+        if let Some(m) = &mut self.metronome {
+            m.reset();
+        }
+        self.set_time(FrameTime(-(self.measure_len().0 as i64)));
     }
 
     fn looper_by_id_mut(&mut self, id: u32) -> Option<&mut Looper> {
@@ -205,10 +214,12 @@ impl Engine {
             }
         }
 
+        let mut selected = None;
         match target {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.looper_by_id_mut(id) {
                     l.handle_command(lc);
+                    selected = Some(l.id);
                 } else {
                     warn!(
                         "Could not find looper with id {} while handling command {:?}",
@@ -219,6 +230,7 @@ impl Engine {
             LooperTarget::Index(idx) => {
                 if let Some(l) = self.looper_by_index_mut(idx) {
                     l.handle_command(lc);
+                    selected = Some(l.id);
                 } else {
                     warn!("No looper at index {} while handling command {:?}", idx, lc);
                 }
@@ -239,6 +251,10 @@ impl Engine {
                 }
             }
         };
+
+        if let Some(id) = selected {
+            self.active = id;
+        }
     }
 
     fn load_session(&mut self, path: &Path) -> Result<(), SaveLoadError> {
@@ -287,18 +303,19 @@ impl Engine {
             }
             Stop => {
                 self.state = EngineState::Stopped;
+                self.reset();
             }
             StartStop => {
                 self.state = match self.state {
                     EngineState::Stopped => EngineState::Active,
-                    EngineState::Active => EngineState::Stopped,
+                    EngineState::Active => {
+                        self.reset();
+                        EngineState::Stopped
+                    },
                 };
             }
             Reset => {
-                if let Some(m) = &mut self.metronome {
-                    m.reset();
-                }
-                self.set_time(FrameTime(-(self.measure_len().0 as i64)));
+                self.reset();
             }
             SetTime(time) => self.set_time(*time),
             AddLooper => {
@@ -423,6 +440,9 @@ impl Engine {
             in_bufs[1].iter().map(|v| *v as f64).collect(),
         ];
 
+        // the end of the current range of time that we're processing
+        let end_time = self.time + frames as i64 - 1;
+
         {
             if self.state == EngineState::Active {
                 // process triggers
@@ -434,7 +454,7 @@ impl Engine {
                 let beat_of_measure = self.metric_structure.time_signature.beat_of_measure(
                     self.metric_structure
                         .tempo
-                        .beat(FrameTime(self.time + frames as i64)),
+                        .beat(FrameTime(self.time + frames as i64 - 1)),
                 );
 
                 let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
@@ -444,9 +464,9 @@ impl Engine {
                 for t in old_triggers {
                     let did_match = match t.condition {
                         TriggerCondition::BEAT0 => {
-                            (self.state == EngineState::Stopped || prev_beat_of_measure != 0)
+                            (self.time < frames as i64 || prev_beat_of_measure != 0)
                                 && beat_of_measure == 0
-                                && self.time >= 0
+                                && end_time >= 0
                         }
                     };
 
@@ -468,21 +488,21 @@ impl Engine {
                 // to ensure that we end up with exactly the right number of samples, no matter what
                 // our buffer size is. We do that by splitting up the input into two pieces: the part
                 // before beat 0 and the part after.
-                if self.time >= 0 && !beat0_triggers.is_empty() {
-                    // if stopped {
-                    //     // if we were previously stopped, we will cheat a bit and reset the time to
-                    //     // *exactly* 0 (it will be something between 0 and frame_size)
-                    //     self.set_time(FrameTime(0));
-                    // }
+                if end_time >= 0 && !beat0_triggers.is_empty() {
+                    if end_time < frames as i64 {
+                        // if time is between 0 and frame_size, we cheat in order to start
+                        // at *exactly* 0
+                        self.set_time(FrameTime(0));
+                    }
 
                     let next_beat_time = self
                         .metric_structure
                         .tempo
                         .next_full_beat(FrameTime(self.time));
                     assert!(
-                        next_beat_time.0 < self.time + frames as i64,
+                        next_beat_time.0 <= self.time + frames as i64,
                         format!(
-                            "{} >= {} (time = {})",
+                            "{} > {} (time = {})",
                             next_beat_time.0,
                             self.time + frames as i64,
                             self.time
