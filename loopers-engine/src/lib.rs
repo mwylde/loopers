@@ -270,6 +270,9 @@ impl Engine {
             self.loopers.push(looper);
         }
 
+        self.id_counter = self.loopers.iter().map(|l| l.id).max()
+            .unwrap_or(0) + 1;
+
         Ok(())
     }
 
