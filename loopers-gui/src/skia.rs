@@ -13,7 +13,6 @@ use crate::{Gui, GuiEvent, MouseEventType};
 use gl::types::*;
 use gl_rs as gl;
 
-
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -129,11 +128,11 @@ pub fn skia_main(mut gui: Gui) {
                             _ => {}
                         }
                     }
-                },
-                WindowEvent::CursorMoved { position, ..} => {
+                }
+                WindowEvent::CursorMoved { position, .. } => {
                     mouse_position = Some(position);
                     last_event = Some(GuiEvent::MouseEvent(MouseEventType::Moved, position));
-                },
+                }
                 WindowEvent::MouseInput { state, button, .. } => {
                     if let Some(pos) = mouse_position {
                         let typ = match state {

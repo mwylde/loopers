@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
 
-use loopers_common::api::{LooperMode, FrameTime, LooperCommand, SavedLooper};
-use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE};
-use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 use crate::error::SaveLoadError;
+use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper};
+use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
+use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE};
 
 #[cfg(test)]
 mod tests {
@@ -556,7 +556,8 @@ mod tests {
 
         let state = rx.recv().unwrap().unwrap();
 
-        let deserialized = Looper::from_serialized(&state, dir.path(), GuiSender::disconnected()).unwrap();
+        let deserialized =
+            Looper::from_serialized(&state, dir.path(), GuiSender::disconnected()).unwrap();
 
         assert_eq!(l.id, deserialized.id);
 
@@ -601,7 +602,11 @@ impl StateMachine {
                     vec![Overdubbing],
                     LooperBackend::prepare_for_overdubbing,
                 ),
-                (vec![], vec![Recording], LooperBackend::prepare_for_recording),
+                (
+                    vec![],
+                    vec![Recording],
+                    LooperBackend::prepare_for_recording,
+                ),
                 //(vec![], vec![None], LooperBackend::stop),
             ],
         }
@@ -699,13 +704,22 @@ impl WaveformGenerator {
         }
     }
 
-    fn add_buf(&mut self, mode: LooperMode, time: FrameTime, samples: &[&[f64]],
-               looper_length: u64, sender: &mut GuiSender) {
+    fn add_buf(
+        &mut self,
+        mode: LooperMode,
+        time: FrameTime,
+        samples: &[&[f64]],
+        looper_length: u64,
+        sender: &mut GuiSender,
+    ) {
         if !(self.start_time.0..self.start_time.0 + WAVEFORM_DOWNSAMPLE as i64).contains(&time.0) {
             // there are no samples in this buffer that we can add, so we'll just send on the
             // partial buffer
-            debug!("sending partial buffer to GUI because we got a newer one \
-            (cur time = {}, buf time = {})", self.start_time.0, time.0);
+            debug!(
+                "sending partial buffer to GUI because we got a newer one \
+            (cur time = {}, buf time = {})",
+                self.start_time.0, time.0
+            );
             self.flush(mode, looper_length, sender);
             self.start_time = time;
         }
@@ -726,15 +740,15 @@ impl WaveformGenerator {
     fn flush(&mut self, mode: LooperMode, looper_length: u64, sender: &mut GuiSender) {
         let s = [
             (self.acc[0] / self.size as f64).min(1.0) as f32,
-            (self.acc[1] / self.size as f64).min(1.0) as f32
+            (self.acc[1] / self.size as f64).min(1.0) as f32,
         ];
         match mode {
             LooperMode::Recording => {
                 sender.send_update(AddNewSample(self.id, self.start_time, s, looper_length));
-            },
+            }
             LooperMode::Overdubbing => {
                 sender.send_update(AddOverdubSample(self.id, self.start_time, s));
-            },
+            }
             _ => {}
         }
 
@@ -988,7 +1002,8 @@ impl LooperBackend {
 
         STATE_MACHINE.handle_transition(self, mode);
 
-        self.gui_sender.send_update(GuiCommand::LooperStateChange(self.id, self.mode));
+        self.gui_sender
+            .send_update(GuiCommand::LooperStateChange(self.id, self.mode));
     }
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
@@ -1007,15 +1022,19 @@ impl LooperBackend {
             for c in 0..2 {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
-                        wv[c][i] += s.buffer[c][(time_in_samples as usize + i) % s.length() as usize] as f64;
+                        wv[c][i] += s.buffer[c]
+                            [(time_in_samples as usize + i) % s.length() as usize]
+                            as f64;
                     }
                 }
             }
-            self.waveform_generator.add_buf(self.mode,
-                                            FrameTime(time_in_samples as i64),
-                                            &[&wv[0], &wv[1]],
-                                            self.length_in_samples(),
-                                            &mut self.gui_sender);
+            self.waveform_generator.add_buf(
+                self.mode,
+                FrameTime(time_in_samples as i64),
+                &[&wv[0], &wv[1]],
+                self.length_in_samples(),
+                &mut self.gui_sender,
+            );
         } else if self.mode == LooperMode::Recording {
             // in record mode, we extend the current buffer with the new samples
             let s = self
@@ -1031,11 +1050,13 @@ impl LooperBackend {
                     wv[c][i] = *v as f64;
                 }
             }
-            self.waveform_generator.add_buf(self.mode,
-                                            FrameTime(time_in_samples as i64),
-                                            &[&wv[0], &wv[1]],
-                                            self.length_in_samples(),
-                                            &mut self.gui_sender);
+            self.waveform_generator.add_buf(
+                self.mode,
+                FrameTime(time_in_samples as i64),
+                &[&wv[0], &wv[1]],
+                self.length_in_samples(),
+                &mut self.gui_sender,
+            );
         } else {
             // record to our circular input buffer, which will be used to cross-fade the end
             self.input_buffer
@@ -1138,8 +1159,10 @@ impl Looper {
             gui_sender.send_update(GuiCommand::AddLooper(id));
         } else {
             gui_sender.send_update(GuiCommand::AddLooperWithSamples(
-                id, length,
-                Box::new(compute_waveform(&samples, WAVEFORM_DOWNSAMPLE))));
+                id,
+                length,
+                Box::new(compute_waveform(&samples, WAVEFORM_DOWNSAMPLE)),
+            ));
         }
 
         let backend = LooperBackend {
@@ -1180,8 +1203,11 @@ impl Looper {
         }
     }
 
-    pub fn from_serialized(state: &SavedLooper, path: &Path,
-                           gui_output: GuiSender) -> Result<Looper, SaveLoadError> {
+    pub fn from_serialized(
+        state: &SavedLooper,
+        path: &Path,
+        gui_output: GuiSender,
+    ) -> Result<Looper, SaveLoadError> {
         let mut samples = vec![];
         for sample_path in &state.samples {
             let mut reader = hound::WavReader::open(&path.join(sample_path))?;

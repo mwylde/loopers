@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
 use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
-use std::str::FromStr;
-use std::path::PathBuf;
 use crate::music::MetricStructure;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -13,16 +13,31 @@ mod tests {
     fn test_from_str() {
         assert_eq!(Ok(Command::Start), Command::from_str("Start", &[][..]));
 
-        assert_eq!(Ok(Command::SetTime(FrameTime(100))), Command::from_str("SetTime", &["100"][..]));
+        assert_eq!(
+            Ok(Command::SetTime(FrameTime(100))),
+            Command::from_str("SetTime", &["100"][..])
+        );
 
-        assert_eq!(Ok(Command::Looper(LooperCommand::Record, LooperTarget::All)),
-                   Command::from_str("Record", &["All"][..]));
+        assert_eq!(
+            Ok(Command::Looper(LooperCommand::Record, LooperTarget::All)),
+            Command::from_str("Record", &["All"][..])
+        );
 
-        assert_eq!(Ok(Command::Looper(LooperCommand::Overdub, LooperTarget::Selected)),
-                   Command::from_str("Overdub", &["Selected"][..]));
+        assert_eq!(
+            Ok(Command::Looper(
+                LooperCommand::Overdub,
+                LooperTarget::Selected
+            )),
+            Command::from_str("Overdub", &["Selected"][..])
+        );
 
-        assert_eq!(Ok(Command::Looper(LooperCommand::Mute, LooperTarget::Index(13))),
-                   Command::from_str("Mute", &["13"][..]));
+        assert_eq!(
+            Ok(Command::Looper(
+                LooperCommand::Mute,
+                LooperTarget::Index(13)
+            )),
+            Command::from_str("Mute", &["13"][..])
+        );
     }
 }
 
@@ -78,7 +93,7 @@ impl LooperCommand {
             "Mute" => Some(Mute),
             "RecordOverdubPlay" => Some(RecordOverdubPlay),
             "Delete" => Some(Delete),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -113,50 +128,54 @@ impl Command {
             "StartStop" => Ok(Command::StartStop),
             "Reset" => Ok(Command::Reset),
 
-            "SetTime" => {
-                args.get(0)
-                    .and_then(|s| i64::from_str(s).ok())
-                    .map(|t| Command::SetTime(FrameTime(t)))
-                    .ok_or("SetTime expects a single numeric argument, time".to_string())
-            }
+            "SetTime" => args
+                .get(0)
+                .and_then(|s| i64::from_str(s).ok())
+                .map(|t| Command::SetTime(FrameTime(t)))
+                .ok_or("SetTime expects a single numeric argument, time".to_string()),
 
             "AddLooper" => Ok(Command::AddLooper),
-            "SelectLooperById" => {
-                args.get(0)
-                    .and_then(|s| u32::from_str(s).ok())
-                    .map(|id| Command::SelectLooperById(id))
-                    .ok_or("SelectLooperById expects a single numeric argument, the looper id".to_string())
-            }
+            "SelectLooperById" => args
+                .get(0)
+                .and_then(|s| u32::from_str(s).ok())
+                .map(|id| Command::SelectLooperById(id))
+                .ok_or(
+                    "SelectLooperById expects a single numeric argument, the looper id".to_string(),
+                ),
 
-            "SelectLooperByIndex" => {
-                args.get(0)
-                    .and_then(|s| u8::from_str(s).ok())
-                    .map(|id| Command::SelectLooperByIndex(id))
-                    .ok_or("SelectLooperByIndex expects a single numeric argument, the looper index".to_string())
-            }
+            "SelectLooperByIndex" => args
+                .get(0)
+                .and_then(|s| u8::from_str(s).ok())
+                .map(|id| Command::SelectLooperByIndex(id))
+                .ok_or(
+                    "SelectLooperByIndex expects a single numeric argument, the looper index"
+                        .to_string(),
+                ),
 
-            "SetMetronomeLevel" => {
-                args.get(0)
-                    .and_then(|s| u8::from_str(s).ok())
-                    .map(|v| Command::SetMetronomeLevel(v))
-                    .ok_or("SetTime expects a single numeric argument, the level between 0-100".to_string())
-            }
+            "SetMetronomeLevel" => args
+                .get(0)
+                .and_then(|s| u8::from_str(s).ok())
+                .map(|v| Command::SetMetronomeLevel(v))
+                .ok_or(
+                    "SetTime expects a single numeric argument, the level between 0-100"
+                        .to_string(),
+                ),
 
             _ => {
                 let lc = LooperCommand::from_str(command)
                     .ok_or(format!("{} is not a valid command", command))?;
 
-                let target_type = args.get(0)
-                    .ok_or(format!("{} expects a target", command))?;
+                let target_type = args.get(0).ok_or(format!("{} expects a target", command))?;
 
                 let target = match *target_type {
                     "All" => LooperTarget::All,
                     "Selected" => LooperTarget::Selected,
-                    i => {
-                        LooperTarget::Index(u8::from_str(i)
-                            .map_err(|_|
-                                format!("{} expects a target (All, Selected, or a looper index)", command))?)
-                    }
+                    i => LooperTarget::Index(u8::from_str(i).map_err(|_| {
+                        format!(
+                            "{} expects a target (All, Selected, or a looper index)",
+                            command
+                        )
+                    })?),
                 };
 
                 Ok(Command::Looper(lc, target))
@@ -185,5 +204,5 @@ pub struct SavedLooper {
 pub struct SavedSession {
     pub save_time: i64,
     pub metric_structure: MetricStructure,
-    pub loopers: Vec<SavedLooper>
+    pub loopers: Vec<SavedLooper>,
 }

@@ -1,7 +1,9 @@
-use skia_safe::{Canvas, Color, Paint, Point, Path, Rect, Font, Typeface, TextBlob, Size, Contains};
-use winit::event::MouseButton;
 use crate::{GuiEvent, MouseEventType};
 use skia_safe::paint::Style;
+use skia_safe::{
+    Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
+};
+use winit::event::MouseButton;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
@@ -32,33 +34,41 @@ pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, 
 pub trait Button {
     fn set_state(&mut self, state: ButtonState);
 
-    fn handle_event<F: FnOnce(MouseButton)>(&mut self, canvas: &Canvas, bounds: &Rect,
-                    on_click: F, event: Option<GuiEvent>) -> () {
+    fn handle_event<F: FnOnce(MouseButton)>(
+        &mut self,
+        canvas: &Canvas,
+        bounds: &Rect,
+        on_click: F,
+        event: Option<GuiEvent>,
+    ) -> () {
         if let Some(event) = event {
             match event {
                 GuiEvent::MouseEvent(typ, pos) => {
-                    let point = canvas.total_matrix().invert().unwrap().map_point((pos.x as f32, pos.y as f32));
+                    let point = canvas
+                        .total_matrix()
+                        .invert()
+                        .unwrap()
+                        .map_point((pos.x as f32, pos.y as f32));
                     if bounds.contains(point) {
                         match typ {
                             MouseEventType::MouseDown(MouseButton::Left) => {
                                 self.set_state(ButtonState::Pressed);
-                            },
+                            }
                             MouseEventType::MouseUp(button) => {
                                 on_click(button);
                                 self.set_state(ButtonState::Hover);
-                            },
+                            }
                             MouseEventType::Moved => {
                                 self.set_state(ButtonState::Hover);
-                            },
+                            }
                             _ => {}
                         }
                     } else {
                         self.set_state(ButtonState::Default);
                     }
-                },
+                }
             }
         }
-
     }
 }
 
@@ -84,9 +94,7 @@ impl ControlButton {
 
         let text_size = font.measure_str(text, None).1.size();
 
-        let text = TextBlob::new(
-            text,&font,
-        ).unwrap();
+        let text = TextBlob::new(text, &font).unwrap();
 
         ControlButton {
             state: ButtonState::Default,
@@ -94,12 +102,17 @@ impl ControlButton {
             text_size,
             color,
             width: width.unwrap_or(text_size.width + 20.0),
-            height
+            height,
         }
     }
 
-    pub fn draw<F: FnOnce(MouseButton) -> ()>(&mut self, canvas: &mut Canvas, is_active: bool,
-                                          on_click: F, last_event: Option<GuiEvent>) -> Rect {
+    pub fn draw<F: FnOnce(MouseButton) -> ()>(
+        &mut self,
+        canvas: &mut Canvas,
+        is_active: bool,
+        on_click: F,
+        last_event: Option<GuiEvent>,
+    ) -> Rect {
         let bounds = Rect::new(0.0, 0.0, self.width, self.height);
 
         self.handle_event(canvas, &bounds, on_click, last_event);

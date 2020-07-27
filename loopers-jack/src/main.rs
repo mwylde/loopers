@@ -11,15 +11,15 @@ extern crate serde;
 extern crate log;
 
 use clap::{App, Arg};
+use crossbeam_channel::bounded;
 use loopers_common::config;
+use loopers_common::config::MidiMapping;
+use loopers_common::gui_channel::GuiSender;
 use loopers_engine::midi::MidiEvent;
 use loopers_engine::Engine;
-use std::{fs, io};
 use loopers_gui::Gui;
-use loopers_common::gui_channel::GuiSender;
-use crossbeam_channel::bounded;
 use std::fs::File;
-use loopers_common::config::{MidiMapping};
+use std::{fs, io};
 
 fn setup_logger() -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()

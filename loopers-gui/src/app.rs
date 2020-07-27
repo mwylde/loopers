@@ -1,20 +1,19 @@
 use skia_safe::*;
 
-use crate::{AppData, LooperData, GuiEvent};
+use crate::{AppData, GuiEvent, LooperData};
 
 use crate::skia::{HEIGHT, WIDTH};
-use skia_safe::paint::Style;
-use std::time::Duration;
-use loopers_common::music::{MetricStructure};
-use std::collections::{BTreeMap};
-use skia_safe::gpu::SurfaceOrigin;
-use winit::event::MouseButton;
+use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton};
 use crossbeam_channel::Sender;
-use crate::widgets::{ButtonState, ControlButton, draw_circle_indicator, Button};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
+use loopers_common::music::MetricStructure;
+use skia_safe::gpu::SurfaceOrigin;
+use skia_safe::paint::Style;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use loopers_common::api::{LooperMode, FrameTime, Command, LooperCommand, LooperTarget};
 use std::sync::Arc;
-
+use std::time::Duration;
+use winit::event::MouseButton;
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
@@ -108,9 +107,18 @@ impl AddButton {
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
         canvas.save();
-        canvas.translate((35.0, (LOOPER_HEIGHT + LOOPER_MARGIN) * data.loopers.len() as f32 + 50.0));
+        canvas.translate((
+            35.0,
+            (LOOPER_HEIGHT + LOOPER_MARGIN) * data.loopers.len() as f32 + 50.0,
+        ));
 
         let mut p = Path::new();
         p.move_to((0.0, 15.0));
@@ -139,7 +147,6 @@ impl AddButton {
 
         paint.set_stroke_width(5.0);
 
-
         canvas.draw_path(&p, &paint);
         canvas.restore();
     }
@@ -162,16 +169,24 @@ impl MainPage {
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>,
-                last_event: Option<GuiEvent>) {
+    pub fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
         // add views for new loopers
         for id in data.loopers.keys() {
-            self.loopers.entry(*id)
+            self.loopers
+                .entry(*id)
                 .or_insert_with(|| LooperView::new(*id));
         }
 
         // remove deleted loopers
-        let remove: Vec<u32> = self.loopers.keys()
+        let remove: Vec<u32> = self
+            .loopers
+            .keys()
             .filter(|id| !data.loopers.contains_key(id))
             .map(|id| *id)
             .collect();
@@ -181,7 +196,7 @@ impl MainPage {
         }
 
         let mut y = 0.0;
-        for  (id, looper) in self.loopers.iter_mut() {
+        for (id, looper) in self.loopers.iter_mut() {
             canvas.save();
             canvas.translate(Vector::new(0.0, y));
 
@@ -211,8 +226,16 @@ impl MainPage {
         paint.set_anti_alias(true);
 
         // draw play head bar
-        let beat = data.engine_state.metric_structure.tempo.beat(data.engine_state.time);
-        let bom = data.engine_state.metric_structure.time_signature.beat_of_measure(beat);
+        let beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let bom = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(beat);
 
         if bom == 0 {
             if self.beat_animation.is_none() {
@@ -223,7 +246,11 @@ impl MainPage {
                 ));
             }
 
-            let v = self.beat_animation.as_ref().unwrap().value(data.engine_state.time);
+            let v = self
+                .beat_animation
+                .as_ref()
+                .unwrap()
+                .value(data.engine_state.time);
             paint.set_stroke_width(3.0 + ((1.0 - v) * 5.0));
         } else {
             self.beat_animation = None;
@@ -276,7 +303,10 @@ impl BottomBarView {
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
         canvas.draw_str(
-            &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32),
+            &format!(
+                "{} bpm",
+                data.engine_state.metric_structure.tempo.bpm() as u32
+            ),
             Point::new(10.0, h - 12.0),
             &font,
             &text_paint,
@@ -284,9 +314,21 @@ impl BottomBarView {
 
         let mut x = 130.0;
 
-        let current_beat = data.engine_state.metric_structure.tempo.beat(data.engine_state.time);
-        let beat_of_measure = data.engine_state.metric_structure.time_signature.beat_of_measure(current_beat);
-        let measure = data.engine_state.metric_structure.time_signature.measure(current_beat);
+        let current_beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let beat_of_measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(current_beat);
+        let measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .measure(current_beat);
         for beat in 0..data.engine_state.metric_structure.time_signature.upper {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -336,7 +378,9 @@ impl BottomBarView {
 
 #[derive(Copy, Clone)]
 enum BottomButtonBehavior {
-    Save, Load, Settings
+    Save,
+    Load,
+    Settings,
 }
 
 struct BottomButtonView {
@@ -350,12 +394,20 @@ impl BottomButtonView {
             buttons: vec![
                 (Save, ControlButton::new("save", Color::WHITE, None, 30.0)),
                 (Load, ControlButton::new("load", Color::WHITE, None, 30.0)),
-                (Settings, ControlButton::new("settings", Color::WHITE, None, 30.0)),
-            ]
+                (
+                    Settings,
+                    ControlButton::new("settings", Color::WHITE, None, 30.0),
+                ),
+            ],
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let mut x = 0.0;
         for (behavior, button) in &mut self.buttons {
             canvas.save();
@@ -367,29 +419,36 @@ impl BottomButtonView {
                         BottomButtonBehavior::Save => {
                             if let Some(mut home_dir) = dirs::home_dir() {
                                 home_dir.push("looper-sessions");
-                                if let Err(e) = sender.send(
-                                    Command::SaveSession(Arc::new(home_dir))) {
+                                if let Err(e) =
+                                    sender.send(Command::SaveSession(Arc::new(home_dir)))
+                                {
                                     error!("failed to send save command to engine: {:?}", e);
                                 }
                             } else {
                                 error!("Could not determine home dir");
                             }
-                        },
+                        }
                         BottomButtonBehavior::Load => {
-                            let dir = dirs::home_dir().map(|mut dir| {
-                                dir.push("looper-sessions");
-                                dir.to_string_lossy().to_string()
-                            }).unwrap_or(PathBuf::new().to_string_lossy().to_string());
+                            let dir = dirs::home_dir()
+                                .map(|mut dir| {
+                                    dir.push("looper-sessions");
+                                    dir.to_string_lossy().to_string()
+                                })
+                                .unwrap_or(PathBuf::new().to_string_lossy().to_string());
 
                             if let Some(file) = tinyfiledialogs::open_file_dialog(
-                                "Open", &dir, Some((&["*.loopers"][..], "loopers project files"))) {
+                                "Open",
+                                &dir,
+                                Some((&["*.loopers"][..], "loopers project files")),
+                            ) {
                                 if let Err(e) =
-                                sender.send(Command::LoadSession(Arc::new(PathBuf::from(file)))) {
+                                    sender.send(Command::LoadSession(Arc::new(PathBuf::from(file))))
+                                {
                                     error!("failed to send load command to engine: {:?}", e);
                                 }
                             }
-                        },
-                        BottomButtonBehavior::Settings => {},
+                        }
+                        BottomButtonBehavior::Settings => {}
                     };
                 }
             };
@@ -419,23 +478,58 @@ impl LooperView {
             buttons: vec![
                 vec![
                     // top row
-                    (LooperMode::Recording, ControlButton::new(
-                        "record",  color_for_mode(LooperMode::Recording), Some(100.0), button_height)),
-                    (LooperMode::Soloed, ControlButton::new(
-                        "solo",  color_for_mode(LooperMode::Soloed), Some(100.0), button_height)),
+                    (
+                        LooperMode::Recording,
+                        ControlButton::new(
+                            "record",
+                            color_for_mode(LooperMode::Recording),
+                            Some(100.0),
+                            button_height,
+                        ),
+                    ),
+                    (
+                        LooperMode::Soloed,
+                        ControlButton::new(
+                            "solo",
+                            color_for_mode(LooperMode::Soloed),
+                            Some(100.0),
+                            button_height,
+                        ),
+                    ),
                 ],
                 vec![
-                    (LooperMode::Overdubbing, ControlButton::new(
-                        "overdub", color_for_mode(LooperMode::Overdubbing), Some(100.0), button_height)),
-                    (LooperMode::Playing, ControlButton::new(
-                        "playing", color_for_mode(LooperMode::Playing), Some(100.0), button_height)),
-                ]],
+                    (
+                        LooperMode::Overdubbing,
+                        ControlButton::new(
+                            "overdub",
+                            color_for_mode(LooperMode::Overdubbing),
+                            Some(100.0),
+                            button_height,
+                        ),
+                    ),
+                    (
+                        LooperMode::Playing,
+                        ControlButton::new(
+                            "playing",
+                            color_for_mode(LooperMode::Playing),
+                            Some(100.0),
+                            button_height,
+                        ),
+                    ),
+                ],
+            ],
             state: ButtonState::Default,
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData,
-            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        looper: &LooperData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         assert_eq!(self.id, looper.id);
 
         let ratio = if looper.length == 0 || looper.state == LooperMode::Recording {
@@ -444,16 +538,26 @@ impl LooperView {
             (data.engine_state.time.0 % looper.length as i64) as f32 / looper.length as f32
         };
 
-        draw_circle_indicator(canvas, color_for_mode(looper.state), ratio, 25.0, 25.0, 25.0);
+        draw_circle_indicator(
+            canvas,
+            color_for_mode(looper.state),
+            ratio,
+            25.0,
+            25.0,
+            25.0,
+        );
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
-        let size = self.waveform_view
+        let size = self
+            .waveform_view
             .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
         // sets our state, which tells us if the mouse is hovering
         self.handle_event(canvas, &Rect::from_size(size), |_| {}, last_event);
 
-        if data.show_buttons && (self.state == ButtonState::Hover || self.state == ButtonState::Pressed) {
+        if data.show_buttons
+            && (self.state == ButtonState::Hover || self.state == ButtonState::Pressed)
+        {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(200, 0, 0, 0));
@@ -472,12 +576,12 @@ impl LooperView {
                         if button == MouseButton::Left {
                             use LooperMode::*;
                             let command = match (looper.state, mode) {
-                                (Recording,   Recording) => Some(LooperCommand::Overdub),
-                                (_,           Recording) => Some(LooperCommand::Record),
+                                (Recording, Recording) => Some(LooperCommand::Overdub),
+                                (_, Recording) => Some(LooperCommand::Record),
                                 (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
-                                (_,           Overdubbing) => Some(LooperCommand::Overdub),
-                                (Playing,     Playing) => Some(LooperCommand::Mute),
-                                (_,           Playing) => Some(LooperCommand::Play),
+                                (_, Overdubbing) => Some(LooperCommand::Overdub),
+                                (Playing, Playing) => Some(LooperCommand::Mute),
+                                (_, Playing) => Some(LooperCommand::Play),
                                 (s, t) => {
                                     warn!("unhandled button state ({:?}, {:?})", s, t);
                                     None
@@ -485,8 +589,9 @@ impl LooperView {
                             };
 
                             if let Some(command) = command {
-                                if let Err(e) = sender.send(
-                                    Command::Looper(command, LooperTarget::Id(looper.id))) {
+                                if let Err(e) = sender
+                                    .send(Command::Looper(command, LooperTarget::Id(looper.id)))
+                                {
                                     error!("Failed to send command: {:?}", e);
                                 }
                             }
@@ -507,9 +612,15 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(120, 0, 0, 0));
-            canvas.draw_rect(Rect::new(0.0, 0.0,
-                                       WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
-                                       LOOPER_HEIGHT), &paint);
+            canvas.draw_rect(
+                Rect::new(
+                    0.0,
+                    0.0,
+                    WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
+                    LOOPER_HEIGHT,
+                ),
+                &paint,
+            );
         }
 
         canvas.restore();
@@ -526,7 +637,14 @@ impl Button for LooperView {
 
 const IMAGE_SCALE: f32 = 4.0;
 
-type CacheUpdaterFn = fn(data: &AppData, looper: &LooperData, time_width: FrameTime, w: f32, h: f32, canvas: &mut Canvas);
+type CacheUpdaterFn = fn(
+    data: &AppData,
+    looper: &LooperData,
+    time_width: FrameTime,
+    w: f32,
+    h: f32,
+    canvas: &mut Canvas,
+);
 
 struct DrawCache<T: Eq + Copy> {
     image: Option<Image>,
@@ -534,7 +652,7 @@ struct DrawCache<T: Eq + Copy> {
     draw_fn: CacheUpdaterFn,
 }
 
-impl <T: Eq + Copy> DrawCache<T> {
+impl<T: Eq + Copy> DrawCache<T> {
     fn new(draw_fn: CacheUpdaterFn) -> DrawCache<T> {
         DrawCache {
             image: None,
@@ -543,8 +661,17 @@ impl <T: Eq + Copy> DrawCache<T> {
         }
     }
 
-    fn draw(&mut self, key: T, data: &AppData, looper: &LooperData, time_width: FrameTime,
-            w: f32, h: f32, use_cache: bool, canvas: &mut Canvas) {
+    fn draw(
+        &mut self,
+        key: T,
+        data: &AppData,
+        looper: &LooperData,
+        time_width: FrameTime,
+        w: f32,
+        h: f32,
+        use_cache: bool,
+        canvas: &mut Canvas,
+    ) {
         if !use_cache {
             (self.draw_fn)(data, looper, time_width, w, h, canvas);
             return;
@@ -552,17 +679,36 @@ impl <T: Eq + Copy> DrawCache<T> {
 
         let size = ((w * IMAGE_SCALE) as i32, (h * IMAGE_SCALE) as i32);
 
-        if self.key.is_none() || self.key.unwrap() != key ||
-            self.image.is_none() || self.image.as_ref().map(|i| (i.width(), i.height())).unwrap() != size {
-
+        if self.key.is_none()
+            || self.key.unwrap() != key
+            || self.image.is_none()
+            || self
+                .image
+                .as_ref()
+                .map(|i| (i.width(), i.height()))
+                .unwrap()
+                != size
+        {
             let image_info = ImageInfo::new_n32(size, AlphaType::Premul, None);
-            let mut surface =
-                Surface::new_render_target(canvas.gpu_context().as_mut().unwrap(),
-                                           Budgeted::Yes, &image_info,
-                                           None, SurfaceOrigin::TopLeft,
-                                           None, None).unwrap();
+            let mut surface = Surface::new_render_target(
+                canvas.gpu_context().as_mut().unwrap(),
+                Budgeted::Yes,
+                &image_info,
+                None,
+                SurfaceOrigin::TopLeft,
+                None,
+                None,
+            )
+            .unwrap();
 
-            (self.draw_fn)(data, looper, time_width, w * IMAGE_SCALE, h * IMAGE_SCALE, &mut surface.canvas());
+            (self.draw_fn)(
+                data,
+                looper,
+                time_width,
+                w * IMAGE_SCALE,
+                h * IMAGE_SCALE,
+                &mut surface.canvas(),
+            );
 
             let image = surface.image_snapshot();
             self.image = Some(image);
@@ -573,7 +719,7 @@ impl <T: Eq + Copy> DrawCache<T> {
             canvas.save();
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            canvas.scale((1.0/IMAGE_SCALE, 1.0/IMAGE_SCALE));
+            canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
             canvas.draw_image(image, (0.0, 0.0), Some(&paint));
             canvas.restore();
         }
@@ -615,13 +761,20 @@ impl WaveformView {
         p.move_to(Point::new(0.0, h / 2.0));
 
         let len = waveform[0].len();
-        for (x, y) in waveform[0].iter().enumerate()
-            .map(|(t, d_t)|  Self::channel_transform(t, *d_t, len)) {
+        for (x, y) in waveform[0]
+            .iter()
+            .enumerate()
+            .map(|(t, d_t)| Self::channel_transform(t, *d_t, len))
+        {
             p.line_to(Point::new(x * w, (-y + 1.0) / 2.0 * h));
         }
 
-        for (x, y) in waveform[1].iter().enumerate().rev()
-            .map(|(t, d_t)|  Self::channel_transform(t, *d_t, len)) {
+        for (x, y) in waveform[1]
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(t, d_t)| Self::channel_transform(t, *d_t, len))
+        {
             p.line_to(Point::new(x * w, (y + 1.0) / 2.0 * h));
         }
 
@@ -630,7 +783,14 @@ impl WaveformView {
         p
     }
 
-    fn draw_waveform(_: &AppData, looper: &LooperData, _: FrameTime, w: f32, h: f32, canvas: &mut Canvas) {
+    fn draw_waveform(
+        _: &AppData,
+        looper: &LooperData,
+        _: FrameTime,
+        w: f32,
+        h: f32,
+        canvas: &mut Canvas,
+    ) {
         let p = Self::path_for_waveform([&looper.waveform[0], &looper.waveform[1]], w, h);
 
         let mut paint = Paint::default();
@@ -654,12 +814,20 @@ impl WaveformView {
         // canvas.draw_path(&p, &paint);
     }
 
-    fn draw_beats(data: &AppData, _: &LooperData, time_width: FrameTime, w: f32, h: f32, canvas: &mut Canvas) {
+    fn draw_beats(
+        data: &AppData,
+        _: &LooperData,
+        time_width: FrameTime,
+        w: f32,
+        h: f32,
+        canvas: &mut Canvas,
+    ) {
         let mut beat_p = Path::new();
         let mut bar_p = Path::new();
 
-        let samples_per_beat = FrameTime::from_ms(1000.0 /
-            (data.engine_state.metric_structure.tempo.bpm() / 60.0) as f64);
+        let samples_per_beat = FrameTime::from_ms(
+            1000.0 / (data.engine_state.metric_structure.tempo.bpm() / 60.0) as f64,
+        );
         let number_of_beats = (time_width.0 as f32 / samples_per_beat.0 as f32).ceil() as usize;
         for i in 0..number_of_beats as i64 {
             let x = i as f32 * w / number_of_beats as f32;
@@ -696,7 +864,14 @@ impl WaveformView {
         canvas.draw_path(&bar_p, &bar_paint);
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, looper: &LooperData, w: f32, h: f32) -> Size {
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        looper: &LooperData,
+        w: f32,
+        h: f32,
+    ) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_color(Color::from_rgb(0, 65, 122));
@@ -710,7 +885,8 @@ impl WaveformView {
         canvas.clip_rect(
             Rect::new(0.0, 0.0, w, h),
             Some(ClipOp::Intersect),
-            Some(false));
+            Some(false),
+        );
 
         // draw waveform
         if looper.length > 0 {
@@ -726,24 +902,32 @@ impl WaveformView {
                 canvas.translate((w * WAVEFORM_ZERO_RATIO - width, 0.0));
                 let path = Self::path_for_waveform(
                     [&looper.waveform[0][start..], &looper.waveform[1][start..]],
-                    width, h);
+                    width,
+                    h,
+                );
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_color(dark_color_for_mode(LooperMode::Recording));
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
-                let mut x = -self.time_to_x(data.engine_state.time, w)
-                    .max(-full_w);
+                let mut x = -self.time_to_x(data.engine_state.time, w).max(-full_w);
                 while full_w > 0.0 && x < w * 2.0 {
                     if x + full_w > 0.0 && x < w {
                         canvas.save();
                         canvas.translate(Vector::new(x, 0.0));
 
-                        self.waveform.draw((looper.length, looper.last_time, looper.state),
-                                           data, looper, self.time_width, full_w, h,
-                                           looper.state != LooperMode::Recording &&
-                                               looper.state != LooperMode::Overdubbing, canvas);
+                        self.waveform.draw(
+                            (looper.length, looper.last_time, looper.state),
+                            data,
+                            looper,
+                            self.time_width,
+                            full_w,
+                            h,
+                            looper.state != LooperMode::Recording
+                                && looper.state != LooperMode::Overdubbing,
+                            canvas,
+                        );
 
                         canvas.restore();
                     }
@@ -759,20 +943,33 @@ impl WaveformView {
 
         // draw bar and beat lines
         {
-            let x = -self.time_to_x(data.engine_state.time, w)
-                .rem_euclid(w);
+            let x = -self.time_to_x(data.engine_state.time, w).rem_euclid(w);
             canvas.translate((x, 0.0));
-            self.beats.draw(data.engine_state.metric_structure,
-                            data, looper, self.time_width, w, h, false, canvas);
+            self.beats.draw(
+                data.engine_state.metric_structure,
+                data,
+                looper,
+                self.time_width,
+                w,
+                h,
+                false,
+                canvas,
+            );
             canvas.translate((w, 0.0));
-            self.beats.draw(data.engine_state.metric_structure,
-                            data, looper, self.time_width, w, h, false, canvas);
+            self.beats.draw(
+                data.engine_state.metric_structure,
+                data,
+                looper,
+                self.time_width,
+                w,
+                h,
+                false,
+                canvas,
+            );
         }
-
 
         canvas.restore();
 
         Size::new(w, h)
     }
 }
-

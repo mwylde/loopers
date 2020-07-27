@@ -1,6 +1,6 @@
-use crate::music::{MetricStructure};
-use crossbeam_channel::{bounded, Sender, Receiver, TrySendError};
-use crate::api::{LooperMode, FrameTime};
+use crate::api::{FrameTime, LooperMode};
+use crate::music::MetricStructure;
+use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 
 pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
 
@@ -43,33 +43,28 @@ impl GuiSender {
             cmd_channel: Some(tx),
         };
 
-        let receiver = GuiReceiver {
-            cmd_channel: rx,
-        };
+        let receiver = GuiReceiver { cmd_channel: rx };
 
         (sender, receiver)
     }
 
     pub fn disconnected() -> GuiSender {
-        GuiSender {
-            cmd_channel: None,
-        }
+        GuiSender { cmd_channel: None }
     }
 
     pub fn send_update(&mut self, cmd: GuiCommand) {
         if let Some(gui_sender) = &self.cmd_channel {
             match gui_sender.try_send(cmd) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(TrySendError::Full(_)) => {
                     warn!("GUI message queue is full");
-                },
+                }
                 Err(TrySendError::Disconnected(_)) => {
                     // TODO: think more about the correct behavior here
                     panic!("GUI message queue is disconnected");
                 }
             }
         }
-
     }
 }
 

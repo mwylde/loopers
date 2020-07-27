@@ -1,10 +1,10 @@
 #[macro_use]
 extern crate log;
 
-pub mod config;
-pub mod music;
 pub mod api;
+pub mod config;
 pub mod gui_channel;
+pub mod music;
 
 pub fn clamp<T: PartialOrd + Copy>(v: T, min: T, max: T) -> T {
     assert!(min <= max);

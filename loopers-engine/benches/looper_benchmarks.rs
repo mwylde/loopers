@@ -2,9 +2,9 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
-use loopers_engine::looper::Looper;
+use loopers_common::api::{FrameTime, LooperMode};
 use loopers_common::gui_channel::GuiSender;
-use loopers_common::api::{LooperMode, FrameTime};
+use loopers_engine::looper::Looper;
 
 pub fn looper_benchmark(c: &mut Criterion) {
     let samples = [vec![0f32; 128], vec![0f32; 128]];

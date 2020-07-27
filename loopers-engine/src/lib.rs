@@ -3,30 +3,32 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+use crate::error::SaveLoadError;
 use crate::looper::Looper;
 use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
 use crate::sample::Sample;
 use crate::session::SessionSaver;
+use crossbeam_channel::Receiver;
+use loopers_common::api::{
+    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession,
+};
+use loopers_common::config::Config;
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
-use std::path::{Path, PathBuf};
-use loopers_common::gui_channel::{GuiSender, GuiCommand, EngineStateSnapshot};
-use crossbeam_channel::{Receiver};
-use loopers_common::api::{Command, LooperCommand, LooperTarget, LooperMode, FrameTime, SavedSession};
-use loopers_common::config::Config;
-use crate::error::SaveLoadError;
-use std::sync::Arc;
 use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+mod error;
 pub mod looper;
 pub mod metronome;
 pub mod midi;
 pub mod sample;
 pub mod session;
-mod error;
 
 #[derive(Eq, PartialEq)]
 enum TriggerCondition {
@@ -55,7 +57,7 @@ pub struct Engine {
     metric_structure: MetricStructure,
 
     command_input: Receiver<Command>,
-    
+
     gui_sender: GuiSender,
 
     loopers: Vec<Looper>,
@@ -155,7 +157,9 @@ impl Engine {
     }
 
     fn looper_by_index_mut(&mut self, idx: u8) -> Option<&mut Looper> {
-        self.loopers.iter_mut().filter(|l| !l.deleted)
+        self.loopers
+            .iter_mut()
+            .filter(|l| !l.deleted)
             .skip(idx as usize)
             .next()
     }
@@ -164,8 +168,11 @@ impl Engine {
         for e in events {
             debug!("midi {:?}", e);
             if e.bytes.len() >= 3 {
-                let command = self.config.midi_mappings.iter().find(|m|
-                    e.bytes[1] == m.channel as u8 && e.bytes[2] == m.data as u8)
+                let command = self
+                    .config
+                    .midi_mappings
+                    .iter()
+                    .find(|m| e.bytes[1] == m.channel as u8 && e.bytes[2] == m.data as u8)
                     .map(|m| m.command.clone());
 
                 if let Some(c) = command {
@@ -203,7 +210,10 @@ impl Engine {
                 if let Some(l) = self.looper_by_id_mut(id) {
                     l.handle_command(lc);
                 } else {
-                    warn!("Could not find looper with id {} while handling command {:?}", id, lc);
+                    warn!(
+                        "Could not find looper with id {} while handling command {:?}",
+                        id, lc
+                    );
                 }
             }
             LooperTarget::Index(idx) => {
@@ -222,7 +232,10 @@ impl Engine {
                 if let Some(l) = self.looper_by_id_mut(self.active) {
                     l.handle_command(lc);
                 } else {
-                    error!("selected looper {} not found while handling command {:?}", self.active, lc);
+                    error!(
+                        "selected looper {} not found while handling command {:?}",
+                        self.active, lc
+                    );
                 }
             }
         };
@@ -252,8 +265,7 @@ impl Engine {
         session.loopers.sort_by_key(|l| l.id);
 
         for l in session.loopers {
-            let looper = Looper::from_serialized(
-                &l, dir, self.gui_sender.clone())?.start();
+            let looper = Looper::from_serialized(&l, dir, self.gui_sender.clone())?.start();
             self.session_saver.add_looper(&looper);
             self.loopers.push(looper);
         }
@@ -285,9 +297,7 @@ impl Engine {
                 }
                 self.set_time(FrameTime(-(self.measure_len().0 as i64)));
             }
-            SetTime(time) => {
-                self.set_time(*time)
-            }
+            SetTime(time) => self.set_time(*time),
             AddLooper => {
                 // TODO: make this non-allocating
                 let looper = crate::Looper::new(self.id_counter, self.gui_sender.clone()).start();
@@ -311,8 +321,10 @@ impl Engine {
                 }
             }
             SaveSession(path) => {
-                if let Err(e) = self.session_saver.save_session(
-                    self.metric_structure, Arc::clone(path)) {
+                if let Err(e) = self
+                    .session_saver
+                    .save_session(self.metric_structure, Arc::clone(path))
+                {
                     error!("Failed to save session {:?}", e);
                 }
             }
@@ -337,7 +349,8 @@ impl Engine {
         if self.time >= 0 {
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted
-                    && (looper.mode == LooperMode::Playing || looper.mode == LooperMode::Overdubbing)
+                    && (looper.mode == LooperMode::Playing
+                        || looper.mode == LooperMode::Overdubbing)
                 {
                     looper.process_output(FrameTime(self.time as i64), outputs)
                 }
@@ -390,7 +403,7 @@ impl Engine {
             match self.command_input.try_recv() {
                 Ok(c) => {
                     self.handle_command(&c, false);
-                },
+                }
                 Err(_) => break,
             }
         }
@@ -418,7 +431,8 @@ impl Engine {
                 let beat_of_measure = self.metric_structure.time_signature.beat_of_measure(
                     self.metric_structure
                         .tempo
-                        .beat(FrameTime(self.time + frames as i64)));
+                        .beat(FrameTime(self.time + frames as i64)),
+                );
 
                 let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
                 let mut beat0_triggers = vec![];
@@ -482,7 +496,6 @@ impl Engine {
                                 time,
                                 &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
                             );
-
                         }
                     }
 
@@ -524,11 +537,12 @@ impl Engine {
         }
 
         // Update GUI
-        self.gui_sender.send_update(GuiCommand::StateSnapshot(EngineStateSnapshot {
+        self.gui_sender
+            .send_update(GuiCommand::StateSnapshot(EngineStateSnapshot {
                 time: FrameTime(self.time),
                 metric_structure: self.metric_structure,
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
-        }));
+            }));
     }
 }

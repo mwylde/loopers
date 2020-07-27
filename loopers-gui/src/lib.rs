@@ -7,15 +7,17 @@ mod widgets;
 
 use skia_safe::Canvas;
 
-use loopers_common::music::{MetricStructure, TimeSignature, Tempo};
-use crossbeam_channel::{TryRecvError, Sender};
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE};
+use crossbeam_channel::{Sender, TryRecvError};
 use glutin::dpi::PhysicalPosition;
-use winit::event::MouseButton;
+use loopers_common::gui_channel::{
+    EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE,
+};
+use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::HashMap;
+use winit::event::MouseButton;
 
 use crate::app::MainPage;
-use loopers_common::api::{FrameTime, LooperMode, Command};
+use loopers_common::api::{Command, FrameTime, LooperMode};
 
 const SHOW_BUTTONS: bool = true;
 
@@ -63,14 +65,11 @@ impl Gui {
                 engine_state: EngineStateSnapshot {
                     time: FrameTime(0),
                     metric_structure: MetricStructure {
-                        time_signature: TimeSignature {
-                            upper: 4,
-                            lower: 4,
-                        },
+                        time_signature: TimeSignature { upper: 4, lower: 4 },
                         tempo: Tempo::from_bpm(120.0),
                     },
                     active_looper: 0,
-                    looper_count: 0
+                    looper_count: 0,
                 },
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,
@@ -94,24 +93,30 @@ impl Gui {
                 Ok(GuiCommand::StateSnapshot(state)) => {
                     self.state.engine_state = state;
                     self.initialized = true;
-                },
+                }
                 Ok(GuiCommand::AddLooper(id)) => {
-                    self.state.loopers.insert(id, LooperData {
+                    self.state.loopers.insert(
                         id,
-                        length: 0,
-                        last_time: FrameTime(0),
-                        state: LooperMode::Playing,
-                        waveform: [vec![], vec![]],
-                    });
+                        LooperData {
+                            id,
+                            length: 0,
+                            last_time: FrameTime(0),
+                            state: LooperMode::Playing,
+                            waveform: [vec![], vec![]],
+                        },
+                    );
                 }
                 Ok(GuiCommand::AddLooperWithSamples(id, length, waveform)) => {
-                    self.state.loopers.insert(id, LooperData {
+                    self.state.loopers.insert(
                         id,
-                        length,
-                        last_time: FrameTime(length as i64 - 1),
-                        state: LooperMode::Playing,
-                        waveform: *waveform,
-                    });
+                        LooperData {
+                            id,
+                            length,
+                            last_time: FrameTime(length as i64 - 1),
+                            state: LooperMode::Playing,
+                            waveform: *waveform,
+                        },
+                    );
                 }
                 Ok(GuiCommand::RemoveLooper(id)) => {
                     self.state.loopers.remove(&id);
@@ -147,16 +152,15 @@ impl Gui {
                 }
                 Err(TryRecvError::Disconnected) => {
                     panic!("Channel disconnected");
-                },
+                }
             }
         }
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas, last_event: Option<GuiEvent>) {
         if self.initialized {
-            self.root.draw(canvas, &self.state, &mut self.sender, last_event);
+            self.root
+                .draw(canvas, &self.state, &mut self.sender, last_event);
         }
     }
 }
-
-

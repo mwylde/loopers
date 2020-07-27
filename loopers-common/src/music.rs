@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::api::{FrameTime, SAMPLE_RATE};
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests {
@@ -131,5 +131,3 @@ impl MetricStructure {
         })
     }
 }
-
-
