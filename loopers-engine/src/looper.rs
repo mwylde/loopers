@@ -138,18 +138,16 @@ mod tests {
         l.process_input(0, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        let output_left = vec![1f64; TRANSFER_BUF_SIZE];
-        let output_right = vec![-1f64; TRANSFER_BUF_SIZE];
+        let mut o_l = vec![1f64; TRANSFER_BUF_SIZE];
+        let mut o_r = vec![-1f64; TRANSFER_BUF_SIZE];
 
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
 
-        let mut o = [output_left, output_right];
-
-        l.process_output(FrameTime(input_left.len() as i64), &mut o);
+        l.process_output(FrameTime(input_left.len() as i64), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
-        assert_eq!([2.0f64, 3.0, 4.0, 5.0, 2.0, 3.0], o[0][0..6]);
-        assert_eq!([-2.0f64, -3.0, -4.0, -5.0, -2.0, -3.0], o[1][0..6]);
+        assert_eq!([2.0f64, 3.0, 4.0, 5.0, 2.0, 3.0], o_l[0..6]);
+        assert_eq!([-2.0f64, -3.0, -4.0, -5.0, -2.0, -3.0], o_r[0..6]);
     }
 
     #[test]
@@ -174,13 +172,14 @@ mod tests {
         l.process_input(t as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        let mut o = [vec![0f64; TRANSFER_BUF_SIZE], vec![0f64; TRANSFER_BUF_SIZE]];
-        l.process_output(FrameTime(t), &mut o);
+        let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
+        let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
 
-        for (l, r) in o[0].iter().zip(&o[1]) {
+        for (l, r) in o_l.iter().zip(&o_r) {
             assert_eq!(*l, 0.0);
             assert_eq!(*r, 0.0);
         }
@@ -191,13 +190,14 @@ mod tests {
         // first record our overdub
         l.process_input(t as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        let mut o = [vec![0f64; 4], vec![0f64; 4]];
-        l.process_output(FrameTime(t), &mut o);
+        let mut o_l = vec![0f64; 4];
+        let mut o_r = vec![0f64; 4];
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
 
-        for (i, (l, r)) in o[0].iter().zip(&o[1]).enumerate() {
+        for (i, (l, r)) in o_l.iter().zip(&o_r).enumerate() {
             assert_eq!(*l, (i + 1) as f64);
             assert_eq!(*r, -((i + 1) as f64));
         }
@@ -205,11 +205,12 @@ mod tests {
         // on the next go-around, it should be played back
         l.process_input(t as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        let mut o = [vec![0f64; 4], vec![0f64; 4]];
-        l.process_output(FrameTime(t), &mut o);
+        let mut o_l = vec![0f64; 4];
+        let mut o_r = vec![0f64; 4];
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
-        for (i, (l, r)) in o[0].iter().zip(&o[1]).enumerate() {
+        for (i, (l, r)) in o_l.iter().zip(&o_r).enumerate() {
             let v = ((i + 1) * 2) as f64;
             assert_eq!(*l, v);
             assert_eq!(*r, -v);
@@ -237,8 +238,9 @@ mod tests {
         l.process_input(0, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        let mut o = [vec![0f64; buf_size], vec![0f64; buf_size]];
-        l.process_output(FrameTime(time), &mut o);
+        let mut o_l = vec![0f64; buf_size];
+        let mut o_r = vec![0f64; buf_size];
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
         time += buf_size as i64;
 
@@ -262,37 +264,38 @@ mod tests {
         );
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(time), &mut o);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
             let t = time as usize + i;
             if t < buf_size + 100 {
-                assert_eq!(o[0][i], 0f64);
-                assert_eq!(o[1][i], 0f64);
+                assert_eq!(o_l[i], 0f64);
+                assert_eq!(o_r[i], 0f64);
             } else if t % len < buf_size {
-                assert_eq!(o[0][i], 1f64);
-                assert_eq!(o[1][i], -1f64);
+                assert_eq!(o_l[i], 1f64);
+                assert_eq!(o_r[i], -1f64);
             } else {
-                assert_eq!(o[0][i], 2f64);
-                assert_eq!(o[1][i], -2f64);
+                assert_eq!(o_l[i], 2f64);
+                assert_eq!(o_r[i], -2f64);
             }
         }
 
         time += buf_size as i64;
 
-        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
-        l.process_output(FrameTime(time), &mut o);
+        o_l = vec![0f64; buf_size];
+        o_r = vec![0f64; buf_size];
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
             let t = time as usize + i;
             if t % len < buf_size {
-                assert_eq!(o[0][i], 1f64);
-                assert_eq!(o[1][i], -1f64);
+                assert_eq!(o_l[i], 1f64);
+                assert_eq!(o_r[i], -1f64);
             } else {
-                assert_eq!(o[0][i], 2f64);
-                assert_eq!(o[1][i], -2f64);
+                assert_eq!(o_l[i], 2f64);
+                assert_eq!(o_r[i], -2f64);
             }
         }
 
@@ -302,29 +305,31 @@ mod tests {
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
 
-        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
-        l.process_output(FrameTime(0), &mut o);
+        o_l = vec![0f64; buf_size];
+        o_r = vec![0f64; buf_size];
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
-            assert_eq!(o[0][i], 1f64);
-            assert_eq!(o[1][i], -1f64);
+            assert_eq!(o_l[i], 1f64);
+            assert_eq!(o_r[i], -1f64);
         }
 
-        o = [vec![0f64; buf_size], vec![0f64; buf_size]];
-        l.process_output(FrameTime(buf_size as i64), &mut o);
+        o_l = vec![0f64; buf_size];
+        o_r = vec![0f64; buf_size];
+        l.process_output(FrameTime(buf_size as i64), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
             if i < buf_size - 100 {
-                assert_eq!(o[0][i], 4f64);
-                assert_eq!(o[1][i], -4f64);
+                assert_eq!(o_l[i], 4f64);
+                assert_eq!(o_r[i], -4f64);
             } else if i < 100 {
-                assert_eq!(o[0][i], 2.0f64);
-                assert_eq!(o[1][i], -2.0f64);
+                assert_eq!(o_l[i], 2.0f64);
+                assert_eq!(o_r[i], -2.0f64);
             } else {
-                assert_eq!(o[0][i], 1.0f64);
-                assert_eq!(o[1][i], -1.0f64);
+                assert_eq!(o_l[i], 1.0f64);
+                assert_eq!(o_r[i], -1.0f64);
             }
         }
     }
@@ -341,14 +346,12 @@ mod tests {
 
         let mut input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
         let mut input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
-        let mut o = [
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-        ];
+        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut o);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -368,42 +371,41 @@ mod tests {
             );
             process_until_done(&mut l);
 
-            let mut o = [vec![0f64; 32], vec![0f64; 32]];
-            l.process_output(FrameTime(time), &mut o);
+            let mut o_l = vec![0f64; 32];
+            let mut o_r = vec![0f64; 32];
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
             process_until_done(&mut l);
 
             time += 32;
         }
 
-        let mut o = [
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-        ];
+        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(time), &mut o);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
 
         verify_length(&l, CROSS_FADE_SAMPLES as u64 * 2);
 
-        for i in 0..o[0].len() {
+        for i in 0..o_l.len() {
             if i < CROSS_FADE_SAMPLES {
                 assert!(
-                    (0f64 - o[0][i]).abs() < 0.000001,
+                    (0f64 - o_l[i]).abs() < 0.000001,
                     "left is {} at idx {}, expected 0",
-                    o[0][i],
+                    o_l[i],
                     time + i as i64
                 );
                 assert!(
-                    (0f64 - o[1][i]).abs() < 0.000001,
+                    (0f64 - o_r[i]).abs() < 0.000001,
                     "right is {} at idx {}, expected 0",
-                    o[1][i],
+                    o_r[i],
                     time + i as i64
                 );
             } else {
-                assert_eq!(1f64, o[0][i], "mismatch at {}", time + i as i64);
-                assert_eq!(-1f64, o[1][i], "mismatch at {}", time + i as i64);
+                assert_eq!(1f64, o_l[i], "mismatch at {}", time + i as i64);
+                assert_eq!(-1f64, o_r[i], "mismatch at {}", time + i as i64);
             }
         }
     }
@@ -426,8 +428,9 @@ mod tests {
             );
             process_until_done(&mut l);
 
-            let mut o = [vec![0f64; 32], vec![0f64; 32]];
-            l.process_output(FrameTime(time), &mut o);
+            let mut o_l = vec![0f64; 32];
+            let mut o_r = vec![0f64; 32];
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
             process_until_done(&mut l);
 
             time += 32;
@@ -456,8 +459,9 @@ mod tests {
             );
             process_until_done(&mut l);
 
-            let mut o = [vec![0f64; 32], vec![0f64; 32]];
-            l.process_output(FrameTime(time), &mut o);
+            let mut o_l = vec![0f64; 32];
+            let mut o_r = vec![0f64; 32];
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
             process_until_done(&mut l);
 
             time += 32;
@@ -469,14 +473,12 @@ mod tests {
         input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
         input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
 
-        let mut o = [
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-        ];
+        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut o);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -486,29 +488,27 @@ mod tests {
         // Go around again (we don't have the crossfaded samples until the second time around)
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut o);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
-        let mut o = [
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-            vec![0f64; CROSS_FADE_SAMPLES * 2],
-        ];
-        l.process_output(FrameTime(time), &mut o);
+        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
 
-        for i in 0..o[0].len() {
+        for i in 0..o_l.len() {
             if i > CROSS_FADE_SAMPLES {
                 assert!(
-                    (0f64 - o[0][i]).abs() < 0.000001,
+                    (0f64 - o_l[i]).abs() < 0.000001,
                     "left is {} at idx {}, expected 0",
-                    o[0][i],
+                    o_l[i],
                     i
                 );
                 assert!(
-                    (0f64 - o[1][i]).abs() < 0.000001,
+                    (0f64 - o_r[i]).abs() < 0.000001,
                     "right is {} at idx {}, expected 0",
-                    o[1][i],
+                    o_r[i],
                     i
                 );
             }
@@ -1331,7 +1331,7 @@ impl Looper {
 
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
-    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [Vec<f64>; 2]) {
+    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]]) {
         if time.0 < 0 || self.length_in_samples == 0 {
             return;
         }
@@ -1409,7 +1409,7 @@ impl Looper {
                 error!("queue is full on looper {}", self.id);
             }
 
-            time += TRANSFER_BUF_SIZE as u64;
+            time += l.len() as u64;
         }
 
         self.send_to_backend(ControlMessage::InputDataReady {

@@ -25,6 +25,7 @@ loopers-common = { path = "../loopers-common" }
 tempfile = "3.1.0"
 fern = "0.6"
 criterion = "0.3"
+proptest = "0.10.0"
 
 [[bench]]
 name = "looper_benchmarks"

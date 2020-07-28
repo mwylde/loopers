@@ -22,24 +22,18 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::trigger::{Trigger, TriggerCondition};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+use std::ops::Range;
 
 mod error;
+mod trigger;
 pub mod looper;
 pub mod metronome;
 pub mod midi;
 pub mod sample;
 pub mod session;
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum TriggerCondition {
-    BEAT0,
-}
-
-struct Trigger {
-    condition: TriggerCondition,
-    command: LooperCommand,
-    target: LooperTarget,
-}
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum EngineState {
@@ -65,7 +59,7 @@ pub struct Engine {
 
     metronome: Option<Metronome>,
 
-    triggers: Vec<Trigger>,
+    triggers: BinaryHeap<Reverse<Trigger>>,
 
     id_counter: u32,
 
@@ -73,6 +67,9 @@ pub struct Engine {
     last_midi: Option<Vec<u8>>,
 
     session_saver: SessionSaver,
+
+    output_left: Vec<f64>,
+    output_right: Vec<f64>,
 }
 
 #[allow(dead_code)]
@@ -124,12 +121,15 @@ impl Engine {
                 Sample::from_mono(&beat_emphasis),
             )),
 
-            triggers: vec![],
+            triggers: BinaryHeap::with_capacity(128),
 
             is_learning: false,
             last_midi: None,
 
             session_saver: SessionSaver::new(),
+
+            output_left: vec![0f64; 2048],
+            output_right: vec![0f64; 2048],
         };
 
         engine.reset();
@@ -152,6 +152,14 @@ impl Engine {
         }
 
         engine
+    }
+
+    fn add_trigger(&mut self, t: Trigger) {
+        while self.triggers.len() >= self.triggers.capacity() {
+            self.triggers.pop();
+        }
+
+        self.triggers.push(Reverse(t));
     }
 
     fn reset(&mut self) {
@@ -192,14 +200,13 @@ impl Engine {
     }
 
     // possibly convert a loop command into a trigger
-    fn trigger_from_command(lc: LooperCommand, target: LooperTarget) -> Option<Trigger> {
+    fn trigger_from_command(&self, lc: LooperCommand, target: LooperTarget) -> Option<Trigger> {
         use LooperCommand::*;
         match lc {
-            Record | Overdub | RecordOverdubPlay => Some(Trigger {
-                condition: TriggerCondition::BEAT0,
-                command: lc,
-                target,
-            }),
+            Record | Overdub | RecordOverdubPlay => Some(Trigger::new(TriggerCondition::Measure,
+                                                                      Command::Looper(lc, target),
+                                                                      self.metric_structure,
+                                                                      FrameTime(self.time))).unwrap(),
             _ => None,
         }
     }
@@ -208,8 +215,8 @@ impl Engine {
         debug!("Handling loop command: {:?} for {:?}", lc, target);
 
         if !triggered {
-            if let Some(trigger) = Engine::trigger_from_command(lc, target) {
-                self.triggers.push(trigger);
+            if let Some(trigger) = self.trigger_from_command(lc, target) {
+                self.add_trigger(trigger);
                 return;
             }
         }
@@ -365,19 +372,6 @@ impl Engine {
         }
     }
 
-    fn play_loops(&mut self, outputs: &mut [Vec<f64>; 2]) {
-        if self.time >= 0 {
-            for looper in self.loopers.iter_mut() {
-                if !looper.deleted
-                    && (looper.mode == LooperMode::Playing
-                        || looper.mode == LooperMode::Overdubbing)
-                {
-                    looper.process_output(FrameTime(self.time as i64), outputs)
-                }
-            }
-        }
-    }
-
     // returns length
     fn measure_len(&self) -> FrameTime {
         let bps = self.metric_structure.tempo.bpm() as f32 / 60.0;
@@ -394,6 +388,87 @@ impl Engine {
         }
     }
 
+    fn perform_looper_io(&mut self, in_bufs: &[&[f32]], time: FrameTime, idx_range: Range<usize>) {
+        if time.0 >= 0 {
+            if let Some(looper) = self.looper_by_id_mut(self.active) {
+                // Record input to active loop
+                looper.process_input(
+                    time.0 as u64,
+                    &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
+            }
+
+            for looper in self.loopers.iter_mut() {
+                if !looper.deleted
+                    && (looper.mode == LooperMode::Playing
+                    || looper.mode == LooperMode::Overdubbing)
+                {
+                    let mut o = [&mut self.output_left[idx_range.clone()],
+                        &mut self.output_right[idx_range.clone()]];
+
+                    looper.process_output(time, &mut o)
+                }
+            }
+        } else {
+            error!("perform_looper_io called with negative time {}", time.0);
+        }
+    }
+
+    fn process_loopers(&mut self, in_bufs: &[&[f32]], frames: u64) {
+        let mut time = self.time;
+        let mut idx = 0usize;
+
+        if time < 0 {
+            time = (self.time + frames as i64).min(0);
+            if time < 0 {
+                return;
+            }
+            idx = (time - self.time) as usize;
+        }
+
+        let mut time = time as u64;
+
+        let next_time = (self.time + frames as i64) as u64;
+        while time < next_time {
+            if let Some(_) = self.triggers.peek()
+                .filter(|t| t.0.triggered_at().0 < next_time as i64) {
+
+                let trigger = self.triggers.pop().unwrap();
+
+                let trigger_at = trigger.0.triggered_at();
+                // we'll process up to this time, then trigger the trigger
+
+                if trigger_at.0 < time as i64 {
+                    // we failed to trigger, but don't know if it's safe to trigger late. so we'll
+                    // just ignore it. there might be better solutions for specific triggers, but
+                    // hopefully this is rare.
+                    error!("missed trigger for time {} (cur time = {})",  trigger_at.0, time);
+                    continue;
+                }
+
+                // we know that trigger_at is non-negative from the previous condition
+                let trigger_at = trigger_at.0 as u64;
+
+                // if we're exactly on the trigger time, just trigger it immediately and continue
+                if trigger_at > time {
+                    // otherwise, we need to process the stuff before the trigger time, then trigger
+                    // the command, then continue processing the rest
+                    let idx_range = idx..(trigger_at as i64 - self.time) as usize;
+                    assert_eq!(idx_range.end - idx_range.start, (trigger_at - time) as usize);
+
+                    self.perform_looper_io(&in_bufs, FrameTime(time as i64), idx_range.clone());
+                    time = trigger_at;
+                    idx = idx_range.end;
+                }
+
+                self.handle_command(&trigger.0.command, true);
+            } else {
+                // there are no more triggers for this period, so just process the rest and finish
+                self.perform_looper_io(&in_bufs, FrameTime(time as i64), idx..frames as usize);
+                time = next_time;
+            }
+        }
+    }
+
     // Step 1: Convert midi events to commands
     // Step 2: Handle commands
     // Step 3: Play current samples
@@ -402,8 +477,9 @@ impl Engine {
     pub fn process(
         &mut self,
         in_bufs: [&[f32]; 2],
-        out_bufs: &mut [&mut [f32]; 2],
-        met_bufs: &mut [&mut [f32]; 2],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+        mut met_bufs: [&mut [f32]; 2],
         frames: u64,
         midi_events: &[MidiEvent],
     ) {
@@ -428,136 +504,45 @@ impl Engine {
             }
         }
 
+        // ensure out internal output buffer is big enough (this should only allocate when the
+        // frame size is increased)
+        while self.output_left.len() < frames as usize {
+            self.output_left.push(0.0);
+        }
+        while self.output_right.len() < frames as usize {
+            self.output_right.push(0.0);
+        }
+
+        // copy the input to the output for monitoring
+        // TODO: should probably make this behavior configurable
+        for (i, (l, r)) in in_bufs[0].iter().zip(in_bufs[1]).enumerate() {
+            self.output_left[i] = *l as f64;
+            self.output_right[i] = *r as f64;
+        }
+
         if !self.triggers.is_empty() {
             self.state = EngineState::Active;
         }
 
-        let buf_len = out_bufs[0].len();
+        if self.state == EngineState::Active {
+            // process the loopers
+            self.process_loopers(&in_bufs, frames);
 
-        // create new output bufs from the input
-        let mut out_64_vec: [Vec<f64>; 2] = [
-            in_bufs[0].iter().map(|v| *v as f64).collect(),
-            in_bufs[1].iter().map(|v| *v as f64).collect(),
-        ];
-
-        // the end of the current range of time that we're processing
-        let end_time = self.time + frames as i64 - 1;
-
-        {
-            if self.state == EngineState::Active {
-                // process triggers
-                let prev_beat_of_measure = self
-                    .metric_structure
-                    .time_signature
-                    .beat_of_measure(self.metric_structure.tempo.beat(FrameTime(self.time)));
-
-                let beat_of_measure = self.metric_structure.time_signature.beat_of_measure(
-                    self.metric_structure
-                        .tempo
-                        .beat(FrameTime(self.time + frames as i64 - 1)),
-                );
-
-                let old_triggers: Vec<Trigger> = self.triggers.drain(..).collect();
-                let mut beat0_triggers = vec![];
-                self.triggers = vec![];
-
-                for t in old_triggers {
-                    let did_match = match t.condition {
-                        TriggerCondition::BEAT0 => {
-                            (self.time < frames as i64 || prev_beat_of_measure != 0)
-                                && beat_of_measure == 0
-                                && end_time >= 0
-                        }
-                    };
-
-                    if did_match && t.condition == TriggerCondition::BEAT0 {
-                        beat0_triggers.push(t);
-                    } else if did_match {
-                        self.handle_loop_command(t.command, t.target, true);
-                    } else {
-                        self.triggers.push(t);
-                    }
-                }
-
-                let active = self.active;
-
-                let mut pre_size = 0;
-
-                // We need to handle "beat 0" triggers specially, as the input buffer may not line
-                // up exactly with our beats. Since this trigger is used to stop recording, we need
-                // to ensure that we end up with exactly the right number of samples, no matter what
-                // our buffer size is. We do that by splitting up the input into two pieces: the part
-                // before beat 0 and the part after.
-                if end_time >= 0 && !beat0_triggers.is_empty() {
-                    if end_time < frames as i64 {
-                        // if time is between 0 and frame_size, we cheat in order to start
-                        // at *exactly* 0
-                        self.set_time(FrameTime(0));
-                    }
-
-                    let next_beat_time = self
-                        .metric_structure
-                        .tempo
-                        .next_full_beat(FrameTime(self.time));
-                    assert!(
-                        next_beat_time.0 <= self.time + frames as i64,
-                        format!(
-                            "{} > {} (time = {})",
-                            next_beat_time.0,
-                            self.time + frames as i64,
-                            self.time
-                        )
-                    );
-
-                    pre_size = (next_beat_time.0 - self.time) as usize;
-
-                    if pre_size > 0 {
-                        let time = self.time as u64;
-                        if let Some(looper) = self.looper_by_id_mut(active) {
-                            // Record input to active loop
-                            looper.process_input(
-                                time,
-                                &[&in_bufs[0][0..pre_size], &in_bufs[1][0..pre_size]],
-                            );
-                        }
-                    }
-
-                    for t in beat0_triggers {
-                        self.handle_loop_command(t.command, t.target, true);
-                    }
-                }
-
-                if self.time >= 0 {
-                    // record rest of input
-                    let time = self.time as u64;
-                    if let Some(looper) = self.looper_by_id_mut(active) {
-                        looper.process_input(
-                            time + pre_size as u64,
-                            &[
-                                &in_bufs[0][pre_size..frames as usize],
-                                &in_bufs[1][pre_size..frames as usize],
-                            ],
-                        );
-                    }
-
-                    // Play our loops
-                    self.play_loops(&mut out_64_vec);
-                }
-
-                // Play the metronome
-                if let Some(metronome) = &mut self.metronome {
-                    metronome.advance(met_bufs);
-                }
-
-                self.time += frames as i64;
+            // Play the metronome
+            if let Some(metronome) = &mut self.metronome {
+                metronome.advance(&mut met_bufs);
             }
+
+            self.time += frames as i64;
         }
 
-        for i in 0..buf_len {
-            for j in 0..out_64_vec.len() {
-                out_bufs[j][i] = out_64_vec[j][i] as f32
-            }
+        for i in 0..frames as usize {
+            out_l[i] = self.output_left[i] as f32;
         }
+        for i in 0..frames as usize {
+            out_r[i] = self.output_right[i] as f32;
+        }
+
 
         // Update GUI
         self.gui_sender

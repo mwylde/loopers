@@ -116,7 +116,7 @@ impl TimeSignature {
     }
 
     pub fn measure(&self, beat: i64) -> i64 {
-        beat / self.lower as i64
+        beat / self.upper as i64
     }
 }
 
@@ -127,7 +127,7 @@ pub struct Tempo {
 
 impl Tempo {
     pub fn from_bpm(bpm: f32) -> Tempo {
-        assert!(bpm > 0.0, "bpm must be positve");
+        assert!(bpm > 0.0, "bpm must be positive");
         Tempo {
             samples_per_beat: ((SAMPLE_RATE * 1000.0) / (bpm as f64 / 60.0)) as u64,
         }

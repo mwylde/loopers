@@ -153,11 +153,13 @@ fn main() {
     let process_callback =
         move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
             let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
-            let mut out_bufs = [out_a.as_mut_slice(ps), out_b.as_mut_slice(ps)];
-            for buf in &mut out_bufs {
-                for b in &mut **buf {
-                    *b = 0f32
-                }
+            let out_l = out_a.as_mut_slice(ps);
+            let out_r = out_b.as_mut_slice(ps);
+            for b in &mut *out_l {
+                *b = 0f32
+            }
+            for b in &mut *out_r {
+                *b = 0f32
             }
 
             let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
@@ -176,8 +178,9 @@ fn main() {
 
             engine.process(
                 in_bufs,
-                &mut out_bufs,
-                &mut met_bufs,
+                out_l,
+                out_r,
+                met_bufs,
                 ps.n_frames() as u64,
                 &midi_events,
             );

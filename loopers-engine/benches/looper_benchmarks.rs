@@ -19,7 +19,8 @@ pub fn looper_benchmark(c: &mut Criterion) {
         )
     });
 
-    let mut o = [vec![0f64; 128], vec![0f64; 128]];
+    let mut o_l = vec![0f64; 128];
+    let mut o_r = vec![0f64; 128];
     c.bench_function("process output [128]", |b| {
         b.iter_batched(
             || {
@@ -32,13 +33,14 @@ pub fn looper_benchmark(c: &mut Criterion) {
                 l
             },
             |mut l| {
-                l.process_output(FrameTime(128), &mut o);
+                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r]);
             },
             BatchSize::SmallInput,
         )
     });
 
-    let mut o = [vec![0f64; 128], vec![0f64; 128]];
+    let mut o_l = vec![0f64; 128];
+    let mut o_r = vec![0f64; 128];
     c.bench_function("round trip [128]", |b| {
         b.iter_batched(
             || {
@@ -50,7 +52,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
             |mut l| {
                 l.process_input(0, &[&samples[0], &samples[1]]);
                 l.backend.as_mut().unwrap().process_until_done();
-                l.process_output(FrameTime(0), &mut o);
+                l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r]);
                 l.backend.as_mut().unwrap().process_until_done();
 
                 l.transition_to(LooperMode::Playing);
@@ -58,7 +60,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
 
                 l.process_input(128, &[&samples[0], &samples[1]]);
                 l.backend.as_mut().unwrap().process_until_done();
-                l.process_output(FrameTime(128), &mut o);
+                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r]);
                 l.backend.as_mut().unwrap().process_until_done();
             },
             BatchSize::SmallInput,
