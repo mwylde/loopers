@@ -390,13 +390,7 @@ impl Engine {
 
     fn perform_looper_io(&mut self, in_bufs: &[&[f32]], time: FrameTime, idx_range: Range<usize>) {
         if time.0 >= 0 {
-            if let Some(looper) = self.looper_by_id_mut(self.active) {
-                // Record input to active loop
-                looper.process_input(
-                    time.0 as u64,
-                    &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
-            }
-
+            // play the loops
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted
                     && (looper.mode == LooperMode::Playing
@@ -408,6 +402,14 @@ impl Engine {
                     looper.process_output(time, &mut o)
                 }
             }
+
+            // Record input to active loop
+            if let Some(looper) = self.looper_by_id_mut(self.active) {
+                looper.process_input(
+                    time.0 as u64,
+                    &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
+            }
+
         } else {
             error!("perform_looper_io called with negative time {}", time.0);
         }

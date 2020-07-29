@@ -921,7 +921,7 @@ impl LooperBackend {
         // of wasted data
 
         println!("LENGTH = {}", self.length_in_samples());
-        self.out_time = FrameTime(self.length_in_samples() as i64);
+        self.out_time = self.in_time;
     }
 
     // state transition functions
