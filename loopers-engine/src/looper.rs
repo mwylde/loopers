@@ -130,11 +130,18 @@ mod tests {
         install_test_logger();
 
         let mut l = Looper::new(1, GuiSender::disconnected());
+        l.backend.as_mut().unwrap().enable_crossfading = false;
+
         l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
-        let input_left = vec![1f32, 2.0, 3.0, 4.0];
-        let input_right = vec![-1f32, -2.0, -3.0, -4.0];
+        let mut input_left = vec![0f32; TRANSFER_BUF_SIZE];
+        let mut input_right = vec![0f32; TRANSFER_BUF_SIZE];
+        for i in 0..TRANSFER_BUF_SIZE {
+            input_left[i] = i as f32;
+            input_right[i] = -(i as f32);
+        }
+
         l.process_input(0, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
@@ -143,11 +150,16 @@ mod tests {
 
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
+        l.process_input(input_left.len() as u64, &[&input_left, &input_right]);
+        process_until_done(&mut l);
 
         l.process_output(FrameTime(input_left.len() as i64), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
-        assert_eq!([2.0f64, 3.0, 4.0, 5.0, 2.0, 3.0], o_l[0..6]);
-        assert_eq!([-2.0f64, -3.0, -4.0, -5.0, -2.0, -3.0], o_r[0..6]);
+
+        for i in 0..TRANSFER_BUF_SIZE {
+            assert_eq!(o_l[i], (i + 1) as f64);
+            assert_eq!(o_r[i], -((i + 1) as f64));
+        }
     }
 
     #[test]
@@ -853,7 +865,7 @@ impl LooperBackend {
                 self.in_time = time;
             }
             ControlMessage::ReadOutput(time) => {
-                self.in_time = time;
+                self.out_time = FrameTime(self.out_time.0.max(time.0));
             }
             ControlMessage::Shutdown => {
                 info!("Got shutdown message, stopping");
@@ -878,8 +890,8 @@ impl LooperBackend {
         if sample_len > 0 && self.mode != LooperMode::Recording && self.out_time.0 >= 0 {
             // make sure we don't pass our input and don't spend too much time doing this
             let mut count = 0;
-            while self.out_time.0 < self.in_time.0 + sample_len as i64 &&
-                count < 32 && self.out_queue.len() < self.out_queue.capacity() / 2 {
+            while self.out_time.0 + (TRANSFER_BUF_SIZE as i64) < self.in_time.0 + sample_len as i64
+                && count < 32 && self.out_queue.len() < self.out_queue.capacity() / 2 {
                 let mut buf = TransferBuf {
                     id: 0,
                     time: self.out_time,
@@ -917,10 +929,8 @@ impl LooperBackend {
     }
 
     fn finish_recording(&mut self, _: LooperMode) {
-        // update our out time to the loop length so that we don't bother outputting a bunch of
+        // update our out time to the current input time so that we don't bother outputting a bunch
         // of wasted data
-
-        println!("LENGTH = {}", self.length_in_samples());
         self.out_time = self.in_time;
     }
 
@@ -998,7 +1008,6 @@ impl LooperBackend {
 
     pub fn transition_to(&mut self, mode: LooperMode) {
         debug!("Transition {:?} to {:?}", self.mode, mode);
-        self.fill_output();
 
         if self.mode == mode {
             // do nothing if we're not changing state
@@ -1012,14 +1021,13 @@ impl LooperBackend {
     }
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
-        let len = self.length_in_samples();
         if self.mode == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
             let s = self
                 .samples
                 .last_mut()
                 .expect("No samples for looper in overdub mode");
-            s.overdub(time_in_samples % len, inputs);
+            s.overdub(time_in_samples, inputs);
 
             // TODO: this logic should probably be abstracted out into Sample so it can be reused
             //       between here and fill_output
@@ -1342,12 +1350,18 @@ impl Looper {
         let mut out_idx = 0;
 
         let mut missing = 0;
+        let mut waited = 0;
+        let backoff = crossbeam_utils::Backoff::new();
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
                 if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdubbing {
                     outputs[0][out_idx] += l;
                     outputs[1][out_idx] += r;
                 }
+            } else if waited < 1000 {
+                backoff.spin();
+                waited += 1;
+                continue;
             } else {
                 missing += 1;
             }
@@ -1374,6 +1388,8 @@ impl Looper {
     // with whatever is currently in our buffer at the point of time_in_samples.
     pub fn process_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
         assert_eq!(2, inputs.len());
+
+        debug!("inputting time {}", time_in_samples);
 
         let msg_id = self.msg_counter;
         self.msg_counter += 1;
@@ -1420,7 +1436,7 @@ impl Looper {
 
     pub fn transition_to(&mut self, mode: LooperMode) {
         let mut mode = mode;
-        if self.length_in_samples() == 0 {
+        if self.length_in_samples() == 0 && mode == LooperMode::Overdubbing {
             warn!("trying to move to overdub with 0-length looper");
             mode = LooperMode::Recording;
         }

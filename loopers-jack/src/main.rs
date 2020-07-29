@@ -21,7 +21,7 @@ use loopers_gui::Gui;
 use std::fs::File;
 use std::{fs, io};
 
-fn setup_logger() -> Result<(), fern::InitError> {
+fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
         .chain(io::stdout())
         .level(log::LevelFilter::Error);
@@ -30,7 +30,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
         .chain(fern::log_file("output.log")?)
         .level(log::LevelFilter::Debug);
 
-    fern::Dispatch::new()
+    let mut d = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{}[{}][{}] {}",
@@ -40,24 +40,29 @@ fn setup_logger() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .chain(stdout_config)
-        .chain(file_config)
-        .apply()?;
+        .chain(stdout_config);
+
+    if debug_log {
+        d = d.chain(file_config);
+    };
+
+    d.apply()?;
 
     Ok(())
 }
 
 fn main() {
-    if let Err(e) = setup_logger() {
-        eprintln!("Unable to set up logging: {:?}", e);
-    }
-
     let matches = App::new("loopers")
         .version("0.0.1")
         .author("Micah Wylde <micah@micahw.com>")
         .arg(Arg::with_name("restore").long("restore"))
         .arg(Arg::with_name("gui").long("gui"))
+        .arg(Arg::with_name("debug").long("debug"))
         .get_matches();
+
+    if let Err(e) = setup_logger(matches.is_present("debug")) {
+        eprintln!("Unable to set up logging: {:?}", e);
+    }
 
     let restore = matches.is_present("restore");
 

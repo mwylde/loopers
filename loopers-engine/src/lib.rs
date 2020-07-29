@@ -11,7 +11,7 @@ use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crossbeam_channel::Receiver;
 use loopers_common::api::{
-    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession,
+    Command, FrameTime, LooperCommand, LooperTarget, SavedSession,
 };
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender};
@@ -166,6 +166,7 @@ impl Engine {
         if let Some(m) = &mut self.metronome {
             m.reset();
         }
+        self.triggers.clear();
         self.set_time(FrameTime(-(self.measure_len().0 as i64)));
     }
 
@@ -392,24 +393,17 @@ impl Engine {
         if time.0 >= 0 {
             // play the loops
             for looper in self.loopers.iter_mut() {
-                if !looper.deleted
-                    && (looper.mode == LooperMode::Playing
-                    || looper.mode == LooperMode::Overdubbing)
-                {
+                if !looper.deleted {
                     let mut o = [&mut self.output_left[idx_range.clone()],
                         &mut self.output_right[idx_range.clone()]];
 
-                    looper.process_output(time, &mut o)
+                    looper.process_output(time, &mut o);
+
+                    looper.process_input(
+                        time.0 as u64,
+                        &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
                 }
             }
-
-            // Record input to active loop
-            if let Some(looper) = self.looper_by_id_mut(self.active) {
-                looper.process_input(
-                    time.0 as u64,
-                    &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
-            }
-
         } else {
             error!("perform_looper_io called with negative time {}", time.0);
         }
