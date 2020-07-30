@@ -60,11 +60,11 @@ mod tests {
         let mut t = TransferBuf {
             id: 0,
             time: FrameTime(12),
-            size: 22,
+            size: 6,
             data: [[0i32; TRANSFER_BUF_SIZE]; 2],
         };
 
-        for i in 0usize..22 {
+        for i in 0usize..6 {
             t.data[0][i] = i as i32 + 1;
             t.data[1][i] = -(i as i32 + 1);
         }
@@ -73,12 +73,12 @@ mod tests {
         assert!(!t.contains_t(FrameTime(11)));
 
         assert!(t.contains_t(FrameTime(12)));
-        assert!(t.contains_t(FrameTime(33)));
+        assert!(t.contains_t(FrameTime(17)));
 
-        assert!(!t.contains_t(FrameTime(34)));
+        assert!(!t.contains_t(FrameTime(18)));
 
         assert_eq!(Some((1, -1)), t.get_t(FrameTime(12)));
-        assert_eq!(Some((22, -22)), t.get_t(FrameTime(33)));
+        assert_eq!(Some((6, -6)), t.get_t(FrameTime(17)));
     }
 
     #[test]
@@ -200,11 +200,12 @@ mod tests {
         process_until_done(&mut l);
 
         // first record our overdub
-        l.process_input(t as u64, &[&input_left, &input_right]);
-        process_until_done(&mut l);
-        let mut o_l = vec![0f64; 4];
-        let mut o_r = vec![0f64; 4];
+        let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
+        let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
         l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
+        process_until_done(&mut l);
+
+        l.process_input(t as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
@@ -215,11 +216,12 @@ mod tests {
         }
 
         // on the next go-around, it should be played back
-        l.process_input(t as u64, &[&input_left, &input_right]);
-        process_until_done(&mut l);
-        let mut o_l = vec![0f64; 4];
-        let mut o_r = vec![0f64; 4];
+        let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
+        let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
         l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
+        process_until_done(&mut l);
+
+        l.process_input(t as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
         for (i, (l, r)) in o_l.iter().zip(&o_r).enumerate() {
@@ -247,20 +249,26 @@ mod tests {
 
         let mut time = 0i64;
 
-        l.process_input(0, &[&input_left, &input_right]);
-        process_until_done(&mut l);
-
         let mut o_l = vec![0f64; buf_size];
         let mut o_r = vec![0f64; buf_size];
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
         process_until_done(&mut l);
+
+        l.process_input(0, &[&input_left, &input_right]);
+        process_until_done(&mut l);
+
         time += buf_size as i64;
 
         // first give the part before the state change (which will be recorded)
+        l.process_output(FrameTime(time), &mut [&mut o_l[0..100], &mut o_r[0..100]]);
+        process_until_done(&mut l);
+
         input_left = vec![2f32; buf_size];
         input_right = vec![-2f32; buf_size];
         l.process_input(time as u64, &[&input_left[0..100], &input_right[0..100]]);
         process_until_done(&mut l);
+
+        time += 100;
 
         // then transition
         l.transition_to(LooperMode::Overdubbing);
@@ -269,31 +277,27 @@ mod tests {
         let len = buf_size + 100;
         verify_length(&l, len as u64);
 
-        // then give the rest and process output
+        l.process_output(FrameTime(time), &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]]);
+        process_until_done(&mut l);
+
         l.process_input(
             time as u64,
             &[&input_left[100..buf_size], &input_right[100..buf_size]],
         );
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
-        process_until_done(&mut l);
+        time += buf_size as i64 - 100;
+
 
         for i in 0..buf_size {
-            let t = time as usize + i;
-            if t < buf_size + 100 {
+            if i < 100 {
                 assert_eq!(o_l[i], 0f64);
                 assert_eq!(o_r[i], 0f64);
-            } else if t % len < buf_size {
+            } else {
                 assert_eq!(o_l[i], 1f64);
                 assert_eq!(o_r[i], -1f64);
-            } else {
-                assert_eq!(o_l[i], 2f64);
-                assert_eq!(o_r[i], -2f64);
             }
         }
-
-        time += buf_size as i64;
 
         o_l = vec![0f64; buf_size];
         o_r = vec![0f64; buf_size];
@@ -323,22 +327,9 @@ mod tests {
         process_until_done(&mut l);
 
         for i in 0..buf_size {
-            assert_eq!(o_l[i], 1f64);
-            assert_eq!(o_r[i], -1f64);
-        }
-
-        o_l = vec![0f64; buf_size];
-        o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(buf_size as i64), &mut [&mut o_l, &mut o_r]);
-        process_until_done(&mut l);
-
-        for i in 0..buf_size {
             if i < buf_size - 100 {
-                assert_eq!(o_l[i], 4f64);
-                assert_eq!(o_r[i], -4f64);
-            } else if i < 100 {
-                assert_eq!(o_l[i], 2.0f64);
-                assert_eq!(o_r[i], -2.0f64);
+                assert_eq!(o_l[i], 3f64);
+                assert_eq!(o_r[i], -3f64);
             } else {
                 assert_eq!(o_l[i], 1.0f64);
                 assert_eq!(o_r[i], -1.0f64);
@@ -651,7 +642,7 @@ pub enum ControlMessage {
     Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
 }
 
-const TRANSFER_BUF_SIZE: usize = 32;
+const TRANSFER_BUF_SIZE: usize = 16;
 
 #[derive(Clone, Copy)]
 struct TransferBuf<DATA: Copy> {
@@ -890,12 +881,13 @@ impl LooperBackend {
         if sample_len > 0 && self.mode != LooperMode::Recording && self.out_time.0 >= 0 {
             // make sure we don't pass our input and don't spend too much time doing this
             let mut count = 0;
-            while self.out_time.0 + (TRANSFER_BUF_SIZE as i64) < self.in_time.0 + sample_len as i64
+            let end = self.in_time.0 + sample_len as i64;
+            while self.out_time.0 + 1 < end as i64
                 && count < 32 && self.out_queue.len() < self.out_queue.capacity() / 2 {
                 let mut buf = TransferBuf {
                     id: 0,
                     time: self.out_time,
-                    size: TRANSFER_BUF_SIZE,
+                    size: ((end - self.out_time.0) as usize).min(TRANSFER_BUF_SIZE),
                     data: [[0f64; TRANSFER_BUF_SIZE]; 2],
                 };
 
@@ -906,7 +898,7 @@ impl LooperBackend {
                     }
 
                     for i in 0..2 {
-                        for t in 0..TRANSFER_BUF_SIZE {
+                        for t in 0..buf.size {
                             buf.data[i][t] +=
                                 b[i][(self.out_time.0 as usize + t) % sample_len] as f64;
                         }
@@ -922,7 +914,7 @@ impl LooperBackend {
                     self.id, self.out_time.0, buf.data[0][0], buf.size, self.in_time.0
                 );
 
-                self.out_time.0 += TRANSFER_BUF_SIZE as i64;
+                self.out_time.0 += buf.size as i64;
                 count += 1;
             }
         }
@@ -931,6 +923,10 @@ impl LooperBackend {
     fn finish_recording(&mut self, _: LooperMode) {
         // update our out time to the current input time so that we don't bother outputting a bunch
         // of wasted data
+
+        if self.length_in_samples() % 44100 != 0 {
+            error!("INVALID SAMPLE LENGTH {}", self.length_in_samples());
+        }
         self.out_time = self.in_time;
     }
 
@@ -1350,7 +1346,7 @@ impl Looper {
         let mut out_idx = 0;
 
         let mut missing = 0;
-        let mut waited = 0;
+        let mut waiting = 1000;
         let backoff = crossbeam_utils::Backoff::new();
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
@@ -1358,9 +1354,9 @@ impl Looper {
                     outputs[0][out_idx] += l;
                     outputs[1][out_idx] += r;
                 }
-            } else if waited < 1000 {
+            } else if waiting > 0 && self.mode != LooperMode::Recording {
                 backoff.spin();
-                waited += 1;
+                waiting -= 1;
                 continue;
             } else {
                 missing += 1;
