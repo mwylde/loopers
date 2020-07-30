@@ -11,9 +11,22 @@ use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc};
 use std::time::Duration;
 use winit::event::MouseButton;
+use std::fs::File;
+use std::io::Read;
+
+lazy_static! {
+  static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
+}
+
+fn load_data(path: &str) -> Vec<u8> {
+    let mut file = File::open(path).expect(&format!("could not open {}", path));
+    let mut data = vec![];
+    file.read_to_end(&mut data).expect(&format!("could not read {}", path));
+    data
+}
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
@@ -736,6 +749,8 @@ impl<T: Eq + Copy> DrawCache<T> {
             canvas.save();
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
+            paint.set_filter_quality(FilterQuality::High);
+            paint.set_color(Color::from_rgb(255, 255, 0));
             canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
             canvas.draw_image(image, (0.0, 0.0), Some(&paint));
             canvas.restore();
@@ -793,14 +808,20 @@ struct WaveformView {
     waveform: DrawCache<(u64, FrameTime, LooperMode)>,
     beats: DrawCache<MetricStructure>,
     time_width: FrameTime,
+    loop_icon: Image,
 }
 
 impl WaveformView {
     fn new() -> Self {
+        let loop_icon_data = Data::new_copy(&LOOP_ICON);
+        let loop_icon = Image::from_encoded(loop_icon_data, None)
+            .expect("could not decode loop icon");
+
         Self {
             waveform: DrawCache::new(Self::draw_waveform),
             beats: DrawCache::new(Self::draw_beats),
             time_width: FrameTime::from_ms(12_000.0),
+            loop_icon,
         }
     }
 
@@ -938,11 +959,11 @@ impl WaveformView {
         w: f32,
         h: f32,
     ) -> Size {
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        paint.set_color(Color::from_rgb(0, 65, 122));
+        // let mut paint = Paint::default();
+        // paint.set_anti_alias(true);
+        // paint.set_color(Color::from_rgb(0, 65, 122));
 
-        canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &paint);
+        //canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &paint);
 
         let full_w = (looper.length as f32 / self.time_width.0 as f32) * w;
 
@@ -953,6 +974,8 @@ impl WaveformView {
             Some(ClipOp::Intersect),
             Some(false),
         );
+
+        let mut loop_icons = vec![];
 
         // draw waveform
         if looper.length > 0 {
@@ -986,9 +1009,16 @@ impl WaveformView {
 
                 let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 -
                     start_time), w);
+
+                let mut first = true;
+
                 while x < w * 2.0 {
                     canvas.save();
                     canvas.translate(Vector::new(x, 0.0));
+
+                    if start_time != 0 || !first {
+                        loop_icons.push(x);
+                    }
 
                     self.waveform.draw(
                         (looper.length, looper.last_time, looper.state),
@@ -1004,12 +1034,14 @@ impl WaveformView {
 
                     canvas.restore();
                     x += full_w;
+                    first = false;
                 }
             }
         }
 
         // draw bar and beat lines
         {
+            canvas.save();
             let x = -self.time_to_x(data.engine_state.time, w).rem_euclid(w);
             canvas.translate((x, 0.0));
             self.beats.draw(
@@ -1033,6 +1065,22 @@ impl WaveformView {
                 false,
                 canvas,
             );
+            canvas.restore();
+        }
+
+        // draw loop icons
+        for x in loop_icons {
+            canvas.save();
+            canvas.translate((x, 0.0));
+            let s = 48.0;
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_filter_quality(FilterQuality::High);
+            canvas.draw_image_rect(&self.loop_icon, None, Rect::new(
+                -s / 2.0, (h - s) / 2.0,  s / 2.0, (h + s) / 2.0
+            ), &paint);
+
+            canvas.restore();
         }
 
         canvas.restore();
