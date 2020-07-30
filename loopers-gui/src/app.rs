@@ -537,7 +537,7 @@ impl LooperView {
         let ratio = if looper.length == 0 || looper.state == LooperMode::Recording {
             0f32
         } else {
-            (data.engine_state.time.0 % looper.length as i64) as f32 / looper.length as f32
+            (data.engine_state.time.0.rem_euclid(looper.length as i64)) as f32 / looper.length as f32
         };
 
         // Draw loop completion indicate
@@ -804,10 +804,13 @@ impl WaveformView {
         }
     }
 
+    fn time_to_pixels(&self, time: FrameTime, w: f32) -> f32 {
+        (w / self.time_width.0 as f32) * time.0 as f32
+    }
+
     fn time_to_x(&self, time: FrameTime, w: f32) -> f32 {
-        // offset time back so that time 0 is at the play head
-        let offset_time = time.0 as f32 - (self.time_width.0 as f32 * WAVEFORM_ZERO_RATIO);
-        1.0 / (self.time_width.0 as f32 / w) * offset_time
+        let t_in_pixels = self.time_to_pixels(time, w);
+        t_in_pixels - WAVEFORM_ZERO_RATIO * w
     }
 
     fn channel_transform(t: usize, d_t: f32, len: usize) -> (f32, f32) {
@@ -974,31 +977,32 @@ impl WaveformView {
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
-                let mut x = -self.time_to_x(data.engine_state.time, w).max(-full_w);
-                while full_w > 0.0 && x < w * 2.0 {
-                    if x + full_w > 0.0 && x < w {
-                        canvas.save();
-                        canvas.translate(Vector::new(x, 0.0));
+                let start_time = if data.engine_state.time.0 < looper.length as i64 {
+                    0
+                }  else {
+                    // The second smallest multiple of length < time
+                    ((data.engine_state.time.0 / looper.length as i64) - 1) * (looper.length as i64)
+                };
 
-                        self.waveform.draw(
-                            (looper.length, looper.last_time, looper.state),
-                            data,
-                            looper,
-                            self.time_width,
-                            full_w,
-                            h,
-                            looper.state != LooperMode::Recording
-                                && looper.state != LooperMode::Overdubbing,
-                            canvas,
-                        );
+                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 -
+                    start_time), w);
+                while x < w * 2.0 {
+                    canvas.save();
+                    canvas.translate(Vector::new(x, 0.0));
 
-                        canvas.restore();
-                    }
+                    self.waveform.draw(
+                        (looper.length, looper.last_time, looper.state),
+                        data,
+                        looper,
+                        self.time_width,
+                        full_w,
+                        h,
+                        looper.state != LooperMode::Recording
+                            && looper.state != LooperMode::Overdubbing,
+                        canvas,
+                    );
 
-                    if looper.state == LooperMode::Recording {
-                        break;
-                    }
-
+                    canvas.restore();
                     x += full_w;
                 }
             }
