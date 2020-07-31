@@ -1,6 +1,6 @@
 use skia_safe::gpu::gl::FramebufferInfo;
 use skia_safe::gpu::{BackendRenderTarget, Context, SurfaceOrigin};
-use skia_safe::{Color, ColorType, Font, Paint, Point, Surface, TextBlob, Typeface};
+use skia_safe::{Color, ColorType, Font, Paint, Point, Surface, TextBlob, Typeface, PictureRecorder, Rect};
 use std::convert::TryInto;
 
 use glutin::event::ElementState;
@@ -15,6 +15,9 @@ use gl_rs as gl;
 
 use std::thread;
 use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::Write;
+use chrono::Local;
 
 pub const WIDTH: i32 = 800;
 pub const HEIGHT: i32 = 600;
@@ -93,6 +96,7 @@ pub fn skia_main(mut gui: Gui) {
 
     let mut mouse_position = None;
     let mut paused = false;
+    let mut capture_debug_frame = false;
 
     let mut last_event = None;
 
@@ -121,6 +125,9 @@ pub fn skia_main(mut gui: Gui) {
                             Some(VirtualKeyCode::Q) => {
                                 *control_flow = ControlFlow::Exit;
                             }
+                            Some(VirtualKeyCode::Slash) => {
+                                capture_debug_frame = true;
+                            }
                             Some(VirtualKeyCode::Space) => {
                                 println!("pausing");
                                 paused = !paused;
@@ -147,10 +154,33 @@ pub fn skia_main(mut gui: Gui) {
             Event::MainEventsCleared => {
                 {
                     let mut canvas = surface.canvas();
-
                     canvas.clear(Color::BLACK);
 
+                    if capture_debug_frame {
+                        let mut recorder = PictureRecorder::new();
+                        let mut recording_canvas = recorder.begin_recording(
+                            Rect::from_iwh(WIDTH, HEIGHT),
+                        None, None);
+
+                        recording_canvas.clear(Color::BLACK);
+
+                        gui.draw(&mut recording_canvas, last_event);
+
+                        let picture = recorder.finish_recording_as_picture(None).unwrap();
+                        let data = picture.serialize();
+                        let now = Local::now();
+
+                        let path = format!("/tmp/skia_dump_{}.skp", now.format("%Y-%m-%d_%H:%M:%S"));
+                        let mut file = File::create(&path).unwrap();
+
+                        info!("Captured debug frame to {}", path);
+
+                        file.write_all(data.as_bytes()).unwrap();
+                        capture_debug_frame = false;
+                    }
+
                     gui.draw(&mut canvas, last_event);
+
                     last_event = None;
 
                     let mut paint = Paint::default();
