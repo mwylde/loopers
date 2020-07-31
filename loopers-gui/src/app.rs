@@ -250,7 +250,7 @@ impl MainPage {
             .time_signature
             .beat_of_measure(beat);
 
-        if bom == 0 {
+        if bom == 0 && data.engine_state.time.0 >= 0 {
             if self.beat_animation.is_none() {
                 self.beat_animation = Some(Animation::new(
                     data.engine_state.time,
@@ -522,10 +522,10 @@ impl LooperView {
                         ),
                     ),
                     (
-                        LooperMode::Playing,
+                        LooperMode::Muted,
                         ControlButton::new(
-                            "playing",
-                            color_for_mode(LooperMode::Playing),
+                            "mute",
+                            color_for_mode(LooperMode::Muted),
                             Some(100.0),
                             button_height,
                         ),
@@ -610,8 +610,8 @@ impl LooperView {
                                 (_, Recording) => Some(LooperCommand::Record),
                                 (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
                                 (_, Overdubbing) => Some(LooperCommand::Overdub),
-                                (Playing, Playing) => Some(LooperCommand::Mute),
-                                (_, Playing) => Some(LooperCommand::Play),
+                                (Muted, Muted) => Some(LooperCommand::Play),
+                                (_, Muted) => Some(LooperCommand::Mute),
                                 (s, t) => {
                                     warn!("unhandled button state ({:?}, {:?})", s, t);
                                     None
