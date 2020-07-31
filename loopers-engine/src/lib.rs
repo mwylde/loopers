@@ -10,9 +10,7 @@ use crate::midi::MidiEvent;
 use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crossbeam_channel::Receiver;
-use loopers_common::api::{
-    Command, FrameTime, LooperCommand, LooperTarget, SavedSession,
-};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperTarget, SavedSession, LooperMode};
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
@@ -154,12 +152,12 @@ impl Engine {
         engine
     }
 
-    fn add_trigger(&mut self, t: Trigger) {
-        while self.triggers.len() >= self.triggers.capacity() {
-            self.triggers.pop();
+    fn add_trigger(triggers: &mut BinaryHeap<Reverse<Trigger>>, t: Trigger) {
+        while triggers.len() >= triggers.capacity() {
+            triggers.pop();
         }
 
-        self.triggers.push(Reverse(t));
+        triggers.push(Reverse(t));
     }
 
     fn reset(&mut self) {
@@ -168,10 +166,6 @@ impl Engine {
         }
         self.triggers.clear();
         self.set_time(FrameTime(-(self.measure_len().0 as i64)));
-    }
-
-    fn looper_by_id_mut(&mut self, id: u32) -> Option<&mut Looper> {
-        self.loopers.iter_mut().find(|l| l.id == id)
     }
 
     fn looper_by_index_mut(&mut self, idx: u8) -> Option<&mut Looper> {
@@ -201,13 +195,18 @@ impl Engine {
     }
 
     // possibly convert a loop command into a trigger
-    fn trigger_from_command(&self, lc: LooperCommand, target: LooperTarget) -> Option<Trigger> {
+    fn trigger_from_command(ms: MetricStructure, time: FrameTime,
+                            lc: LooperCommand, target: LooperTarget, looper: &Looper) -> Option<Trigger> {
         use LooperCommand::*;
-        match lc {
-            Record | Overdub | RecordOverdubPlay => Some(Trigger::new(TriggerCondition::Measure,
-                                                                      Command::Looper(lc, target),
-                                                                      self.metric_structure,
-                                                                      FrameTime(self.time))).unwrap(),
+        match (looper.length_in_samples() == 0, looper.mode, lc) {
+            (_, _, Record) |
+            (_, LooperMode::Recording, _) |
+            (true, _, RecordOverdubPlay) |
+            (_, LooperMode::Overdubbing, _) =>
+                Some(Trigger::new(TriggerCondition::Measure,
+                                  Command::Looper(lc, target),
+                                  ms,
+                                  time)).unwrap(),
             _ => None,
         }
     }
@@ -215,19 +214,27 @@ impl Engine {
     fn handle_loop_command(&mut self, lc: LooperCommand, target: LooperTarget, triggered: bool) {
         debug!("Handling loop command: {:?} for {:?}", lc, target);
 
-        if !triggered {
-            if let Some(trigger) = self.trigger_from_command(lc, target) {
-                self.add_trigger(trigger);
-                return;
+        let ms = self.metric_structure;
+        let time = FrameTime(self.time);
+        let triggers = &mut self.triggers;
+
+        fn handle_or_trigger(triggered: bool, ms: MetricStructure, time: FrameTime, lc: LooperCommand,
+                             target: LooperTarget, looper: &mut Looper, triggers: &mut BinaryHeap<Reverse<Trigger>>) {
+            if triggered {
+                looper.handle_command(lc);
+            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper) {
+                Engine::add_trigger(triggers, trigger);
+            } else {
+                looper.handle_command(lc);
             }
         }
 
         let mut selected = None;
         match target {
             LooperTarget::Id(id) => {
-                if let Some(l) = self.looper_by_id_mut(id) {
-                    l.handle_command(lc);
+                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
                     selected = Some(l.id);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 } else {
                     warn!(
                         "Could not find looper with id {} while handling command {:?}",
@@ -236,21 +243,22 @@ impl Engine {
                 }
             }
             LooperTarget::Index(idx) => {
-                if let Some(l) = self.looper_by_index_mut(idx) {
-                    l.handle_command(lc);
+                if let Some(l) = self.loopers.get_mut(idx as usize) {
                     selected = Some(l.id);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 } else {
                     warn!("No looper at index {} while handling command {:?}", idx, lc);
                 }
             }
             LooperTarget::All => {
                 for l in &mut self.loopers {
-                    l.handle_command(lc);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 }
             }
             LooperTarget::Selected => {
-                if let Some(l) = self.looper_by_id_mut(self.active) {
-                    l.handle_command(lc);
+                let active = self.active;
+                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active){
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 } else {
                     error!(
                         "selected looper {} not found while handling command {:?}",
