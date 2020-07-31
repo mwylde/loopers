@@ -25,6 +25,7 @@ pub enum GuiCommand {
 
     AddNewSample(u32, FrameTime, [f32; 2], u64),
     AddOverdubSample(u32, FrameTime, [f32; 2]),
+    SetLoopLength(u32, u64),
 }
 
 pub struct GuiSender {

@@ -923,11 +923,11 @@ impl LooperBackend {
     fn finish_recording(&mut self, _: LooperMode) {
         // update our out time to the current input time so that we don't bother outputting a bunch
         // of wasted data
-
-        if self.length_in_samples() % 44100 != 0 {
-            error!("INVALID SAMPLE LENGTH {}", self.length_in_samples());
-        }
         self.out_time = self.in_time;
+
+        // send our final length to the gui
+        self.gui_sender.send_update(
+            GuiCommand::SetLoopLength(self.id, self.length_in_samples()));
     }
 
     // state transition functions

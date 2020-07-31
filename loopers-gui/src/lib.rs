@@ -141,12 +141,22 @@ impl Gui {
                 }
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
-                        if time.0 >= 0 && l.waveform[0].len() > 0 {
-                            let i = (time.0 as usize / WAVEFORM_DOWNSAMPLE) % l.waveform[0].len();
-                            l.waveform[0][i] = sample[0];
-                            l.waveform[1][i] = sample[1];
+                        if time.0 >= 0 && l.waveform[0].len() > 0 && l.length > 0 {
+                            let i = ((time.0 as u64 % l.length) / WAVEFORM_DOWNSAMPLE as u64) as usize;
+                            if i < l.waveform[0].len() - 1 {
+                                l.waveform[0][i] = sample[0];
+                                l.waveform[1][i] = sample[1];
+                            } else {
+                                l.waveform[0].push(sample[0]);
+                                l.waveform[1].push(sample[1]);
+                            }
                             l.last_time = time;
                         }
+                    }
+                }
+                Ok(GuiCommand::SetLoopLength(id, len)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.length = len;
                     }
                 }
                 Err(TryRecvError::Empty) => {

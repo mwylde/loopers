@@ -308,10 +308,6 @@ impl BottomBarView {
     fn draw(&mut self, canvas: &mut Canvas, _w: f32, h: f32, data: &AppData) {
         let font = Font::new(Typeface::default(), 20.0);
 
-        // let mut background = Paint::default();
-        // background.set_color(Color::from_argb(100, 255, 255, 255));
-        // canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &background);
-
         let mut text_paint = Paint::default();
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
@@ -825,13 +821,13 @@ impl WaveformView {
         }
     }
 
-    fn time_to_pixels(&self, time: FrameTime, w: f32) -> f32 {
-        (w / self.time_width.0 as f32) * time.0 as f32
+    fn time_to_pixels(&self, time: FrameTime, w: f32) -> f64 {
+        (w as f64 / self.time_width.0 as f64) * time.0 as f64
     }
 
-    fn time_to_x(&self, time: FrameTime, w: f32) -> f32 {
+    fn time_to_x(&self, time: FrameTime, w: f32) -> f64 {
         let t_in_pixels = self.time_to_pixels(time, w);
-        t_in_pixels - WAVEFORM_ZERO_RATIO * w
+        t_in_pixels - WAVEFORM_ZERO_RATIO as f64 * w as f64
     }
 
     fn channel_transform(t: usize, d_t: f32, len: usize) -> (f32, f32) {
@@ -965,7 +961,7 @@ impl WaveformView {
 
         //canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &paint);
 
-        let full_w = (looper.length as f32 / self.time_width.0 as f32) * w;
+        let full_w = (looper.length as f64 / self.time_width.0 as f64) * w as f64;
 
         canvas.save();
 
@@ -1012,9 +1008,9 @@ impl WaveformView {
 
                 let mut first = true;
 
-                while x < w * 2.0 {
+                while x < w as f64 * 2.0 {
                     canvas.save();
-                    canvas.translate(Vector::new(x, 0.0));
+                    canvas.translate(Vector::new(x as f32, 0.0));
 
                     if start_time != 0 || !first {
                         loop_icons.push(x);
@@ -1025,7 +1021,7 @@ impl WaveformView {
                         data,
                         looper,
                         self.time_width,
-                        full_w,
+                        full_w as f32,
                         h,
                         looper.state != LooperMode::Recording
                             && looper.state != LooperMode::Overdubbing,
@@ -1042,8 +1038,8 @@ impl WaveformView {
         // draw bar and beat lines
         {
             canvas.save();
-            let x = -self.time_to_x(data.engine_state.time, w).rem_euclid(w);
-            canvas.translate((x, 0.0));
+            let x = -self.time_to_x(data.engine_state.time, w).rem_euclid(w as f64);
+            canvas.translate((x as f32, 0.0));
             self.beats.draw(
                 data.engine_state.metric_structure,
                 data,
@@ -1071,7 +1067,7 @@ impl WaveformView {
         // draw loop icons
         for x in loop_icons {
             canvas.save();
-            canvas.translate((x, 0.0));
+            canvas.translate((x as f32, 0.0));
             let s = 48.0;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
