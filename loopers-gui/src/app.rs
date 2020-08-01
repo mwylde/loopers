@@ -1,9 +1,9 @@
 use skia_safe::*;
 
-use crate::{AppData, GuiEvent, LooperData, MouseEventType, KeyEventType, KeyEventKey};
+use crate::{AppData, GuiEvent, LooperData};
 
 use crate::skia::{HEIGHT, WIDTH};
-use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager};
+use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState, TextEditable};
 use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
 use loopers_common::music::MetricStructure;
@@ -12,7 +12,7 @@ use skia_safe::paint::Style;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc};
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration};
 use winit::event::MouseButton;
 use std::fs::File;
 use std::io::Read;
@@ -429,73 +429,39 @@ impl MetronomeView {
     }
 }
 
-#[derive(Eq, PartialEq, Clone)]
-enum TempoViewState {
-    Default,
-    Editing(bool, String),
-}
 
 struct TempoView {
     button_state: ButtonState,
-    state: TempoViewState,
+    edit_state: TextEditState,
 }
 
 impl TempoView {
     fn new() -> Self {
         Self {
             button_state: ButtonState::Default,
-            state: TempoViewState::Default,
+            edit_state: TextEditState::Default,
         }
-    }
-
-    fn commit(&mut self, sender: &mut Sender<Command>) {
-        if let TempoViewState::Editing(_, s) = &self.state {
-            if let Ok(tempo) = f32::from_str(&s) {
-                if let Err(e) = sender.send(Command::SetTempoBPM(tempo)) {
-                    error!("Failed to send tempo update: {:?}", e);
-                }
-            } else if !s.is_empty() {
-                error!("invalid tempo {}", s);
-            }
-        }
-
-        self.state = TempoViewState::Default;
     }
 
     fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>,
             last_event: Option<GuiEvent>) -> Size {
 
         let font = Font::new(Typeface::default(), 20.0);
-        let mut text = &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32);
+        let text = &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32);
         let text_size = font.measure_str(text, None).1.size();
 
         let bounds = Rect::from_point_and_size(Point::new(15.0, 0.0), text_size)
             .with_outset((10.0, 5.0));
 
-        let mut new_state = None;
+        let mut edit_string = None;
         self.handle_event(canvas, &bounds, |button| {
             if button == MouseButton::Left {
-                new_state = Some(TempoViewState::Editing(
-                    true, format!("{}", data.engine_state.metric_structure.tempo.bpm() as u32)));
+                edit_string = Some(format!("{}", data.engine_state.metric_structure.tempo.bpm() as u32));
             }
         }, last_event);
 
-        if let Some(state) = new_state {
-            self.state = state;
-        }
-
-        let mut commit = false;
-        // if there was a click elsewhere, clear our state
-        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), pos)) = last_event {
-            let point = canvas
-                .total_matrix()
-                .invert()
-                .unwrap()
-                .map_point((pos.x as f32, pos.y as f32));
-
-            if !bounds.contains(point) {
-                commit = true;
-            }
+        if let Some(s) = edit_string {
+            self.start_editing(s);
         }
 
         let mut paint = Paint::default();
@@ -504,82 +470,13 @@ impl TempoView {
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
 
-        if let TempoViewState::Editing(selected, edited) = &mut self.state {
-            if let Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key)) = last_event {
-                match key {
-                    KeyEventKey::Char(c) => {
-                        if c.is_numeric() {
-                            if *selected {
-                                edited.clear();
-                            }
-
-                            if edited.len() < 3 {
-                                edited.push(c);
-                            }
-                            *selected = false;
-                        }
-                    }
-                    KeyEventKey::Backspace => {
-                        if *selected {
-                            edited.clear();
-                        } else {
-                            edited.pop();
-                        }
-                    }
-                    KeyEventKey::Enter | KeyEventKey::Esc => {
-                        commit = true;
-                    }
-                }
-            }
-
-            paint.set_color(Color::WHITE);
-            canvas.draw_round_rect(bounds, 4.0, 4.0, &paint);
-
-            let text_bounds = font.measure_str(&edited, Some(&text_paint)).1
-                .with_offset((15.0, 18.0))
-                .with_outset((3.0, 3.0));
-
-            if *selected {
-                if !edited.is_empty() {
-                    paint.set_color(Color::BLUE);
-                    canvas.draw_rect(&text_bounds, &paint);
-                }
-            } else {
-                text_paint.set_color(Color::BLACK);
-                let mut cursor = Path::new();
-                let x = if edited.is_empty() {
-                    20.0
-                } else {
-                    text_bounds.right + 3.0
-                };
-
-                cursor.move_to((x, 2.0));
-                cursor.line_to((x, 20.0));
-                let mut paint = Paint::default();
-                paint.set_color(Color::BLACK);
-                paint.set_style(Style::Stroke);
-                paint.set_stroke_width(1.0);
-                paint.set_anti_alias(true);
-
-                if UNIX_EPOCH.elapsed().unwrap().as_millis() % 1500 > 500 {
-                    canvas.draw_path(&cursor, &paint);
-                }
-            }
-        } else if self.button_state != ButtonState::Default {
+        if self.button_state != ButtonState::Default {
             match self.button_state {
                 ButtonState::Hover => paint.set_color(Color::from_rgb(60, 60, 60)),
                 ButtonState::Pressed => paint.set_color(Color::from_rgb(30, 30, 30)),
                 ButtonState::Default => unreachable!(),
             };
             canvas.draw_rect(bounds, &paint);
-        }
-
-        if commit {
-            self.commit(sender);
-        }
-
-        if let TempoViewState::Editing(_, edited) = &self.state {
-            text = edited;
         }
 
         canvas.draw_str(
@@ -589,6 +486,8 @@ impl TempoView {
             &text_paint,
         );
 
+        self.draw_edit(canvas, &font, &bounds, sender, last_event);
+
         text_size
     }
 }
@@ -596,6 +495,30 @@ impl TempoView {
 impl Button for TempoView {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
+    }
+}
+
+impl TextEditable for TempoView {
+    fn commit(&mut self, sender: &mut Sender<Command>) {
+        if let TextEditState::Editing(_, s) = &self.edit_state {
+            if let Ok(tempo) = f32::from_str(&s) {
+                if let Err(e) = sender.send(Command::SetTempoBPM(tempo)) {
+                    error!("Failed to send tempo update: {:?}", e);
+                }
+            } else if !s.is_empty() {
+                error!("invalid tempo {}", s);
+            }
+        }
+
+        self.edit_state = TextEditState::Default;
+    }
+
+    fn get_edit_state(&mut self) -> &mut TextEditState {
+        &mut self.edit_state
+    }
+
+    fn is_valid(s: &str) -> bool {
+        s.len() < 4 && u32::from_str(s).is_ok()
     }
 }
 
