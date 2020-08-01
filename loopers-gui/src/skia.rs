@@ -115,37 +115,34 @@ pub fn skia_main(mut gui: Gui) {
                         KeyboardInput {
                             virtual_keycode,
                             state,
+                            modifiers,
                             ..
                         },
                     ..
                 } => {
                     if state == ElementState::Pressed {
-                        match virtual_keycode {
-                            Some(VirtualKeyCode::Slash) => {
-                                capture_debug_frame = true;
-                            }
-                            Some(key) => {
-                                let typ = match state {
-                                    ElementState::Pressed => KeyEventType::Pressed,
-                                    ElementState::Released => KeyEventType::Released,
-                                };
+                        if virtual_keycode == Some(VirtualKeyCode::Slash) && modifiers.ctrl() {
+                            capture_debug_frame = true;
+                        } else {
+                            match virtual_keycode {
+                                Some(key) => {
+                                    if let Some(c) = char_from_key(key) {
+                                        last_event = Some(GuiEvent::KeyEvent(KeyEventType::Pressed, KeyEventKey::Char(c)));
+                                    } else {
+                                        let key = match key {
+                                            VirtualKeyCode::Back | VirtualKeyCode::Delete => Some(KeyEventKey::Backspace),
+                                            VirtualKeyCode::Escape => Some(KeyEventKey::Esc),
+                                            VirtualKeyCode::Return => Some(KeyEventKey::Enter),
+                                            _ => None
+                                        };
 
-                                if let Some(c) = char_from_key(key) {
-                                    last_event = Some(GuiEvent::KeyEvent(typ, KeyEventKey::Char(c)));
-                                } else {
-                                    let key = match key {
-                                        VirtualKeyCode::Back | VirtualKeyCode::Delete => Some(KeyEventKey::Backspace),
-                                        VirtualKeyCode::Escape => Some(KeyEventKey::Esc),
-                                        VirtualKeyCode::Return => Some(KeyEventKey::Enter),
-                                        _ => None
-                                    };
-
-                                    if let Some(key) = key {
-                                        last_event = Some(GuiEvent::KeyEvent(typ, key));
+                                        if let Some(key) = key {
+                                            last_event = Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key));
+                                        }
                                     }
                                 }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -280,6 +277,7 @@ fn char_from_key(key: VirtualKeyCode) -> Option<char> {
         VirtualKeyCode::X => 'x',
         VirtualKeyCode::Y => 'y',
         VirtualKeyCode::Z => 'z',
+        VirtualKeyCode::Slash => '/',
         _ => return None,
    })
 }

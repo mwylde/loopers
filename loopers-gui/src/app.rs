@@ -6,7 +6,7 @@ use crate::skia::{HEIGHT, WIDTH};
 use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState, TextEditable};
 use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
-use loopers_common::music::MetricStructure;
+use loopers_common::music::{MetricStructure, TimeSignature};
 use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
 use std::collections::BTreeMap;
@@ -17,6 +17,7 @@ use winit::event::MouseButton;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+use regex::Regex;
 
 lazy_static! {
   static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
@@ -305,129 +306,37 @@ impl MainPage {
 }
 
 struct BottomBarView {
-    metronome: MetronomeView,
+    tempo_view: TempoView,
+    metronome_view: MetronomeView,
+    time_view: TimeView,
 }
 
 impl BottomBarView {
     fn new() -> Self {
         Self {
-            metronome: MetronomeView::new(),
+            tempo_view: TempoView::new(),
+            metronome_view: MetronomeView::new(),
+            time_view: TimeView::new(),
         }
     }
 
     fn draw(&mut self, data: &AppData, _w: f32, h: f32, canvas: &mut Canvas,
             _modal_manager: &mut ModalManager, sender: &mut Sender<Command>,
             last_event: Option<GuiEvent>) {
-        let size = self.metronome.draw(h, data, canvas, sender, last_event);
 
-        let mut ms = data.engine_state.time.to_ms();
-        let mut negative = "";
-        if ms < 0.0 {
-            negative = "-";
-            ms = -ms;
-        }
+        let size = self.tempo_view.draw(canvas, data, sender, last_event);
+        canvas.save();
+        canvas.translate((size.width + 20.0, 0.0));
 
-        ms = (ms / 1000.0).floor();
-        let hours = ms as u64 / 60 / 60;
-        ms -= (hours * 60 * 60) as f64;
-        let minutes = ms as u64 / 60;
-        ms -= (minutes * 60) as f64;
-        let seconds = ms as u64;
+        let size = self.metronome_view.draw(h, data, canvas, sender, last_event);
+        canvas.translate((size.width + 20.0, 0.0));
 
-        let font = Font::new(Typeface::default(), 20.0);
-        let mut text_paint = Paint::default();
-        text_paint.set_color(Color::WHITE);
-        text_paint.set_anti_alias(true);
+        self.time_view.draw(h, data, canvas);
 
-
-        let time_blob = TextBlob::new(
-            &format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
-            &font,
-        )
-        .unwrap();
-
-        let mut x = size.width;
-
-        canvas.draw_text_blob(&time_blob, Point::new(x, h - 12.0), &text_paint);
-
-        // TODO: should probably figure out what this bounds actually represents, since it does
-        //       not seem to be a bounding box of the text as I would expect
-        x += time_blob.bounds().width() - 30.0;
-
-        let current_beat = data
-            .engine_state
-            .metric_structure
-            .tempo
-            .beat(data.engine_state.time);
-        let measure = data
-            .engine_state
-            .metric_structure
-            .time_signature
-            .measure(current_beat);
-        let beat_of_measure = data
-            .engine_state
-            .metric_structure
-            .time_signature
-            .beat_of_measure(current_beat);
-
-
-        let measure_blob =
-            TextBlob::new(format!("{:03}.{}", measure, beat_of_measure), &font).unwrap();
-
-        canvas.draw_text_blob(&measure_blob, Point::new(x, h - 12.0), &text_paint);
+        canvas.restore();
     }
 }
 
-struct MetronomeView {
-    tempo_view: TempoView,
-}
-
-impl MetronomeView {
-    fn new() -> Self {
-        MetronomeView {
-            tempo_view: TempoView::new(),
-        }
-    }
-
-    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas, sender: &mut Sender<Command>,
-            last_event: Option<GuiEvent>) -> Size {
-        let current_beat = data
-            .engine_state
-            .metric_structure
-            .tempo
-            .beat(data.engine_state.time);
-        let beat_of_measure = data
-            .engine_state
-            .metric_structure
-            .time_signature
-            .beat_of_measure(current_beat);
-
-        let tempo_size = self.tempo_view.draw(canvas, data, sender, last_event);
-
-        let size = Size::new(tempo_size.width +
-                                 data.engine_state.metric_structure.time_signature.upper as f32 * 30.0, h);
-
-        let mut x = 130.0;
-
-        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            if beat == beat_of_measure {
-                paint.set_color(Color::from_rgb(0, 255, 0));
-            } else {
-                paint.set_color(Color::from_rgb(128, 128, 128));
-            }
-
-            let radius = 10.0;
-            canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
-            x += 30.0;
-        }
-
-
-        size
-
-    }
-}
 
 
 struct TempoView {
@@ -488,7 +397,7 @@ impl TempoView {
 
         self.draw_edit(canvas, &font, &bounds, sender, last_event);
 
-        text_size
+        bounds.size()
     }
 }
 
@@ -522,6 +431,184 @@ impl TextEditable for TempoView {
     }
 }
 
+struct MetronomeView {
+    button_state: ButtonState,
+    edit_state: TextEditState,
+}
+
+impl MetronomeView {
+    fn new() -> Self {
+        MetronomeView {
+            button_state: ButtonState::Default,
+            edit_state: TextEditState::Default,
+        }
+    }
+
+    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas, sender: &mut Sender<Command>,
+            last_event: Option<GuiEvent>) -> Size {
+
+        let bounds = Rect::new(-15.0, -5.0,
+                               data.engine_state.metric_structure.time_signature.upper as f32 * 30.0,
+                               h - 5.0);
+
+        let mut edit_string = None;
+        self.handle_event(canvas, &bounds, |button| {
+            if button == MouseButton::Left {
+                edit_string = Some(format!("{} / {}",
+                                           data.engine_state.metric_structure.time_signature.upper,
+                                           data.engine_state.metric_structure.time_signature.lower));
+            }
+        }, last_event);
+
+        if self.button_state != ButtonState::Default {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            match self.button_state {
+                ButtonState::Hover => paint.set_color(Color::from_rgb(60, 60, 60)),
+                ButtonState::Pressed => paint.set_color(Color::from_rgb(30, 30, 30)),
+                ButtonState::Default => unreachable!(),
+            };
+            canvas.draw_rect(bounds, &paint);
+        }
+
+        if let Some(s) = edit_string {
+            self.start_editing(s);
+        }
+
+        let current_beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let beat_of_measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(current_beat);
+
+        let mut x = 0.0;
+
+        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            if beat == beat_of_measure {
+                paint.set_color(Color::from_rgb(0, 255, 0));
+            } else {
+                paint.set_color(Color::from_rgb(128, 128, 128));
+            }
+
+            let radius = 10.0;
+            canvas.draw_circle(Point::new(x + radius / 2.0, h / 2.0 - 5.0), radius, &paint);
+            x += 30.0;
+        }
+
+        let font = Font::new(Typeface::default(), 20.0);
+        self.draw_edit(canvas, &font, &bounds, sender, last_event);
+
+        bounds.size()
+    }
+}
+
+impl Button for MetronomeView {
+    fn set_state(&mut self, state: ButtonState) {
+        self.button_state = state;
+    }
+}
+
+impl TextEditable for MetronomeView {
+    fn commit(&mut self, sender: &mut Sender<Command>) {
+        if let TextEditState::Editing(_, s) = &self.edit_state {
+            let pat = Regex::new(r"(\d\d?)\w*/\w*(\d\d?)").unwrap();
+            if let Some(captures) = pat.captures(s) {
+                let upper = u8::from_str(captures.get(1).unwrap().as_str()).unwrap();
+                let lower = u8::from_str(captures.get(2).unwrap().as_str()).unwrap();
+
+                if TimeSignature::new(upper, lower).is_some() {
+                    if let Err(e) = sender.send(Command::SetTimeSignature(upper, lower)) {
+                        error!("Failed to send time signature update: {:?}", e);
+                    }
+                } else {
+                    error!("Invalid time signature {}", s);
+                }
+            } else {
+                error!("Invalid time signature {}", s);
+            }
+        }
+
+        self.edit_state = TextEditState::Default;
+    }
+
+    fn get_edit_state(&mut self) -> &mut TextEditState {
+        &mut self.edit_state
+    }
+}
+
+struct TimeView {
+}
+
+impl TimeView {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas) -> Size {
+        let mut ms = data.engine_state.time.to_ms();
+        let mut negative = "";
+        if ms < 0.0 {
+            negative = "-";
+            ms = -ms;
+        }
+
+        ms = (ms / 1000.0).floor();
+        let hours = ms as u64 / 60 / 60;
+        ms -= (hours * 60 * 60) as f64;
+        let minutes = ms as u64 / 60;
+        ms -= (minutes * 60) as f64;
+        let seconds = ms as u64;
+
+        let font = Font::new(Typeface::default(), 20.0);
+        let mut text_paint = Paint::default();
+        text_paint.set_color(Color::WHITE);
+        text_paint.set_anti_alias(true);
+
+
+        let time_blob = TextBlob::new(
+            &format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
+            &font,
+        ).unwrap();
+
+        let mut x = 10.0;
+        canvas.draw_text_blob(&time_blob, Point::new(x, h - 12.0), &text_paint);
+
+        // TODO: should probably figure out what this bounds actually represents, since it does
+        //       not seem to be a bounding box of the text as I would expect
+        x += time_blob.bounds().width() - 30.0;
+
+        let current_beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .measure(current_beat);
+        let beat_of_measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(current_beat);
+
+
+        let measure_blob =
+            TextBlob::new(format!("{:03}.{}", measure, beat_of_measure), &font).unwrap();
+
+        canvas.draw_text_blob(&measure_blob, Point::new(x, h - 12.0), &text_paint);
+
+        Size::new(x + measure_blob.bounds().width(), h)
+    }
+}
 
 #[derive(Copy, Clone)]
 enum BottomButtonBehavior {

@@ -19,6 +19,8 @@ tinyfiledialogs = "3.3"
 lazy_static = "1"
 chrono = "0.4.11"
 
+regex = "1"
+
 gl-rs = { package = "gl", version = "0.14.0" }
 crossbeam-queue = "0.2"
 crossbeam-channel = "0.4"

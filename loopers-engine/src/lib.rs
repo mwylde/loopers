@@ -385,6 +385,15 @@ impl Engine {
                 }
                 self.reset();
             }
+            SetTimeSignature(upper, lower) => {
+                if let Some(ts) = TimeSignature::new(*upper, *lower) {
+                    self.metric_structure.time_signature = ts;
+                    if let Some(met) = &mut self.metronome {
+                        met.set_metric_structure(self.metric_structure);
+                    }
+                    self.reset();
+                }
+            }
         }
     }
 

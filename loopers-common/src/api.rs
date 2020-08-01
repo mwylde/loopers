@@ -120,6 +120,7 @@ pub enum Command {
     SetMetronomeLevel(u8),
 
     SetTempoBPM(f32),
+    SetTimeSignature(u8, u8),
 }
 
 impl Command {
