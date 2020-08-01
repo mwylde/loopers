@@ -55,12 +55,12 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MidiMapping {
     pub channel: u8,
     pub data: u8,

@@ -98,7 +98,7 @@ impl LooperCommand {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Command {
     Looper(LooperCommand, LooperTarget),
 
@@ -118,6 +118,8 @@ pub enum Command {
     LoadSession(Arc<PathBuf>),
 
     SetMetronomeLevel(u8),
+
+    SetTempoBPM(f32),
 }
 
 impl Command {

@@ -9,7 +9,7 @@ use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::{ContextBuilder, GlProfile};
 
-use crate::{Gui, GuiEvent, MouseEventType};
+use crate::{Gui, GuiEvent, MouseEventType, KeyEventType, KeyEventKey};
 use gl::types::*;
 use gl_rs as gl;
 
@@ -95,7 +95,6 @@ pub fn skia_main(mut gui: Gui) {
     let mut frame_counter = 0;
 
     let mut mouse_position = None;
-    let mut paused = false;
     let mut capture_debug_frame = false;
 
     let mut last_event = None;
@@ -122,15 +121,29 @@ pub fn skia_main(mut gui: Gui) {
                 } => {
                     if state == ElementState::Pressed {
                         match virtual_keycode {
-                            Some(VirtualKeyCode::Q) => {
-                                *control_flow = ControlFlow::Exit;
-                            }
                             Some(VirtualKeyCode::Slash) => {
                                 capture_debug_frame = true;
                             }
-                            Some(VirtualKeyCode::Space) => {
-                                println!("pausing");
-                                paused = !paused;
+                            Some(key) => {
+                                let typ = match state {
+                                    ElementState::Pressed => KeyEventType::Pressed,
+                                    ElementState::Released => KeyEventType::Released,
+                                };
+
+                                if let Some(c) = char_from_key(key) {
+                                    last_event = Some(GuiEvent::KeyEvent(typ, KeyEventKey::Char(c)));
+                                } else {
+                                    let key = match key {
+                                        VirtualKeyCode::Back | VirtualKeyCode::Delete => Some(KeyEventKey::Backspace),
+                                        VirtualKeyCode::Escape => Some(KeyEventKey::Esc),
+                                        VirtualKeyCode::Return => Some(KeyEventKey::Enter),
+                                        _ => None
+                                    };
+
+                                    if let Some(key) = key {
+                                        last_event = Some(GuiEvent::KeyEvent(typ, key));
+                                    }
+                                }
                             }
                             _ => {}
                         }
@@ -227,4 +240,46 @@ pub fn skia_main(mut gui: Gui) {
             _ => (),
         }
     });
+}
+
+fn char_from_key(key: VirtualKeyCode) -> Option<char> {
+    Some(match key {
+        VirtualKeyCode::Key1 => '1',
+        VirtualKeyCode::Key2 => '2',
+        VirtualKeyCode::Key3 => '3',
+        VirtualKeyCode::Key4 => '4',
+        VirtualKeyCode::Key5 => '5',
+        VirtualKeyCode::Key6 => '6',
+        VirtualKeyCode::Key7 => '7',
+        VirtualKeyCode::Key8 => '8',
+        VirtualKeyCode::Key9 => '9',
+        VirtualKeyCode::Key0 => '0',
+        VirtualKeyCode::A => 'a',
+        VirtualKeyCode::B => 'b',
+        VirtualKeyCode::C => 'c',
+        VirtualKeyCode::D => 'd',
+        VirtualKeyCode::E => 'e',
+        VirtualKeyCode::F => 'f',
+        VirtualKeyCode::G => 'g',
+        VirtualKeyCode::H => 'h',
+        VirtualKeyCode::I => 'i',
+        VirtualKeyCode::J => 'j',
+        VirtualKeyCode::K => 'k',
+        VirtualKeyCode::L => 'l',
+        VirtualKeyCode::M => 'm',
+        VirtualKeyCode::N => 'n',
+        VirtualKeyCode::O => 'o',
+        VirtualKeyCode::P => 'p',
+        VirtualKeyCode::Q => 'q',
+        VirtualKeyCode::R => 'r',
+        VirtualKeyCode::S => 's',
+        VirtualKeyCode::T => 't',
+        VirtualKeyCode::U => 'u',
+        VirtualKeyCode::V => 'v',
+        VirtualKeyCode::W => 'w',
+        VirtualKeyCode::X => 'x',
+        VirtualKeyCode::Y => 'y',
+        VirtualKeyCode::Z => 'z',
+        _ => return None,
+   })
 }

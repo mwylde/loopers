@@ -16,7 +16,7 @@ use loopers_common::gui_channel::{
 };
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::HashMap;
-use winit::event::MouseButton;
+use winit::event::{MouseButton};
 
 use crate::app::MainPage;
 use loopers_common::api::{Command, FrameTime, LooperMode};
@@ -30,9 +30,24 @@ pub enum MouseEventType {
     Moved,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum KeyEventType {
+    Pressed,
+    Released
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum KeyEventKey {
+    Char(char),
+    Backspace,
+    Enter,
+    Esc,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum GuiEvent {
     MouseEvent(MouseEventType, PhysicalPosition<f64>),
+    KeyEvent(KeyEventType, KeyEventKey),
 }
 
 #[derive(Clone)]

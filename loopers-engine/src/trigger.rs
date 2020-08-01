@@ -74,7 +74,7 @@ pub enum TriggerCondition {
     Beat(u8),
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Trigger {
     pub condition: TriggerCondition,
     pub command: Command,
@@ -133,6 +133,8 @@ impl Trigger {
         self.triggered_at
     }
 }
+
+impl Eq for Trigger {}
 
 impl PartialOrd for Trigger {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

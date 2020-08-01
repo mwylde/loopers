@@ -128,6 +128,10 @@ impl Metronome {
         }
     }
 
+    pub fn set_metric_structure(&mut self, ms: MetricStructure) {
+        self.metric_structure = ms;
+    }
+
     pub fn get_volume(&self) -> f32 {
         self.volume
     }

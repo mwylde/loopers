@@ -1,9 +1,11 @@
-use crate::{GuiEvent, MouseEventType};
+use crate::{GuiEvent, MouseEventType, AppData};
 use skia_safe::paint::Style;
 use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
 };
 use winit::event::MouseButton;
+use loopers_common::api::Command;
+use crossbeam_channel::Sender;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
@@ -67,6 +69,7 @@ pub trait Button {
                         self.set_state(ButtonState::Default);
                     }
                 }
+                _ => {}
             }
         }
     }
@@ -153,5 +156,43 @@ impl ControlButton {
 impl Button for ControlButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+}
+
+#[allow(dead_code)]
+pub trait Modal {
+    fn draw(&mut self, manager: &mut ModalManager, canvas: &mut Canvas, w: f32, h: f32,
+            data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size;
+}
+
+#[allow(dead_code)]
+pub struct ModalManager {
+    current: Option<Box<dyn Modal>>,
+}
+
+impl ModalManager {
+    pub fn new() -> Self {
+        ModalManager {
+            current: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn set(&mut self, modal: Box<dyn Modal>) {
+        self.current = Some(modal);
+    }
+
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        self.current = None;
+    }
+
+    pub fn draw(&mut self, canvas: &mut Canvas, w: f32, h: f32, data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
+        let mut cur = self.current.take();
+        if let Some(modal) = &mut cur {
+            modal.draw(self, canvas, w, h, data, sender, last_event);
+        }
+
+        self.current = cur;
     }
 }

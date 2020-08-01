@@ -1,9 +1,9 @@
 use skia_safe::*;
 
-use crate::{AppData, GuiEvent, LooperData};
+use crate::{AppData, GuiEvent, LooperData, MouseEventType, KeyEventType, KeyEventKey};
 
 use crate::skia::{HEIGHT, WIDTH};
-use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton};
+use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager};
 use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
 use loopers_common::music::MetricStructure;
@@ -12,10 +12,11 @@ use skia_safe::paint::Style;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc};
-use std::time::Duration;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use winit::event::MouseButton;
 use std::fs::File;
 use std::io::Read;
+use std::str::FromStr;
 
 lazy_static! {
   static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
@@ -101,6 +102,7 @@ pub struct MainPage {
     bottom_bar: BottomBarView,
     add_button: AddButton,
     bottom_buttons: BottomButtonView,
+    modal_manager: ModalManager,
 }
 
 const LOOPER_MARGIN: f32 = 10.0;
@@ -179,6 +181,7 @@ impl MainPage {
             bottom_bar: BottomBarView::new(),
             add_button: AddButton::new(),
             bottom_buttons: BottomButtonView::new(),
+            modal_manager: ModalManager::new(),
         }
     }
 
@@ -207,6 +210,8 @@ impl MainPage {
         for id in remove {
             self.loopers.remove(&id);
         }
+
+        self.modal_manager.draw(canvas, WIDTH as f32, HEIGHT as f32, data, sender, last_event);
 
         let mut y = 0.0;
         for (id, looper) in self.loopers.iter_mut() {
@@ -293,64 +298,27 @@ impl MainPage {
         canvas.save();
         let bar_height = 30.0;
         canvas.translate(Vector::new(0.0, bottom - bar_height));
-        self.bottom_bar.draw(canvas, WIDTH as f32, 30.0, data);
+        self.bottom_bar.draw(data, WIDTH as f32, 30.0, canvas,
+                             &mut self.modal_manager, sender, last_event);
         canvas.restore();
     }
 }
 
-struct BottomBarView {}
+struct BottomBarView {
+    metronome: MetronomeView,
+}
 
 impl BottomBarView {
     fn new() -> Self {
-        Self {}
+        Self {
+            metronome: MetronomeView::new(),
+        }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, _w: f32, h: f32, data: &AppData) {
-        let font = Font::new(Typeface::default(), 20.0);
-
-        let mut text_paint = Paint::default();
-        text_paint.set_color(Color::WHITE);
-        text_paint.set_anti_alias(true);
-        canvas.draw_str(
-            &format!(
-                "{} bpm",
-                data.engine_state.metric_structure.tempo.bpm() as u32
-            ),
-            Point::new(10.0, h - 12.0),
-            &font,
-            &text_paint,
-        );
-
-        let mut x = 130.0;
-
-        let current_beat = data
-            .engine_state
-            .metric_structure
-            .tempo
-            .beat(data.engine_state.time);
-        let beat_of_measure = data
-            .engine_state
-            .metric_structure
-            .time_signature
-            .beat_of_measure(current_beat);
-        let measure = data
-            .engine_state
-            .metric_structure
-            .time_signature
-            .measure(current_beat);
-        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            if beat == beat_of_measure {
-                paint.set_color(Color::from_rgb(0, 255, 0));
-            } else {
-                paint.set_color(Color::from_rgb(128, 128, 128));
-            }
-
-            let radius = 10.0;
-            canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
-            x += 30.0;
-        }
+    fn draw(&mut self, data: &AppData, _w: f32, h: f32, canvas: &mut Canvas,
+            _modal_manager: &mut ModalManager, sender: &mut Sender<Command>,
+            last_event: Option<GuiEvent>) {
+        let size = self.metronome.draw(h, data, canvas, sender, last_event);
 
         let mut ms = data.engine_state.time.to_ms();
         let mut negative = "";
@@ -366,11 +334,19 @@ impl BottomBarView {
         ms -= (minutes * 60) as f64;
         let seconds = ms as u64;
 
+        let font = Font::new(Typeface::default(), 20.0);
+        let mut text_paint = Paint::default();
+        text_paint.set_color(Color::WHITE);
+        text_paint.set_anti_alias(true);
+
+
         let time_blob = TextBlob::new(
             &format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
             &font,
         )
         .unwrap();
+
+        let mut x = size.width;
 
         canvas.draw_text_blob(&time_blob, Point::new(x, h - 12.0), &text_paint);
 
@@ -378,12 +354,251 @@ impl BottomBarView {
         //       not seem to be a bounding box of the text as I would expect
         x += time_blob.bounds().width() - 30.0;
 
+        let current_beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .measure(current_beat);
+        let beat_of_measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(current_beat);
+
+
         let measure_blob =
             TextBlob::new(format!("{:03}.{}", measure, beat_of_measure), &font).unwrap();
 
         canvas.draw_text_blob(&measure_blob, Point::new(x, h - 12.0), &text_paint);
     }
 }
+
+struct MetronomeView {
+    tempo_view: TempoView,
+}
+
+impl MetronomeView {
+    fn new() -> Self {
+        MetronomeView {
+            tempo_view: TempoView::new(),
+        }
+    }
+
+    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas, sender: &mut Sender<Command>,
+            last_event: Option<GuiEvent>) -> Size {
+        let current_beat = data
+            .engine_state
+            .metric_structure
+            .tempo
+            .beat(data.engine_state.time);
+        let beat_of_measure = data
+            .engine_state
+            .metric_structure
+            .time_signature
+            .beat_of_measure(current_beat);
+
+        let tempo_size = self.tempo_view.draw(canvas, data, sender, last_event);
+
+        let size = Size::new(tempo_size.width +
+                                 data.engine_state.metric_structure.time_signature.upper as f32 * 30.0, h);
+
+        let mut x = 130.0;
+
+        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            if beat == beat_of_measure {
+                paint.set_color(Color::from_rgb(0, 255, 0));
+            } else {
+                paint.set_color(Color::from_rgb(128, 128, 128));
+            }
+
+            let radius = 10.0;
+            canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
+            x += 30.0;
+        }
+
+
+        size
+
+    }
+}
+
+#[derive(Eq, PartialEq, Clone)]
+enum TempoViewState {
+    Default,
+    Editing(bool, String),
+}
+
+struct TempoView {
+    button_state: ButtonState,
+    state: TempoViewState,
+}
+
+impl TempoView {
+    fn new() -> Self {
+        Self {
+            button_state: ButtonState::Default,
+            state: TempoViewState::Default,
+        }
+    }
+
+    fn commit(&mut self, sender: &mut Sender<Command>) {
+        if let TempoViewState::Editing(_, s) = &self.state {
+            if let Ok(tempo) = f32::from_str(&s) {
+                if let Err(e) = sender.send(Command::SetTempoBPM(tempo)) {
+                    error!("Failed to send tempo update: {:?}", e);
+                }
+            } else if !s.is_empty() {
+                error!("invalid tempo {}", s);
+            }
+        }
+
+        self.state = TempoViewState::Default;
+    }
+
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>,
+            last_event: Option<GuiEvent>) -> Size {
+
+        let font = Font::new(Typeface::default(), 20.0);
+        let mut text = &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32);
+        let text_size = font.measure_str(text, None).1.size();
+
+        let bounds = Rect::from_point_and_size(Point::new(15.0, 0.0), text_size)
+            .with_outset((10.0, 5.0));
+
+        let mut new_state = None;
+        self.handle_event(canvas, &bounds, |button| {
+            if button == MouseButton::Left {
+                new_state = Some(TempoViewState::Editing(
+                    true, format!("{}", data.engine_state.metric_structure.tempo.bpm() as u32)));
+            }
+        }, last_event);
+
+        if let Some(state) = new_state {
+            self.state = state;
+        }
+
+        let mut commit = false;
+        // if there was a click elsewhere, clear our state
+        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), pos)) = last_event {
+            let point = canvas
+                .total_matrix()
+                .invert()
+                .unwrap()
+                .map_point((pos.x as f32, pos.y as f32));
+
+            if !bounds.contains(point) {
+                commit = true;
+            }
+        }
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        let mut text_paint = Paint::default();
+        text_paint.set_color(Color::WHITE);
+        text_paint.set_anti_alias(true);
+
+        if let TempoViewState::Editing(selected, edited) = &mut self.state {
+            if let Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key)) = last_event {
+                match key {
+                    KeyEventKey::Char(c) => {
+                        if c.is_numeric() {
+                            if *selected {
+                                edited.clear();
+                            }
+
+                            if edited.len() < 3 {
+                                edited.push(c);
+                            }
+                            *selected = false;
+                        }
+                    }
+                    KeyEventKey::Backspace => {
+                        if *selected {
+                            edited.clear();
+                        } else {
+                            edited.pop();
+                        }
+                    }
+                    KeyEventKey::Enter | KeyEventKey::Esc => {
+                        commit = true;
+                    }
+                }
+            }
+
+            paint.set_color(Color::WHITE);
+            canvas.draw_round_rect(bounds, 4.0, 4.0, &paint);
+
+            let text_bounds = font.measure_str(&edited, Some(&text_paint)).1
+                .with_offset((15.0, 18.0))
+                .with_outset((3.0, 3.0));
+
+            if *selected {
+                if !edited.is_empty() {
+                    paint.set_color(Color::BLUE);
+                    canvas.draw_rect(&text_bounds, &paint);
+                }
+            } else {
+                text_paint.set_color(Color::BLACK);
+                let mut cursor = Path::new();
+                let x = if edited.is_empty() {
+                    20.0
+                } else {
+                    text_bounds.right + 3.0
+                };
+
+                cursor.move_to((x, 2.0));
+                cursor.line_to((x, 20.0));
+                let mut paint = Paint::default();
+                paint.set_color(Color::BLACK);
+                paint.set_style(Style::Stroke);
+                paint.set_stroke_width(1.0);
+                paint.set_anti_alias(true);
+
+                if UNIX_EPOCH.elapsed().unwrap().as_millis() % 1500 > 500 {
+                    canvas.draw_path(&cursor, &paint);
+                }
+            }
+        } else if self.button_state != ButtonState::Default {
+            match self.button_state {
+                ButtonState::Hover => paint.set_color(Color::from_rgb(60, 60, 60)),
+                ButtonState::Pressed => paint.set_color(Color::from_rgb(30, 30, 30)),
+                ButtonState::Default => unreachable!(),
+            };
+            canvas.draw_rect(bounds, &paint);
+        }
+
+        if commit {
+            self.commit(sender);
+        }
+
+        if let TempoViewState::Editing(_, edited) = &self.state {
+            text = edited;
+        }
+
+        canvas.draw_str(
+            text,
+            Point::new(15.0, 18.0),
+            &font,
+            &text_paint,
+        );
+
+        text_size
+    }
+}
+
+impl Button for TempoView {
+    fn set_state(&mut self, state: ButtonState) {
+        self.button_state = state;
+    }
+}
+
 
 #[derive(Copy, Clone)]
 enum BottomButtonBehavior {
@@ -1084,3 +1299,13 @@ impl WaveformView {
         Size::new(w, h)
     }
 }
+
+// struct MetricStructureModal {
+// }
+//
+// impl Modal for MetricStructureModal {
+//     fn draw(&mut self, manager: &mut ModalManager, canvas: &mut Canvas,
+//             w: f32, h: f32, data: AppData, sender: Sender<Command>, last_event: Option<GuiEvent>) -> Size {
+//
+//     }
+// }
