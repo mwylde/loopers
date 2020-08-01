@@ -434,6 +434,7 @@ impl TextEditable for TempoView {
 struct MetronomeView {
     button_state: ButtonState,
     edit_state: TextEditState,
+    beat_animation: (u8, Option<Animation>),
 }
 
 impl MetronomeView {
@@ -441,14 +442,16 @@ impl MetronomeView {
         MetronomeView {
             button_state: ButtonState::Default,
             edit_state: TextEditState::Default,
+            beat_animation: (255, None),
         }
     }
 
     fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas, sender: &mut Sender<Command>,
             last_event: Option<GuiEvent>) -> Size {
+        let upper = data.engine_state.metric_structure.time_signature.upper;
 
         let bounds = Rect::new(-15.0, -5.0,
-                               data.engine_state.metric_structure.time_signature.upper as f32 * 30.0,
+                               if upper <= 5 { upper as f32 * 30.0 } else { 70.0 },
                                h - 5.0);
 
         let mut edit_string = None;
@@ -488,21 +491,63 @@ impl MetronomeView {
 
         let mut x = 0.0;
 
-        for beat in 0..data.engine_state.metric_structure.time_signature.upper {
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            if beat == beat_of_measure {
-                paint.set_color(Color::from_rgb(0, 255, 0));
-            } else {
-                paint.set_color(Color::from_rgb(128, 128, 128));
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        let font = Font::new(Typeface::default(), 20.0);
+
+        let beat_color = if beat_of_measure == 0 {
+            Color::from_rgb(0, 255, 0)
+        } else {
+            Color::from_rgb(255, 239, 0)
+        };
+
+        if upper <= 5 {
+            // if we have fewer than 5 beats per measure, render the full UI with each beat as
+            // a circle
+            for beat in 0..upper {
+                if beat == beat_of_measure {
+                    paint.set_color(beat_color);
+                } else {
+                    paint.set_color(Color::from_rgb(128, 128, 128));
+                }
+
+                let radius = 10.0;
+                canvas.draw_circle(Point::new(x + radius / 2.0, h / 2.0 - 5.0), radius, &paint);
+                x += 30.0;
+            }
+        } else {
+            // otherwise, render a fixed-size UI with a single circle and a beat number
+            if self.beat_animation.0 != beat_of_measure {
+                self.beat_animation = (beat_of_measure, Some(Animation::new(
+                    data.engine_state.time, Duration::from_millis(300),
+                    AnimationFunction::EaseOutCubic)));
             }
 
             let radius = 10.0;
-            canvas.draw_circle(Point::new(x + radius / 2.0, h / 2.0 - 5.0), radius, &paint);
-            x += 30.0;
+            let x = 10.0 + radius / 2.0;
+            paint.set_color(Color::from_rgb(128, 128, 128));
+            canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
+
+            paint.set_color(beat_color);
+            if let Some(animation) = &self.beat_animation.1 {
+                paint.set_alpha(((1.0 - animation.value(data.engine_state.time))
+                    .min(1.0) * 255.0) as u8);
+            }
+            canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
+
+            let mut text_paint = Paint::default();
+            text_paint.set_anti_alias(true);
+            text_paint.set_color(Color::WHITE);
+            let lower = data.engine_state.metric_structure.time_signature.lower;
+
+            let font = Font::new(Typeface::default(), 12.0);
+
+            let x = x + radius * 2.0 + 10.0;
+            canvas.draw_str(&upper.to_string(), (x, 10.0), &font, &text_paint);
+            canvas.draw_str(&lower.to_string(), (x, 20.0), &font, &text_paint);
         }
 
-        let font = Font::new(Typeface::default(), 20.0);
+
         self.draw_edit(canvas, &font, &bounds, sender, last_event);
 
         bounds.size()

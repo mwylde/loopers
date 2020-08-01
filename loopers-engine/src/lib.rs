@@ -97,7 +97,7 @@ impl Engine {
         beat_emphasis: Vec<f32>,
         restore: bool,
     ) -> Engine {
-        let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
+        let metric_structure = MetricStructure::new(7, 4, 120.0).unwrap();
         let mut engine = Engine {
             config,
 
