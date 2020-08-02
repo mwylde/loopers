@@ -80,15 +80,15 @@ impl AnimationFunction {
     }
 }
 
-struct Animation {
+struct FrameTimeAnimation {
     start_time: FrameTime,
     length: Duration,
     function: AnimationFunction,
 }
 
-impl Animation {
+impl FrameTimeAnimation {
     fn new(start_time: FrameTime, length: Duration, function: AnimationFunction) -> Self {
-        Animation {
+        FrameTimeAnimation {
             start_time,
             length,
             function,
@@ -97,13 +97,49 @@ impl Animation {
 
     fn value(&self, time: FrameTime) -> f32 {
         let p = (time.to_ms() - self.start_time.to_ms()) as f32 / self.length.as_millis() as f32;
-        self.function.value(p)
+        self.function.value(p).min(1.0).max(0.0)
+    }
+
+    #[allow(dead_code)]
+    fn done(&self, time: FrameTime) -> bool {
+        time.to_ms() - self.start_time.to_ms() > self.length.as_millis() as f64
+    }
+}
+
+struct ClockTimeAnimation {
+    start_time: Instant,
+    length: Duration,
+    function: AnimationFunction,
+}
+
+impl ClockTimeAnimation {
+    fn new(start_time: Instant, length: Duration, function: AnimationFunction) -> Self {
+        Self {
+            start_time,
+            length,
+            function,
+        }
+    }
+
+    fn value(&self, time: Instant) -> f32 {
+        let p = time
+            .checked_duration_since(self.start_time)
+            .unwrap_or(Duration::new(0, 0))
+            .as_millis() as f32
+            / self.length.as_millis() as f32;
+        self.function.value(p).min(1.0).max(0.0)
+    }
+
+    fn done(&self, time: Instant) -> bool {
+        time.checked_duration_since(self.start_time)
+            .map(|d| d >= self.length)
+            .unwrap_or(false)
     }
 }
 
 pub struct MainPage {
     loopers: BTreeMap<u32, LooperView>,
-    beat_animation: Option<Animation>,
+    beat_animation: Option<FrameTimeAnimation>,
     bottom_bar: BottomBarView,
     add_button: AddButton,
     bottom_buttons: BottomButtonView,
@@ -269,7 +305,7 @@ impl MainPage {
 
         if bom == 0 && data.engine_state.time.0 >= 0 {
             if self.beat_animation.is_none() {
-                self.beat_animation = Some(Animation::new(
+                self.beat_animation = Some(FrameTimeAnimation::new(
                     data.engine_state.time,
                     Duration::from_millis(500),
                     AnimationFunction::EaseOutCubic,
@@ -360,9 +396,9 @@ impl BottomBarView {
         canvas.translate((size.width + 20.0, 0.0));
 
         let size = self.time_view.draw(h, data, canvas);
-        canvas.translate((size.width + 20.0, 0.0));
+        canvas.translate((size.width.round() + 20.0, 0.0));
 
-        self.peak_view.draw(canvas, data, 130.0, h);
+        self.peak_view.draw(canvas, data, 160.0, h);
 
         canvas.restore();
     }
@@ -473,7 +509,7 @@ impl TextEditable for TempoView {
 struct MetronomeView {
     button_state: ButtonState,
     edit_state: TextEditState,
-    beat_animation: (u8, Option<Animation>),
+    beat_animation: (u8, Option<FrameTimeAnimation>),
 }
 
 impl MetronomeView {
@@ -579,7 +615,7 @@ impl MetronomeView {
             if self.beat_animation.0 != beat_of_measure {
                 self.beat_animation = (
                     beat_of_measure,
-                    Some(Animation::new(
+                    Some(FrameTimeAnimation::new(
                         data.engine_state.time,
                         Duration::from_millis(300),
                         AnimationFunction::EaseOutCubic,
@@ -718,13 +754,21 @@ impl TimeView {
 }
 
 pub struct PeakMeterView {
-    peaks: [(usize, Instant); 2],
+    update_time: Duration,
+    lines: usize,
+    peaks: [(usize, Option<ClockTimeAnimation>); 2],
+    levels: [usize; 2],
+    image: Option<(Image, Instant)>,
 }
 
 impl PeakMeterView {
     fn new() -> Self {
         Self {
-            peaks: [(0, Instant::now()), (0, Instant::now())],
+            update_time: Duration::from_millis(80),
+            lines: 30,
+            peaks: [(0, None), (0, None)],
+            levels: [0, 0],
+            image: None,
         }
     }
 
@@ -750,53 +794,120 @@ impl PeakMeterView {
         d / 100.0
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, w: f32, h: f32) -> Size {
-        let lines = 30;
+    fn color(lines: usize, i: usize) -> Color {
+        let p = i as f32 / lines as f32;
+        if p < 0.8 {
+            Color::GREEN
+        } else if p < 0.9 {
+            Color::YELLOW
+        } else {
+            Color::RED
+        }
+    }
 
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        paint.set_stroke_width(1.0);
-        paint.set_style(Style::Stroke);
+    fn y(i: usize, h: f32) -> f32 {
+        2.0 + i as f32 * (h / 2.0 - 3.0)
+    }
 
-        let mut y = 2.0;
-        for (now, (peak, t)) in data
-            .engine_state
-            .input_levels
-            .iter()
-            .zip(self.peaks.iter_mut())
-        {
-            let v = (Self::iec_scale(*now) * lines as f32) as usize;
-
-            if v > *peak {
-                *peak = v;
-                *t = Instant::now();
-            } else if t.elapsed() > Duration::from_millis(300) {
-                *peak = v;
+    fn redraw_if_needed(&mut self, canvas: &mut Canvas, paint: &mut Paint, w: f32, h: f32) {
+        if let Some((_, instant)) = &self.image {
+            if instant.elapsed() < self.update_time {
+                return;
             }
+        }
 
-            for i in 0..lines {
+        let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
+        let mut surface = Surface::new_render_target(
+            canvas.gpu_context().as_mut().unwrap(),
+            Budgeted::Yes,
+            &image_info,
+            None,
+            SurfaceOrigin::TopLeft,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // draw level
+        for (c, v) in self.levels.iter().enumerate() {
+            for i in 0..self.lines {
+                let y = Self::y(c, h);
                 let mut path = Path::new();
-                let x = i as f32 / lines as f32 * w;
+                let x = i as f32 / self.lines as f32 * w;
 
-                if i < *peak {
-                    let p = i as f32 / lines as f32;
-                    if p < 0.8 {
-                        paint.set_color(Color::GREEN);
-                    } else if p < 0.9 {
-                        paint.set_color(Color::YELLOW);
-                    } else {
-                        paint.set_color(Color::RED);
-                    }
+                if i < *v {
+                    paint.set_color(Self::color(self.lines, i));
                 } else {
                     paint.set_color(Color::from_rgb(150, 150, 150));
                 }
 
                 path.move_to((x, y));
                 path.line_to((x, y + h / 2.0 - 7.0));
-                canvas.draw_path(&path, &paint);
+                surface.canvas().draw_path(&path, &paint);
+            }
+        }
+        self.levels = [0, 0];
+
+        self.image = Some((surface.image_snapshot(), Instant::now()));
+    }
+
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, w: f32, h: f32) -> Size {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_stroke_width(1.5);
+        paint.set_style(Style::Stroke);
+
+        let cur_time = Instant::now();
+
+        for ((now, (peak, animation)), ref mut level) in data
+            .engine_state
+            .input_levels
+            .iter()
+            .zip(self.peaks.iter_mut())
+            .zip(self.levels.iter_mut())
+        {
+            let v = (Self::iec_scale(*now) * self.lines as f32) as usize;
+
+            // update our peaks (which are persisted for 1.2 seconds)
+            if v > *peak {
+                *peak = v;
+                *animation = Some(ClockTimeAnimation::new(
+                    cur_time,
+                    Duration::from_millis(1200),
+                    AnimationFunction::Linear,
+                ));
+            } else if animation.is_none() || animation.as_ref().unwrap().done(cur_time) {
+                *peak = v;
             }
 
-            y += h / 2.0 - 3.0;
+            // update our levels, which are also peak calculations but on a much shorter time frame
+            if v > **level {
+                **level = v;
+            }
+        }
+
+        self.redraw_if_needed(canvas, &mut paint, w, h);
+
+        if let Some((image, _)) = &self.image {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_filter_quality(FilterQuality::High);
+
+            canvas.draw_image(&image, (0.0, 0.0), Some(&paint));
+        }
+
+        // draw peak
+        for (i, (peak, animation)) in self.peaks.iter().enumerate() {
+            let y = Self::y(i, h);
+            let mut path = Path::new();
+            let x = *peak as f32 / self.lines as f32 * w;
+            paint.set_color(Self::color(self.lines, *peak));
+            if let Some(animation) = animation {
+                paint.set_alpha_f(1.0 - animation.value(cur_time));
+            }
+            path.move_to((x, y));
+            path.line_to((x, y + h / 2.0 - 7.0));
+            canvas.draw_path(&path, &paint);
         }
 
         Size::new(w, h)
