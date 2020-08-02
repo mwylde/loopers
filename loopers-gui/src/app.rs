@@ -12,7 +12,7 @@ use skia_safe::paint::Style;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc};
-use std::time::{Duration};
+use std::time::{Duration, Instant};
 use winit::event::MouseButton;
 use std::fs::File;
 use std::io::Read;
@@ -309,6 +309,7 @@ struct BottomBarView {
     tempo_view: TempoView,
     metronome_view: MetronomeView,
     time_view: TimeView,
+    peak_view: PeakMeterView,
 }
 
 impl BottomBarView {
@@ -317,6 +318,7 @@ impl BottomBarView {
             tempo_view: TempoView::new(),
             metronome_view: MetronomeView::new(),
             time_view: TimeView::new(),
+            peak_view: PeakMeterView::new(),
         }
     }
 
@@ -331,12 +333,14 @@ impl BottomBarView {
         let size = self.metronome_view.draw(h, data, canvas, sender, last_event);
         canvas.translate((size.width + 20.0, 0.0));
 
-        self.time_view.draw(h, data, canvas);
+        let size = self.time_view.draw(h, data, canvas);
+        canvas.translate((size.width + 20.0, 0.0));
+
+        self.peak_view.draw(canvas, data, 130.0, h);
 
         canvas.restore();
     }
 }
-
 
 
 struct TempoView {
@@ -652,6 +656,87 @@ impl TimeView {
         canvas.draw_text_blob(&measure_blob, Point::new(x, h - 12.0), &text_paint);
 
         Size::new(x + measure_blob.bounds().width(), h)
+    }
+}
+
+pub struct PeakMeterView {
+    peaks: [(usize, Instant); 2],
+}
+
+impl PeakMeterView {
+    fn new() -> Self {
+        Self {
+            peaks: [(0, Instant::now()), (0, Instant::now())],
+        }
+    }
+
+    fn iec_scale(db: f32) -> f32 {
+        let d = if db < -70.0 {
+            0.0
+        } else if db < -60.0 {
+            db + 70.0 * 0.25
+        } else if db < -50.0 {
+            db + 60.0 * 0.5 + 5.0
+        } else if db < -40.0 {
+            db + 50.0 * 0.75 + 7.5
+        } else if db < -30.0 {
+            db + 40.0 * 1.5 + 15.0
+        } else if db < -20.0 {
+            db + 30.0 * 2.0 + 30.0
+        } else if db < 0.0 {
+            db + 20.0 * 2.5 + 50.0
+        } else {
+            100.0
+        };
+
+        d / 100.0
+    }
+
+    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, w: f32, h: f32) -> Size {
+        let lines = 30;
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_stroke_width(1.0);
+        paint.set_style(Style::Stroke);
+
+        let mut y = 2.0;
+        for (now, (peak, t)) in data.engine_state.input_levels.iter().zip(self.peaks.iter_mut()) {
+            let v = (Self::iec_scale(*now) * lines as f32) as usize;
+
+            if v > *peak {
+                *peak = v;
+                *t = Instant::now();
+            } else if t.elapsed() > Duration::from_millis(300) {
+                *peak = v;
+            }
+
+            for i in 0..lines {
+                let mut path = Path::new();
+                let x = i as f32 / lines as f32 * w;
+
+                if i < *peak {
+                    let p = i as f32 / lines as f32;
+                    if p < 0.8 {
+                        paint.set_color(Color::GREEN);
+                    } else if p < 0.9 {
+                        paint.set_color(Color::YELLOW);
+                    } else {
+                        paint.set_color(Color::RED);
+                    }
+                } else {
+                    paint.set_color(Color::from_rgb(150, 150, 150));
+                }
+
+                path.move_to((x, y));
+                path.line_to((x, y + h / 2.0 - 7.0));
+                canvas.draw_path(&path, &paint);
+            }
+
+            y += h / 2.0 - 3.0;
+        }
+
+        Size::new(w, h)
     }
 }
 
@@ -1354,13 +1439,3 @@ impl WaveformView {
         Size::new(w, h)
     }
 }
-
-// struct MetricStructureModal {
-// }
-//
-// impl Modal for MetricStructureModal {
-//     fn draw(&mut self, manager: &mut ModalManager, canvas: &mut Canvas,
-//             w: f32, h: f32, data: AppData, sender: Sender<Command>, last_event: Option<GuiEvent>) -> Size {
-//
-//     }
-// }

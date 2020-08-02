@@ -12,7 +12,7 @@ use crate::session::SessionSaver;
 use crossbeam_channel::Receiver;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperTarget, SavedSession, LooperMode};
 use loopers_common::config::Config;
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender};
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender, EngineState};
 use loopers_common::music::*;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
@@ -32,12 +32,6 @@ pub mod metronome;
 pub mod midi;
 pub mod sample;
 pub mod session;
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum EngineState {
-    Stopped,
-    Active,
-}
 
 pub struct Engine {
     config: Config,
@@ -97,7 +91,7 @@ impl Engine {
         beat_emphasis: Vec<f32>,
         restore: bool,
     ) -> Engine {
-        let metric_structure = MetricStructure::new(7, 4, 120.0).unwrap();
+        let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
         let mut engine = Engine {
             config,
 
@@ -489,6 +483,23 @@ impl Engine {
         }
     }
 
+    fn compute_peaks(in_bufs: &[&[f32]]) -> [f32; 2] {
+        let mut peaks = [0f32; 2];
+        for c in 0..2 {
+            let mut peak = 0f32;
+            for v in in_bufs[c] {
+                let v_abs = v.abs();
+                if v_abs > peak {
+                    peak = v_abs;
+                }
+            }
+
+            peaks[c] = 20.0 * peak.log10();
+        }
+
+        peaks
+    }
+
     // Step 1: Convert midi events to commands
     // Step 2: Handle commands
     // Step 3: Play current samples
@@ -563,14 +574,15 @@ impl Engine {
             out_r[i] = self.output_right[i] as f32;
         }
 
-
         // Update GUI
         self.gui_sender
             .send_update(GuiCommand::StateSnapshot(EngineStateSnapshot {
+                engine_state: self.state,
                 time: FrameTime(self.time),
                 metric_structure: self.metric_structure,
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
+                input_levels: Self::compute_peaks(&in_bufs),
             }));
     }
 }

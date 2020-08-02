@@ -4,12 +4,20 @@ use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 
 pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum EngineState {
+    Stopped,
+    Active,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct EngineStateSnapshot {
+    pub engine_state: EngineState,
     pub time: FrameTime,
     pub metric_structure: MetricStructure,
     pub active_looper: u32,
     pub looper_count: usize,
+    pub input_levels: [f32; 2],
 }
 
 pub type Waveform = [Vec<f32>; 2];

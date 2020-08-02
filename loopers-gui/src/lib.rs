@@ -11,9 +11,7 @@ use skia_safe::Canvas;
 
 use crossbeam_channel::{Sender, TryRecvError};
 use glutin::dpi::PhysicalPosition;
-use loopers_common::gui_channel::{
-    EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE,
-};
+use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE, EngineState};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::HashMap;
 use winit::event::{MouseButton};
@@ -80,6 +78,7 @@ impl Gui {
         Gui {
             state: AppData {
                 engine_state: EngineStateSnapshot {
+                    engine_state: EngineState::Stopped,
                     time: FrameTime(0),
                     metric_structure: MetricStructure {
                         time_signature: TimeSignature { upper: 4, lower: 4 },
@@ -87,6 +86,7 @@ impl Gui {
                     },
                     active_looper: 0,
                     looper_count: 0,
+                    input_levels: [0.0, 0.0]
                 },
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,
