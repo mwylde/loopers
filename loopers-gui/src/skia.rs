@@ -1,6 +1,8 @@
 use skia_safe::gpu::gl::FramebufferInfo;
 use skia_safe::gpu::{BackendRenderTarget, Context, SurfaceOrigin};
-use skia_safe::{Color, ColorType, Font, Paint, Point, Surface, TextBlob, Typeface, PictureRecorder, Rect};
+use skia_safe::{
+    Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Surface, TextBlob, Typeface,
+};
 use std::convert::TryInto;
 
 use glutin::event::ElementState;
@@ -9,15 +11,15 @@ use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::{ContextBuilder, GlProfile};
 
-use crate::{Gui, GuiEvent, MouseEventType, KeyEventType, KeyEventKey};
+use crate::{Gui, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
 use gl::types::*;
 use gl_rs as gl;
 
-use std::thread;
-use std::time::{Duration, Instant};
+use chrono::Local;
 use std::fs::File;
 use std::io::Write;
-use chrono::Local;
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub const WIDTH: i32 = 800;
 pub const HEIGHT: i32 = 600;
@@ -127,17 +129,25 @@ pub fn skia_main(mut gui: Gui) {
                             match virtual_keycode {
                                 Some(key) => {
                                     if let Some(c) = char_from_key(key) {
-                                        last_event = Some(GuiEvent::KeyEvent(KeyEventType::Pressed, KeyEventKey::Char(c)));
+                                        last_event = Some(GuiEvent::KeyEvent(
+                                            KeyEventType::Pressed,
+                                            KeyEventKey::Char(c),
+                                        ));
                                     } else {
                                         let key = match key {
-                                            VirtualKeyCode::Back | VirtualKeyCode::Delete => Some(KeyEventKey::Backspace),
+                                            VirtualKeyCode::Back | VirtualKeyCode::Delete => {
+                                                Some(KeyEventKey::Backspace)
+                                            }
                                             VirtualKeyCode::Escape => Some(KeyEventKey::Esc),
                                             VirtualKeyCode::Return => Some(KeyEventKey::Enter),
-                                            _ => None
+                                            _ => None,
                                         };
 
                                         if let Some(key) = key {
-                                            last_event = Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key));
+                                            last_event = Some(GuiEvent::KeyEvent(
+                                                KeyEventType::Pressed,
+                                                key,
+                                            ));
                                         }
                                     }
                                 }
@@ -168,9 +178,8 @@ pub fn skia_main(mut gui: Gui) {
 
                     if capture_debug_frame {
                         let mut recorder = PictureRecorder::new();
-                        let mut recording_canvas = recorder.begin_recording(
-                            Rect::from_iwh(WIDTH, HEIGHT),
-                        None, None);
+                        let mut recording_canvas =
+                            recorder.begin_recording(Rect::from_iwh(WIDTH, HEIGHT), None, None);
 
                         recording_canvas.clear(Color::BLACK);
 
@@ -180,7 +189,8 @@ pub fn skia_main(mut gui: Gui) {
                         let data = picture.serialize();
                         let now = Local::now();
 
-                        let path = format!("/tmp/skia_dump_{}.skp", now.format("%Y-%m-%d_%H:%M:%S"));
+                        let path =
+                            format!("/tmp/skia_dump_{}.skp", now.format("%Y-%m-%d_%H:%M:%S"));
                         let mut file = File::create(&path).unwrap();
 
                         info!("Captured debug frame to {}", path);
@@ -279,5 +289,5 @@ fn char_from_key(key: VirtualKeyCode) -> Option<char> {
         VirtualKeyCode::Z => 'z',
         VirtualKeyCode::Slash => '/',
         _ => return None,
-   })
+    })
 }

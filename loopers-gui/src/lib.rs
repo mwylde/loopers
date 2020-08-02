@@ -11,10 +11,12 @@ use skia_safe::Canvas;
 
 use crossbeam_channel::{Sender, TryRecvError};
 use glutin::dpi::PhysicalPosition;
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE, EngineState};
+use loopers_common::gui_channel::{
+    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE,
+};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::HashMap;
-use winit::event::{MouseButton};
+use winit::event::MouseButton;
 
 use crate::app::MainPage;
 use loopers_common::api::{Command, FrameTime, LooperMode};
@@ -31,7 +33,7 @@ pub enum MouseEventType {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum KeyEventType {
     Pressed,
-    Released
+    Released,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -86,7 +88,7 @@ impl Gui {
                     },
                     active_looper: 0,
                     looper_count: 0,
-                    input_levels: [0.0, 0.0]
+                    input_levels: [0.0, 0.0],
                 },
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,
@@ -157,7 +159,8 @@ impl Gui {
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         if time.0 >= 0 && l.waveform[0].len() > 0 && l.length > 0 {
-                            let i = ((time.0 as u64 % l.length) / WAVEFORM_DOWNSAMPLE as u64) as usize;
+                            let i =
+                                ((time.0 as u64 % l.length) / WAVEFORM_DOWNSAMPLE as u64) as usize;
                             if i < l.waveform[0].len() - 1 {
                                 l.waveform[0][i] = sample[0];
                                 l.waveform[1][i] = sample[1];

@@ -1,21 +1,25 @@
-use loopers_common::api::{FrameTime, Command};
+use loopers_common::api::{Command, FrameTime};
 use loopers_common::music::MetricStructure;
 use std::cmp::Ordering;
 
 #[cfg(test)]
 mod tests {
-    use loopers_common::music::{Tempo, MetricStructure, TimeSignature};
     use crate::trigger::{Trigger, TriggerCondition};
     use loopers_common::api::{Command, FrameTime};
+    use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
     use proptest::prelude::*;
 
     fn correct_measure_trigger(trigger: &Trigger) -> FrameTime {
         let mut t = trigger.start_time;
         loop {
-            if t.0 >= 0 &&
-                t.0 % trigger.metric_structure.tempo.samples_per_beat() as i64 == 0 &&
-                trigger.metric_structure.time_signature.beat_of_measure(
-                    trigger.metric_structure.tempo.beat(t)) == 0{
+            if t.0 >= 0
+                && t.0 % trigger.metric_structure.tempo.samples_per_beat() as i64 == 0
+                && trigger
+                    .metric_structure
+                    .time_signature
+                    .beat_of_measure(trigger.metric_structure.tempo.beat(t))
+                    == 0
+            {
                 return FrameTime(t.0);
             }
             t = FrameTime(t.0 + 1);
@@ -29,23 +33,31 @@ mod tests {
             time_signature: TimeSignature::new(4, 4).unwrap(),
         };
 
-        let t = Trigger::new(TriggerCondition::Measure,
-                             Command::Start, ms, FrameTime(0)).unwrap();
+        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(0)).unwrap();
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Measure,
-                             Command::Start, ms, FrameTime(1)).unwrap();
+        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(1)).unwrap();
 
         assert_eq!(FrameTime(88200), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Measure,
-                             Command::Start, ms, FrameTime(-30000)).unwrap();
+        let t = Trigger::new(
+            TriggerCondition::Measure,
+            Command::Start,
+            ms,
+            FrameTime(-30000),
+        )
+        .unwrap();
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Measure,
-                             Command::Start, ms, FrameTime(88200)).unwrap();
+        let t = Trigger::new(
+            TriggerCondition::Measure,
+            Command::Start,
+            ms,
+            FrameTime(88200),
+        )
+        .unwrap();
 
         assert_eq!(FrameTime(88200), t.triggered_at());
     }
@@ -84,8 +96,12 @@ pub struct Trigger {
 }
 
 impl Trigger {
-    pub fn new(condition: TriggerCondition, command: Command,
-           metric_structure: MetricStructure, start_time: FrameTime) -> Option<Trigger> {
+    pub fn new(
+        condition: TriggerCondition,
+        command: Command,
+        metric_structure: MetricStructure,
+        start_time: FrameTime,
+    ) -> Option<Trigger> {
         let valid = match condition {
             TriggerCondition::Measure => true,
             TriggerCondition::Beat(b) => b < metric_structure.time_signature.upper,
@@ -105,8 +121,11 @@ impl Trigger {
         }
     }
 
-    fn compute_triggered_at(condition: TriggerCondition, metric_structure: MetricStructure,
-                            start_time: FrameTime) -> FrameTime {
+    fn compute_triggered_at(
+        condition: TriggerCondition,
+        metric_structure: MetricStructure,
+        start_time: FrameTime,
+    ) -> FrameTime {
         match condition {
             TriggerCondition::Measure => {
                 if start_time.0 < 0 {
@@ -122,10 +141,8 @@ impl Trigger {
                         FrameTime(start_time.0 + (samples_per_measure - rem))
                     }
                 }
-            },
-            TriggerCondition::Beat(_) => {
-                unimplemented!()
-            },
+            }
+            TriggerCondition::Beat(_) => unimplemented!(),
         }
     }
 

@@ -240,7 +240,10 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        warn!("JACK: sample rate changed to {}. This is not supported yet.", srate);
+        warn!(
+            "JACK: sample rate changed to {}. This is not supported yet.",
+            srate
+        );
         jack::Control::Quit
     }
 

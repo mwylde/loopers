@@ -153,7 +153,10 @@ mod tests {
         l.process_input(input_left.len() as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(input_left.len() as i64), &mut [&mut o_l, &mut o_r]);
+        l.process_output(
+            FrameTime(input_left.len() as i64),
+            &mut [&mut o_l, &mut o_r],
+        );
         process_until_done(&mut l);
 
         for i in 0..TRANSFER_BUF_SIZE {
@@ -277,7 +280,10 @@ mod tests {
         let len = buf_size + 100;
         verify_length(&l, len as u64);
 
-        l.process_output(FrameTime(time), &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]]);
+        l.process_output(
+            FrameTime(time),
+            &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]],
+        );
         process_until_done(&mut l);
 
         l.process_input(
@@ -287,7 +293,6 @@ mod tests {
         process_until_done(&mut l);
 
         time += buf_size as i64 - 100;
-
 
         for i in 0..buf_size {
             if i < 100 {
@@ -883,7 +888,9 @@ impl LooperBackend {
             let mut count = 0;
             let end = self.in_time.0 + sample_len as i64;
             while self.out_time.0 + 1 < end as i64
-                && count < 32 && self.out_queue.len() < self.out_queue.capacity() / 2 {
+                && count < 32
+                && self.out_queue.len() < self.out_queue.capacity() / 2
+            {
                 let mut buf = TransferBuf {
                     id: 0,
                     time: self.out_time,
@@ -926,8 +933,8 @@ impl LooperBackend {
         self.out_time = self.in_time;
 
         // send our final length to the gui
-        self.gui_sender.send_update(
-            GuiCommand::SetLoopLength(self.id, self.length_in_samples()));
+        self.gui_sender
+            .send_update(GuiCommand::SetLoopLength(self.id, self.length_in_samples()));
     }
 
     // state transition functions
@@ -1260,13 +1267,16 @@ impl Looper {
         match self.channel.try_send(message) {
             Ok(_) => true,
             Err(TrySendError::Full(msg)) => {
-                error!("Failed to process message {:?} in looper {}: channel is full", msg, self.id);
+                error!(
+                    "Failed to process message {:?} in looper {}: channel is full",
+                    msg, self.id
+                );
                 false
             }
             Err(TrySendError::Disconnected(_)) => {
                 error!("Backend channel disconnected in looper {}", self.id);
                 false
-            },
+            }
         }
     }
 
@@ -1425,8 +1435,8 @@ impl Looper {
         }
 
         self.send_to_backend(ControlMessage::InputDataReady {
-                id: msg_id,
-                size: inputs[0].len(),
+            id: msg_id,
+            size: inputs[0].len(),
         });
     }
 

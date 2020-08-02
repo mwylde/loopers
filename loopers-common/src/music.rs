@@ -68,16 +68,13 @@ mod tests {
         let time = 5644544;
         let frames = 256;
 
-        let prev_beat_of_measure = ts
-            .beat_of_measure(tempo.beat(FrameTime(time)));
+        let prev_beat_of_measure = ts.beat_of_measure(tempo.beat(FrameTime(time)));
 
-        let beat_of_measure = ts
-            .beat_of_measure(tempo.beat(FrameTime(time + frames)));
+        let beat_of_measure = ts.beat_of_measure(tempo.beat(FrameTime(time + frames)));
 
         assert_ne!(prev_beat_of_measure, beat_of_measure);
 
-        let next_beat_time = tempo
-            .next_full_beat(FrameTime(time));
+        let next_beat_time = tempo.next_full_beat(FrameTime(time));
 
         assert!(
             next_beat_time.0 <= time + frames as i64,

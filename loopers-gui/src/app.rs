@@ -3,30 +3,34 @@ use skia_safe::*;
 use crate::{AppData, GuiEvent, LooperData};
 
 use crate::skia::{HEIGHT, WIDTH};
-use crate::widgets::{draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState, TextEditable};
+use crate::widgets::{
+    draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
+    TextEditable,
+};
 use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
 use loopers_common::music::{MetricStructure, TimeSignature};
+use regex::Regex;
 use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::{Arc};
-use std::time::{Duration, Instant};
-use winit::event::MouseButton;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 use std::str::FromStr;
-use regex::Regex;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use winit::event::MouseButton;
 
 lazy_static! {
-  static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
+    static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
 }
 
 fn load_data(path: &str) -> Vec<u8> {
     let mut file = File::open(path).expect(&format!("could not open {}", path));
     let mut data = vec![];
-    file.read_to_end(&mut data).expect(&format!("could not read {}", path));
+    file.read_to_end(&mut data)
+        .expect(&format!("could not read {}", path));
     data
 }
 
@@ -212,7 +216,14 @@ impl MainPage {
             self.loopers.remove(&id);
         }
 
-        self.modal_manager.draw(canvas, WIDTH as f32, HEIGHT as f32, data, sender, last_event);
+        self.modal_manager.draw(
+            canvas,
+            WIDTH as f32,
+            HEIGHT as f32,
+            data,
+            sender,
+            last_event,
+        );
 
         let mut y = 0.0;
         for (id, looper) in self.loopers.iter_mut() {
@@ -299,8 +310,15 @@ impl MainPage {
         canvas.save();
         let bar_height = 30.0;
         canvas.translate(Vector::new(0.0, bottom - bar_height));
-        self.bottom_bar.draw(data, WIDTH as f32, 30.0, canvas,
-                             &mut self.modal_manager, sender, last_event);
+        self.bottom_bar.draw(
+            data,
+            WIDTH as f32,
+            30.0,
+            canvas,
+            &mut self.modal_manager,
+            sender,
+            last_event,
+        );
         canvas.restore();
     }
 }
@@ -322,15 +340,23 @@ impl BottomBarView {
         }
     }
 
-    fn draw(&mut self, data: &AppData, _w: f32, h: f32, canvas: &mut Canvas,
-            _modal_manager: &mut ModalManager, sender: &mut Sender<Command>,
-            last_event: Option<GuiEvent>) {
-
+    fn draw(
+        &mut self,
+        data: &AppData,
+        _w: f32,
+        h: f32,
+        canvas: &mut Canvas,
+        _modal_manager: &mut ModalManager,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
         let size = self.tempo_view.draw(canvas, data, sender, last_event);
         canvas.save();
         canvas.translate((size.width + 20.0, 0.0));
 
-        let size = self.metronome_view.draw(h, data, canvas, sender, last_event);
+        let size = self
+            .metronome_view
+            .draw(h, data, canvas, sender, last_event);
         canvas.translate((size.width + 20.0, 0.0));
 
         let size = self.time_view.draw(h, data, canvas);
@@ -341,7 +367,6 @@ impl BottomBarView {
         canvas.restore();
     }
 }
-
 
 struct TempoView {
     button_state: ButtonState,
@@ -356,22 +381,37 @@ impl TempoView {
         }
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, sender: &mut Sender<Command>,
-            last_event: Option<GuiEvent>) -> Size {
-
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let font = Font::new(Typeface::default(), 20.0);
-        let text = &format!("{} bpm", data.engine_state.metric_structure.tempo.bpm() as u32);
+        let text = &format!(
+            "{} bpm",
+            data.engine_state.metric_structure.tempo.bpm() as u32
+        );
         let text_size = font.measure_str(text, None).1.size();
 
-        let bounds = Rect::from_point_and_size(Point::new(15.0, 0.0), text_size)
-            .with_outset((10.0, 5.0));
+        let bounds =
+            Rect::from_point_and_size(Point::new(15.0, 0.0), text_size).with_outset((10.0, 5.0));
 
         let mut edit_string = None;
-        self.handle_event(canvas, &bounds, |button| {
-            if button == MouseButton::Left {
-                edit_string = Some(format!("{}", data.engine_state.metric_structure.tempo.bpm() as u32));
-            }
-        }, last_event);
+        self.handle_event(
+            canvas,
+            &bounds,
+            |button| {
+                if button == MouseButton::Left {
+                    edit_string = Some(format!(
+                        "{}",
+                        data.engine_state.metric_structure.tempo.bpm() as u32
+                    ));
+                }
+            },
+            last_event,
+        );
 
         if let Some(s) = edit_string {
             self.start_editing(s);
@@ -392,12 +432,7 @@ impl TempoView {
             canvas.draw_rect(bounds, &paint);
         }
 
-        canvas.draw_str(
-            text,
-            Point::new(15.0, 18.0),
-            &font,
-            &text_paint,
-        );
+        canvas.draw_str(text, Point::new(15.0, 18.0), &font, &text_paint);
 
         self.draw_edit(canvas, &font, &bounds, sender, last_event);
 
@@ -450,22 +485,42 @@ impl MetronomeView {
         }
     }
 
-    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas, sender: &mut Sender<Command>,
-            last_event: Option<GuiEvent>) -> Size {
+    fn draw(
+        &mut self,
+        h: f32,
+        data: &AppData,
+        canvas: &mut Canvas,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let upper = data.engine_state.metric_structure.time_signature.upper;
 
-        let bounds = Rect::new(-15.0, -5.0,
-                               if upper <= 5 { upper as f32 * 30.0 } else { 70.0 },
-                               h - 5.0);
+        let bounds = Rect::new(
+            -15.0,
+            -5.0,
+            if upper <= 5 {
+                upper as f32 * 30.0
+            } else {
+                70.0
+            },
+            h - 5.0,
+        );
 
         let mut edit_string = None;
-        self.handle_event(canvas, &bounds, |button| {
-            if button == MouseButton::Left {
-                edit_string = Some(format!("{} / {}",
-                                           data.engine_state.metric_structure.time_signature.upper,
-                                           data.engine_state.metric_structure.time_signature.lower));
-            }
-        }, last_event);
+        self.handle_event(
+            canvas,
+            &bounds,
+            |button| {
+                if button == MouseButton::Left {
+                    edit_string = Some(format!(
+                        "{} / {}",
+                        data.engine_state.metric_structure.time_signature.upper,
+                        data.engine_state.metric_structure.time_signature.lower
+                    ));
+                }
+            },
+            last_event,
+        );
 
         if self.button_state != ButtonState::Default {
             let mut paint = Paint::default();
@@ -522,9 +577,14 @@ impl MetronomeView {
         } else {
             // otherwise, render a fixed-size UI with a single circle and a beat number
             if self.beat_animation.0 != beat_of_measure {
-                self.beat_animation = (beat_of_measure, Some(Animation::new(
-                    data.engine_state.time, Duration::from_millis(300),
-                    AnimationFunction::EaseOutCubic)));
+                self.beat_animation = (
+                    beat_of_measure,
+                    Some(Animation::new(
+                        data.engine_state.time,
+                        Duration::from_millis(300),
+                        AnimationFunction::EaseOutCubic,
+                    )),
+                );
             }
 
             let radius = 10.0;
@@ -534,8 +594,9 @@ impl MetronomeView {
 
             paint.set_color(beat_color);
             if let Some(animation) = &self.beat_animation.1 {
-                paint.set_alpha(((1.0 - animation.value(data.engine_state.time))
-                    .min(1.0) * 255.0) as u8);
+                paint.set_alpha(
+                    ((1.0 - animation.value(data.engine_state.time)).min(1.0) * 255.0) as u8,
+                );
             }
             canvas.draw_circle(Point::new(x, h / 2.0 - 5.0), radius, &paint);
 
@@ -550,7 +611,6 @@ impl MetronomeView {
             canvas.draw_str(&upper.to_string(), (x, 10.0), &font, &text_paint);
             canvas.draw_str(&lower.to_string(), (x, 20.0), &font, &text_paint);
         }
-
 
         self.draw_edit(canvas, &font, &bounds, sender, last_event);
 
@@ -592,8 +652,7 @@ impl TextEditable for MetronomeView {
     }
 }
 
-struct TimeView {
-}
+struct TimeView {}
 
 impl TimeView {
     fn new() -> Self {
@@ -620,11 +679,11 @@ impl TimeView {
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
 
-
         let time_blob = TextBlob::new(
             &format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
             &font,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut x = 10.0;
         canvas.draw_text_blob(&time_blob, Point::new(x, h - 12.0), &text_paint);
@@ -648,7 +707,6 @@ impl TimeView {
             .metric_structure
             .time_signature
             .beat_of_measure(current_beat);
-
 
         let measure_blob =
             TextBlob::new(format!("{:03}.{}", measure, beat_of_measure), &font).unwrap();
@@ -701,7 +759,12 @@ impl PeakMeterView {
         paint.set_style(Style::Stroke);
 
         let mut y = 2.0;
-        for (now, (peak, t)) in data.engine_state.input_levels.iter().zip(self.peaks.iter_mut()) {
+        for (now, (peak, t)) in data
+            .engine_state
+            .input_levels
+            .iter()
+            .zip(self.peaks.iter_mut())
+        {
             let v = (Self::iec_scale(*now) * lines as f32) as usize;
 
             if v > *peak {
@@ -901,7 +964,8 @@ impl LooperView {
         let ratio = if looper.length == 0 || looper.state == LooperMode::Recording {
             0f32
         } else {
-            (data.engine_state.time.0.rem_euclid(looper.length as i64)) as f32 / looper.length as f32
+            (data.engine_state.time.0.rem_euclid(looper.length as i64)) as f32
+                / looper.length as f32
         };
 
         // Draw loop completion indicate
@@ -924,13 +988,18 @@ impl LooperView {
         // draw active button
         canvas.save();
         canvas.translate((WAVEFORM_WIDTH + 25.0, 20.0));
-        self.active_button.draw(canvas, data.engine_state.active_looper == looper.id, |button| {
-            if button == MouseButton::Left {
-                if let Err(e) = sender.send(Command::SelectLooperById(looper.id)) {
-                    error!("Failed to send command {}", e);
+        self.active_button.draw(
+            canvas,
+            data.engine_state.active_looper == looper.id,
+            |button| {
+                if button == MouseButton::Left {
+                    if let Err(e) = sender.send(Command::SelectLooperById(looper.id)) {
+                        error!("Failed to send command {}", e);
+                    }
                 }
-            }
-        }, last_event);
+            },
+            last_event,
+        );
         canvas.restore();
 
         // sets our state, which tells us if the mouse is hovering
@@ -1121,12 +1190,17 @@ impl ActiveButton {
     }
 
     fn draw<F: FnOnce(MouseButton) -> ()>(
-        &mut self, canvas: &mut Canvas, is_active: bool, on_click: F, last_event: Option<GuiEvent>) {
-        let bounds = Rect{
+        &mut self,
+        canvas: &mut Canvas,
+        is_active: bool,
+        on_click: F,
+        last_event: Option<GuiEvent>,
+    ) {
+        let bounds = Rect {
             left: -10.0,
             top: -10.0,
             right: 10.0,
-            bottom: 10.0
+            bottom: 10.0,
         };
 
         self.handle_event(canvas, &bounds, on_click, last_event);
@@ -1165,8 +1239,8 @@ struct WaveformView {
 impl WaveformView {
     fn new() -> Self {
         let loop_icon_data = Data::new_copy(&LOOP_ICON);
-        let loop_icon = Image::from_encoded(loop_icon_data, None)
-            .expect("could not decode loop icon");
+        let loop_icon =
+            Image::from_encoded(loop_icon_data, None).expect("could not decode loop icon");
 
         Self {
             waveform: DrawCache::new(Self::draw_waveform),
@@ -1353,13 +1427,12 @@ impl WaveformView {
             } else {
                 let start_time = if data.engine_state.time.0 < looper.length as i64 {
                     0
-                }  else {
+                } else {
                     // The second smallest multiple of length < time
                     ((data.engine_state.time.0 / looper.length as i64) - 1) * (looper.length as i64)
                 };
 
-                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 -
-                    start_time), w);
+                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 - start_time), w);
 
                 let mut first = true;
 
@@ -1393,7 +1466,9 @@ impl WaveformView {
         // draw bar and beat lines
         {
             canvas.save();
-            let x = -self.time_to_x(data.engine_state.time, w).rem_euclid(w as f64);
+            let x = -self
+                .time_to_x(data.engine_state.time, w)
+                .rem_euclid(w as f64);
             canvas.translate((x as f32, 0.0));
             self.beats.draw(
                 data.engine_state.metric_structure,
@@ -1427,9 +1502,12 @@ impl WaveformView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_filter_quality(FilterQuality::High);
-            canvas.draw_image_rect(&self.loop_icon, None, Rect::new(
-                -s / 2.0, (h - s) / 2.0,  s / 2.0, (h + s) / 2.0
-            ), &paint);
+            canvas.draw_image_rect(
+                &self.loop_icon,
+                None,
+                Rect::new(-s / 2.0, (h - s) / 2.0, s / 2.0, (h + s) / 2.0),
+                &paint,
+            );
 
             canvas.restore();
         }

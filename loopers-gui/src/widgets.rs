@@ -1,12 +1,12 @@
-use crate::{GuiEvent, MouseEventType, AppData, KeyEventType, KeyEventKey};
+use crate::{AppData, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
+use crossbeam_channel::Sender;
+use loopers_common::api::Command;
 use skia_safe::paint::Style;
 use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
 };
-use winit::event::MouseButton;
-use loopers_common::api::Command;
-use crossbeam_channel::Sender;
 use std::time::UNIX_EPOCH;
+use winit::event::MouseButton;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
@@ -162,8 +162,16 @@ impl Button for ControlButton {
 
 #[allow(dead_code)]
 pub trait Modal {
-    fn draw(&mut self, manager: &mut ModalManager, canvas: &mut Canvas, w: f32, h: f32,
-            data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size;
+    fn draw(
+        &mut self,
+        manager: &mut ModalManager,
+        canvas: &mut Canvas,
+        w: f32,
+        h: f32,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size;
 }
 
 #[allow(dead_code)]
@@ -173,9 +181,7 @@ pub struct ModalManager {
 
 impl ModalManager {
     pub fn new() -> Self {
-        ModalManager {
-            current: None,
-        }
+        ModalManager { current: None }
     }
 
     #[allow(dead_code)]
@@ -188,7 +194,15 @@ impl ModalManager {
         self.current = None;
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, w: f32, h: f32, data: &AppData, sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
+    pub fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        w: f32,
+        h: f32,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
         let mut cur = self.current.take();
         if let Some(modal) = &mut cur {
             modal.draw(self, canvas, w, h, data, sender, last_event);
@@ -217,11 +231,19 @@ pub trait TextEditable {
         true
     }
 
-    fn draw_edit(&mut self, canvas: &mut Canvas, font: &Font, bounds: &Rect,
-                 sender: &mut Sender<Command>, last_event: Option<GuiEvent>) {
+    fn draw_edit(
+        &mut self,
+        canvas: &mut Canvas,
+        font: &Font,
+        bounds: &Rect,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
         let mut commit = false;
         // if there was a click elsewhere, clear our state
-        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), pos)) = last_event {
+        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), pos)) =
+            last_event
+        {
             let point = canvas
                 .total_matrix()
                 .invert()
@@ -270,7 +292,9 @@ pub trait TextEditable {
             text_paint.set_color(Color::WHITE);
             text_paint.set_anti_alias(true);
 
-            let text_bounds = font.measure_str(&edited, Some(&text_paint)).1
+            let text_bounds = font
+                .measure_str(&edited, Some(&text_paint))
+                .1
                 .with_offset((15.0, 18.0))
                 .with_outset((3.0, 3.0));
 
@@ -301,12 +325,7 @@ pub trait TextEditable {
                 }
             }
 
-            canvas.draw_str(
-                edited,
-                Point::new(15.0, 18.0),
-                &font,
-                &text_paint,
-            );
+            canvas.draw_str(edited, Point::new(15.0, 18.0), &font, &text_paint);
         }
 
         if commit {

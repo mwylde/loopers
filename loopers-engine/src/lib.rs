@@ -9,29 +9,31 @@ use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
 use crate::sample::Sample;
 use crate::session::SessionSaver;
+use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperTarget, SavedSession, LooperMode};
+use loopers_common::api::{
+    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession,
+};
 use loopers_common::config::Config;
-use loopers_common::gui_channel::{EngineStateSnapshot, GuiCommand, GuiSender, EngineState};
+use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
 use std::io::Read;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use crate::trigger::{Trigger, TriggerCondition};
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-use std::ops::Range;
 
 mod error;
-mod trigger;
 pub mod looper;
 pub mod metronome;
 pub mod midi;
 pub mod sample;
 pub mod session;
+mod trigger;
 
 pub struct Engine {
     config: Config,
@@ -189,18 +191,25 @@ impl Engine {
     }
 
     // possibly convert a loop command into a trigger
-    fn trigger_from_command(ms: MetricStructure, time: FrameTime,
-                            lc: LooperCommand, target: LooperTarget, looper: &Looper) -> Option<Trigger> {
+    fn trigger_from_command(
+        ms: MetricStructure,
+        time: FrameTime,
+        lc: LooperCommand,
+        target: LooperTarget,
+        looper: &Looper,
+    ) -> Option<Trigger> {
         use LooperCommand::*;
         match (looper.length_in_samples() == 0, looper.mode, lc) {
-            (_, _, Record) |
-            (_, LooperMode::Recording, _) |
-            (true, _, RecordOverdubPlay) |
-            (_, LooperMode::Overdubbing, _) =>
-                Some(Trigger::new(TriggerCondition::Measure,
-                                  Command::Looper(lc, target),
-                                  ms,
-                                  time)).unwrap(),
+            (_, _, Record)
+            | (_, LooperMode::Recording, _)
+            | (true, _, RecordOverdubPlay)
+            | (_, LooperMode::Overdubbing, _) => Some(Trigger::new(
+                TriggerCondition::Measure,
+                Command::Looper(lc, target),
+                ms,
+                time,
+            ))
+            .unwrap(),
             _ => None,
         }
     }
@@ -212,11 +221,19 @@ impl Engine {
         let time = FrameTime(self.time);
         let triggers = &mut self.triggers;
 
-        fn handle_or_trigger(triggered: bool, ms: MetricStructure, time: FrameTime, lc: LooperCommand,
-                             target: LooperTarget, looper: &mut Looper, triggers: &mut BinaryHeap<Reverse<Trigger>>) {
+        fn handle_or_trigger(
+            triggered: bool,
+            ms: MetricStructure,
+            time: FrameTime,
+            lc: LooperCommand,
+            target: LooperTarget,
+            looper: &mut Looper,
+            triggers: &mut BinaryHeap<Reverse<Trigger>>,
+        ) {
             if triggered {
                 looper.handle_command(lc);
-            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper) {
+            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper)
+            {
                 Engine::add_trigger(triggers, trigger);
             } else {
                 looper.handle_command(lc);
@@ -251,7 +268,7 @@ impl Engine {
             }
             LooperTarget::Selected => {
                 let active = self.active;
-                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active){
+                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
                     handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 } else {
                     error!(
@@ -296,8 +313,7 @@ impl Engine {
             self.loopers.push(looper);
         }
 
-        self.id_counter = self.loopers.iter().map(|l| l.id).max()
-            .unwrap_or(0) + 1;
+        self.id_counter = self.loopers.iter().map(|l| l.id).max().unwrap_or(0) + 1;
 
         Ok(())
     }
@@ -321,7 +337,7 @@ impl Engine {
                     EngineState::Active => {
                         self.reset();
                         EngineState::Stopped
-                    },
+                    }
                 };
             }
             Reset => {
@@ -412,14 +428,20 @@ impl Engine {
             // play the loops
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted {
-                    let mut o = [&mut self.output_left[idx_range.clone()],
-                        &mut self.output_right[idx_range.clone()]];
+                    let mut o = [
+                        &mut self.output_left[idx_range.clone()],
+                        &mut self.output_right[idx_range.clone()],
+                    ];
 
                     looper.process_output(time, &mut o);
 
                     looper.process_input(
                         time.0 as u64,
-                        &[&in_bufs[0][idx_range.clone()], &in_bufs[1][idx_range.clone()]]);
+                        &[
+                            &in_bufs[0][idx_range.clone()],
+                            &in_bufs[1][idx_range.clone()],
+                        ],
+                    );
                 }
             }
         } else {
@@ -443,9 +465,11 @@ impl Engine {
 
         let next_time = (self.time + frames as i64) as u64;
         while time < next_time {
-            if let Some(_) = self.triggers.peek()
-                .filter(|t| t.0.triggered_at().0 < next_time as i64) {
-
+            if let Some(_) = self
+                .triggers
+                .peek()
+                .filter(|t| t.0.triggered_at().0 < next_time as i64)
+            {
                 let trigger = self.triggers.pop().unwrap();
 
                 let trigger_at = trigger.0.triggered_at();
@@ -455,7 +479,10 @@ impl Engine {
                     // we failed to trigger, but don't know if it's safe to trigger late. so we'll
                     // just ignore it. there might be better solutions for specific triggers, but
                     // hopefully this is rare.
-                    error!("missed trigger for time {} (cur time = {})",  trigger_at.0, time);
+                    error!(
+                        "missed trigger for time {} (cur time = {})",
+                        trigger_at.0, time
+                    );
                     continue;
                 }
 
@@ -467,7 +494,10 @@ impl Engine {
                     // otherwise, we need to process the stuff before the trigger time, then trigger
                     // the command, then continue processing the rest
                     let idx_range = idx..(trigger_at as i64 - self.time) as usize;
-                    assert_eq!(idx_range.end - idx_range.start, (trigger_at - time) as usize);
+                    assert_eq!(
+                        idx_range.end - idx_range.start,
+                        (trigger_at - time) as usize
+                    );
 
                     self.perform_looper_io(&in_bufs, FrameTime(time as i64), idx_range.clone());
                     time = trigger_at;
