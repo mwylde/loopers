@@ -123,16 +123,16 @@ fn main() {
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
     let in_a = client
-        .register_port("rust_in_l", jack::AudioIn::default())
+        .register_port("loopers_in_l", jack::AudioIn::default())
         .unwrap();
     let in_b = client
-        .register_port("rust_in_r", jack::AudioIn::default())
+        .register_port("loopers_in_r", jack::AudioIn::default())
         .unwrap();
     let mut out_a = client
-        .register_port("rust_out_l", jack::AudioOut::default())
+        .register_port("loopers_out_l", jack::AudioOut::default())
         .unwrap();
     let mut out_b = client
-        .register_port("rust_out_r", jack::AudioOut::default())
+        .register_port("loopers_out_r", jack::AudioOut::default())
         .unwrap();
 
     let mut met_out_a = client
@@ -240,12 +240,12 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        println!("JACK: sample rate changed to {}", srate);
-        jack::Control::Continue
+        warn!("JACK: sample rate changed to {}. This is not supported yet.", srate);
+        jack::Control::Quit
     }
 
     fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
-        println!(
+        info!(
             "JACK: {} client with name \"{}\"",
             if is_reg { "registered" } else { "unregistered" },
             name
@@ -253,7 +253,7 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
-        println!(
+        info!(
             "JACK: {} port with id {}",
             if is_reg { "registered" } else { "unregistered" },
             port_id
@@ -267,7 +267,7 @@ impl jack::NotificationHandler for Notifications {
         old_name: &str,
         new_name: &str,
     ) -> jack::Control {
-        println!(
+        info!(
             "JACK: port with id {} renamed from {} to {}",
             port_id, old_name, new_name
         );
@@ -294,17 +294,17 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        println!("JACK: graph reordered");
+        info!("JACK: graph reordered");
         jack::Control::Continue
     }
 
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
-        println!("JACK: xrun occurred");
+        warn!("JACK: xrun occurred");
         jack::Control::Continue
     }
 
     fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
-        println!(
+        info!(
             "JACK: {} latency has changed",
             match mode {
                 jack::LatencyType::Capture => "capture",
