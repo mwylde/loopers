@@ -206,6 +206,8 @@ pub struct SavedLooper {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SavedSession {
     pub save_time: i64,
+    #[serde(default)]
+    pub metronome_volume: u8,
     pub metric_structure: MetricStructure,
     pub loopers: Vec<SavedLooper>,
 }

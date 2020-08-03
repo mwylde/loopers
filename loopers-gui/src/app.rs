@@ -24,6 +24,7 @@ use winit::event::MouseButton;
 
 lazy_static! {
     static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
+    static ref METRONOME_ICON: Vec<u8> = load_data("resources/icons/metronome.png");
 }
 
 fn load_data(path: &str) -> Vec<u8> {
@@ -362,6 +363,7 @@ impl MainPage {
 struct BottomBarView {
     tempo_view: TempoView,
     metronome_view: MetronomeView,
+    metronome_button: MetronomeButton,
     time_view: TimeView,
     peak_view: PeakMeterView,
 }
@@ -371,6 +373,7 @@ impl BottomBarView {
         Self {
             tempo_view: TempoView::new(),
             metronome_view: MetronomeView::new(),
+            metronome_button: MetronomeButton::new(),
             time_view: TimeView::new(),
             peak_view: PeakMeterView::new(),
         }
@@ -388,12 +391,15 @@ impl BottomBarView {
     ) {
         let size = self.tempo_view.draw(canvas, data, sender, last_event);
         canvas.save();
-        canvas.translate((size.width + 20.0, 0.0));
+        canvas.translate((size.width.round() + 20.0, 0.0));
 
         let size = self
             .metronome_view
             .draw(h, data, canvas, sender, last_event);
-        canvas.translate((size.width + 20.0, 0.0));
+        canvas.translate((size.width.round(), 0.0));
+
+        let size = self.metronome_button.draw(canvas, data, sender, last_event);
+        canvas.translate((size.width.round() + 20.0, 0.0));
 
         let size = self.time_view.draw(h, data, canvas);
         canvas.translate((size.width.round() + 20.0, 0.0));
@@ -685,6 +691,81 @@ impl TextEditable for MetronomeView {
 
     fn get_edit_state(&mut self) -> &mut TextEditState {
         &mut self.edit_state
+    }
+}
+
+struct MetronomeButton {
+    button_state: ButtonState,
+    icon: Image,
+}
+
+impl MetronomeButton {
+    fn new() -> Self {
+        let icon_data = Data::new_copy(&METRONOME_ICON);
+        let icon = Image::from_encoded(icon_data, None).expect("could not decode metronome icon");
+
+        Self {
+            button_state: ButtonState::Default,
+            icon,
+        }
+    }
+
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_filter_quality(FilterQuality::High);
+
+        let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
+
+        self.handle_event(
+            canvas,
+            &bounds,
+            |button| {
+                if button == MouseButton::Left {
+                    let vol = if data.engine_state.metronome_volume < 0.5 {
+                        100
+                    } else {
+                        0
+                    };
+
+                    if let Err(e) = sender.send(Command::SetMetronomeLevel(vol)) {
+                        error!("Failed to set metronome voluem: {:?}", e);
+                    }
+                }
+            },
+            last_event,
+        );
+
+        if self.button_state != ButtonState::Default {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+
+            match self.button_state {
+                ButtonState::Hover => paint.set_color(Color::from_rgb(60, 60, 60)),
+                ButtonState::Pressed => paint.set_color(Color::from_rgb(30, 30, 30)),
+                ButtonState::Default => unreachable!(),
+            };
+
+            canvas.draw_rect(&bounds.with_outset((3.0, 3.0)), &paint);
+        }
+
+        paint.set_alpha_f(data.engine_state.metronome_volume.min(1.0).max(0.3));
+
+        canvas.draw_image_rect(&self.icon, None, bounds, &paint);
+
+        Size::new(25.0, 25.0)
+    }
+}
+
+impl Button for MetronomeButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.button_state = state;
     }
 }
 

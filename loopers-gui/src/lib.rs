@@ -89,6 +89,7 @@ impl Gui {
                     active_looper: 0,
                     looper_count: 0,
                     input_levels: [0.0, 0.0],
+                    metronome_volume: 1.0,
                 },
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,

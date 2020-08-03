@@ -300,6 +300,10 @@ impl Engine {
 
         self.metric_structure = session.metric_structure;
 
+        if let Some(metronome) = &mut self.metronome {
+            metronome.set_volume((session.metronome_volume as f32 / 100.0).min(1.0).max(0.0));
+        }
+
         for l in &self.loopers {
             self.session_saver.remove_looper(l.id);
         }
@@ -367,10 +371,14 @@ impl Engine {
                 }
             }
             SaveSession(path) => {
-                if let Err(e) = self
-                    .session_saver
-                    .save_session(self.metric_structure, Arc::clone(path))
-                {
+                if let Err(e) = self.session_saver.save_session(
+                    self.metric_structure,
+                    self.metronome
+                        .as_ref()
+                        .map(|m| (m.get_volume() * 100.0) as u8)
+                        .unwrap_or(100),
+                    Arc::clone(path),
+                ) {
                     error!("Failed to save session {:?}", e);
                 }
             }
@@ -613,6 +621,11 @@ impl Engine {
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
                 input_levels: Self::compute_peaks(&in_bufs),
+                metronome_volume: self
+                    .metronome
+                    .as_ref()
+                    .map(|m| m.get_volume())
+                    .unwrap_or(0.0),
             }));
     }
 }

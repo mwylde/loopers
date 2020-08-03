@@ -17,7 +17,7 @@ use std::sync::Arc;
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub enum SessionCommand {
-    SaveSession(MetricStructure, Arc<PathBuf>),
+    SaveSession(MetricStructure, u8, Arc<PathBuf>),
     AddLooper(u32, Sender<looper::ControlMessage>),
     RemoveLooper(u32),
 }
@@ -36,8 +36,8 @@ impl SessionSaver {
 
             loop {
                 match rx.recv() {
-                    Ok(SessionCommand::SaveSession(ms, path)) => {
-                        Self::execute_save_session(ms, (*path).clone(), &loopers)
+                    Ok(SessionCommand::SaveSession(ms, metronome_volume, path)) => {
+                        Self::execute_save_session(ms, metronome_volume, (*path).clone(), &loopers)
                             // TODO: handle this properly
                             .unwrap();
                     }
@@ -60,6 +60,7 @@ impl SessionSaver {
 
     fn execute_save_session(
         metric_structure: MetricStructure,
+        metronome_volume: u8,
         path: PathBuf,
         loopers: &HashMap<u32, Sender<looper::ControlMessage>>,
     ) -> Result<(), SaveLoadError> {
@@ -72,6 +73,7 @@ impl SessionSaver {
         let mut session = SavedSession {
             save_time: now.timestamp_millis(),
             metric_structure,
+            metronome_volume,
             loopers: Vec::with_capacity(loopers.len()),
         };
 
@@ -100,12 +102,23 @@ impl SessionSaver {
 
         path.push("project.loopers");
         let mut file = File::create(&path)?;
-        writeln!(file, "{}", toml::to_string(&session).unwrap())?;
 
-        // save our last session
-        let config_path = last_session_path()?;
-        let mut last_session = File::create(config_path)?;
-        write!(last_session, "{}", path.to_string_lossy())?;
+        match toml::to_string(&session) {
+            Ok(v) => {
+                writeln!(file, "{}", v)?;
+
+                // save our last session
+                let config_path = last_session_path()?;
+                let mut last_session = File::create(config_path)?;
+                write!(last_session, "{}", path.to_string_lossy())?;
+            }
+            Err(e) => {
+                return Err(SaveLoadError::OtherError(format!(
+                    "Failed to serialize session: {:?}",
+                    e
+                )));
+            }
+        }
 
         Ok(())
     }
@@ -125,10 +138,15 @@ impl SessionSaver {
     pub fn save_session(
         &mut self,
         metric_structure: MetricStructure,
+        metronome_volume: u8,
         path: Arc<PathBuf>,
     ) -> Result<(), SaveLoadError> {
         self.channel
-            .try_send(SessionCommand::SaveSession(metric_structure, path))
+            .try_send(SessionCommand::SaveSession(
+                metric_structure,
+                metronome_volume,
+                path,
+            ))
             .map_err(|err| match err {
                 TrySendError::Full(_) => SaveLoadError::ChannelFull,
                 TrySendError::Disconnected(_) => SaveLoadError::ChannelClosed,

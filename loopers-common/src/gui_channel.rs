@@ -18,6 +18,7 @@ pub struct EngineStateSnapshot {
     pub active_looper: u32,
     pub looper_count: usize,
     pub input_levels: [f32; 2],
+    pub metronome_volume: f32,
 }
 
 pub type Waveform = [Vec<f32>; 2];
