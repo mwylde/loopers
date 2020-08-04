@@ -26,6 +26,7 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use loopers_common::Host;
 
 mod error;
 pub mod looper;
@@ -62,6 +63,8 @@ pub struct Engine {
 
     session_saver: SessionSaver,
 
+    tmp_left: Vec<f64>,
+    tmp_right: Vec<f64>,
     output_left: Vec<f64>,
     output_right: Vec<f64>,
 }
@@ -85,7 +88,8 @@ pub fn last_session_path() -> io::Result<PathBuf> {
 }
 
 impl Engine {
-    pub fn new(
+    pub fn new<'a, H: Host<'a>>(
+        host: &mut H,
         config: Config,
         gui_sender: GuiSender,
         command_input: Receiver<Command>,
@@ -122,6 +126,9 @@ impl Engine {
 
             session_saver: SessionSaver::new(),
 
+            tmp_left: vec![0f64; 2048],
+            tmp_right: vec![0f64; 2048],
+
             output_left: vec![0f64; 2048],
             output_right: vec![0f64; 2048],
         };
@@ -130,6 +137,9 @@ impl Engine {
 
         for l in &engine.loopers {
             engine.session_saver.add_looper(l);
+            if let Err(e) = host.add_looper(l.id) {
+                error!("Failed to add host port for looper {}: {}", l.id, e);
+            }
         }
 
         if restore {
@@ -137,7 +147,7 @@ impl Engine {
                 let config_path = last_session_path()?;
                 let restore_path = read_to_string(config_path)?;
                 info!("Restoring from {}", restore_path);
-                engine.load_session(Path::new(&restore_path))
+                engine.load_session(host, Path::new(&restore_path))
             };
 
             if let Err(err) = restore_fn() {
@@ -172,7 +182,7 @@ impl Engine {
             .next()
     }
 
-    fn commands_from_midi(&mut self, events: &[MidiEvent]) {
+    fn commands_from_midi<'a, H: Host<'a>>(&mut self, host: &mut H, events: &[MidiEvent]) {
         for e in events {
             debug!("midi {:?}", e);
             if e.bytes.len() >= 3 {
@@ -184,7 +194,7 @@ impl Engine {
                     .map(|m| m.command.clone());
 
                 if let Some(c) = command {
-                    self.handle_command(&c, false);
+                    self.handle_command(host, &c, false);
                 }
             }
         }
@@ -284,7 +294,7 @@ impl Engine {
         }
     }
 
-    fn load_session(&mut self, path: &Path) -> Result<(), SaveLoadError> {
+    fn load_session<'a, H: Host<'a>>(&mut self, host: &mut H, path: &Path) -> Result<(), SaveLoadError> {
         let mut file = File::open(&path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -314,6 +324,9 @@ impl Engine {
         for l in session.loopers {
             let looper = Looper::from_serialized(&l, dir, self.gui_sender.clone())?.start();
             self.session_saver.add_looper(&looper);
+            if let Err(e) = host.add_looper(looper.id) {
+                error!("Failed to create host port for looper {}: {}", looper.id, e);
+            }
             self.loopers.push(looper);
         }
 
@@ -322,7 +335,7 @@ impl Engine {
         Ok(())
     }
 
-    fn handle_command(&mut self, command: &Command, triggered: bool) {
+    fn handle_command<'a, H: Host<'a>>(&mut self, host: &mut H, command: &Command, triggered: bool) {
         use Command::*;
         match command {
             Looper(lc, target) => {
@@ -354,6 +367,10 @@ impl Engine {
                 self.session_saver.add_looper(&looper);
                 self.loopers.push(looper);
                 self.active = self.id_counter;
+                // TODO: better error handling
+                if let Err(e) = host.add_looper(self.id_counter) {
+                    error!("failed to create host port for looper {}: {}", self.id_counter, e);
+                }
                 self.id_counter += 1;
             }
             SelectLooperById(id) => {
@@ -383,7 +400,7 @@ impl Engine {
                 }
             }
             LoadSession(path) => {
-                if let Err(e) = self.load_session(path) {
+                if let Err(e) = self.load_session(host, path) {
                     error!("Failed to load session {:?}", e);
                 }
             }
@@ -431,17 +448,34 @@ impl Engine {
         }
     }
 
-    fn perform_looper_io(&mut self, in_bufs: &[&[f32]], time: FrameTime, idx_range: Range<usize>) {
+    fn perform_looper_io<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], time: FrameTime, idx_range: Range<usize>) {
         if time.0 >= 0 {
-            // play the loops
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted {
+                    self.tmp_left.iter_mut().for_each(|i| *i = 0.0);
+                    self.tmp_right.iter_mut().for_each(|i| *i = 0.0);
+
                     let mut o = [
-                        &mut self.output_left[idx_range.clone()],
-                        &mut self.output_right[idx_range.clone()],
+                        &mut self.tmp_left[idx_range.clone()],
+                        &mut self.tmp_right[idx_range.clone()],
                     ];
 
                     looper.process_output(time, &mut o);
+
+                    // copy the output to the looper input in the host, if we can find one
+                    if let Some([l , r]) = host.output_for_looper(looper.id)  {
+                        l.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                            .for_each(|(a, b)| *a = *b as f32);
+                        r.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                            .for_each(|(a, b)| *a = *b as f32);
+                    }
+
+                    // copy the output to the our main output
+                    self.output_left.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                        .for_each(|(a, b)| *a += *b);
+                    self.output_right.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                        .for_each(|(a, b)| *a += *b);
+
 
                     looper.process_input(
                         time.0 as u64,
@@ -457,7 +491,7 @@ impl Engine {
         }
     }
 
-    fn process_loopers(&mut self, in_bufs: &[&[f32]], frames: u64) {
+    fn process_loopers<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], frames: u64) {
         let mut time = self.time;
         let mut idx = 0usize;
 
@@ -507,15 +541,15 @@ impl Engine {
                         (trigger_at - time) as usize
                     );
 
-                    self.perform_looper_io(&in_bufs, FrameTime(time as i64), idx_range.clone());
+                    self.perform_looper_io(host, &in_bufs, FrameTime(time as i64), idx_range.clone());
                     time = trigger_at;
                     idx = idx_range.end;
                 }
 
-                self.handle_command(&trigger.0.command, true);
+                self.handle_command(host, &trigger.0.command, true);
             } else {
                 // there are no more triggers for this period, so just process the rest and finish
-                self.perform_looper_io(&in_bufs, FrameTime(time as i64), idx..frames as usize);
+                self.perform_looper_io(host, &in_bufs, FrameTime(time as i64), idx..frames as usize);
                 time = next_time;
             }
         }
@@ -543,18 +577,18 @@ impl Engine {
     // Step 3: Play current samples
     // Step 4: Record
     // Step 5: Update GUI
-    pub fn process(
+    pub fn process<'a, H: Host<'a>>(
         &mut self,
+        host: &mut H,
         in_bufs: [&[f32]; 2],
         out_l: &mut [f32],
         out_r: &mut [f32],
         mut met_bufs: [&mut [f32]; 2],
         frames: u64,
-        midi_events: &[MidiEvent],
-    ) {
+        midi_events: &[MidiEvent]) {
         // Convert midi events to commands
         if !self.is_learning {
-            self.commands_from_midi(midi_events);
+            self.commands_from_midi(host, midi_events);
             self.last_midi = None;
         } else {
             let new_last = midi_events.last().map(|m| m.bytes.to_vec());
@@ -567,18 +601,24 @@ impl Engine {
         loop {
             match self.command_input.try_recv() {
                 Ok(c) => {
-                    self.handle_command(&c, false);
+                    self.handle_command(host, &c, false);
                 }
                 Err(_) => break,
             }
         }
 
         // ensure out internal output buffer is big enough (this should only allocate when the
-        // frame size is increased)
+        // buffer size is increased)
         while self.output_left.len() < frames as usize {
             self.output_left.push(0.0);
         }
         while self.output_right.len() < frames as usize {
+            self.output_right.push(0.0);
+        }
+        while self.tmp_left.len() < frames as usize {
+            self.output_left.push(0.0);
+        }
+        while self.tmp_right.len() < frames as usize {
             self.output_right.push(0.0);
         }
 
@@ -595,7 +635,7 @@ impl Engine {
 
         if self.state == EngineState::Active {
             // process the loopers
-            self.process_loopers(&in_bufs, frames);
+            self.process_loopers(host, &in_bufs, frames);
 
             // Play the metronome
             if let Some(metronome) = &mut self.metronome {
@@ -603,6 +643,12 @@ impl Engine {
             }
 
             self.time += frames as i64;
+        }
+
+        // copy the input for the active looper
+        if let Some([l, r]) = host.output_for_looper(self.active) {
+            l.iter_mut().zip(in_bufs[0].iter()).for_each(|(a, b)| *a += *b);
+            r.iter_mut().zip(in_bufs[1].iter()).for_each(|(a, b)| *a += *b);
         }
 
         for i in 0..frames as usize {

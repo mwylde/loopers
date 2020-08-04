@@ -22,3 +22,11 @@ pub fn f32_to_i16(v: f32) -> i16 {
     let v = clamp(v, -1.0, 1.0);
     (v * 32768.0).floor() as i16
 }
+
+pub trait Host<'a> {
+    fn add_looper(&mut self, id: u32) -> Result<(), String>;
+    fn remove_looper(&mut self, id: u32) -> Result<(), String>;
+
+    fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
+        where 'a: 'b;
+}

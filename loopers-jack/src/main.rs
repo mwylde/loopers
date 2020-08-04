@@ -12,7 +12,7 @@ extern crate log;
 
 use clap::{App, Arg};
 use crossbeam_channel::bounded;
-use loopers_common::config;
+use loopers_common::{config, Host};
 use loopers_common::config::MidiMapping;
 use loopers_common::gui_channel::GuiSender;
 use loopers_engine::midi::MidiEvent;
@@ -20,6 +20,8 @@ use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::fs::File;
 use std::{fs, io};
+use jack::{Client, AudioOut, Port, ProcessScope};
+use std::collections::HashMap;
 
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -49,6 +51,46 @@ fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     d.apply()?;
 
     Ok(())
+}
+
+pub struct JackHost<'a> {
+    client: &'a Client,
+    looper_ports: &'a mut HashMap<u32, [Port<AudioOut>; 2]>,
+    ps: Option<&'a ProcessScope>,
+}
+
+impl <'a> Host<'a> for JackHost<'a> {
+    fn add_looper(&mut self, id: u32) -> Result<(), String> {
+        if !self.looper_ports.contains_key(&id) {
+            let l = self.client.register_port(&format!("loop{}_out_l", id),
+                                              jack::AudioOut::default())
+                .map_err(|e| format!("could not create jack port: {:?}", e))?;
+            let r = self.client.register_port(&format!("loop{}_out_r", id),
+                                              jack::AudioOut::default())
+                .map_err(|e| format!("could not create jack port: {:?}", e))?;
+
+            self.looper_ports.insert(id, [l , r]);
+        }
+
+        Ok(())
+    }
+
+    fn remove_looper(&mut self, id: u32) -> Result<(), String> {
+        if let Some([l, r]) = self.looper_ports.remove(&id) {
+            self.client.unregister_port(l)
+                .map_err(|e| format!("could not remove jack port: {:?}", e))?;
+            self.client.unregister_port(r)
+                .map_err(|e| format!("could not remove jack port: {:?}", e))?;
+        }
+
+        Ok(())
+    }
+
+    fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]> where 'a: 'b {
+        let ps = self.ps?;
+        let [l, r] = self.looper_ports.get_mut(&id)?;
+        Some([l.as_mut_slice(ps), r.as_mut_slice(ps)])
+    }
 }
 
 fn main() {
@@ -123,16 +165,16 @@ fn main() {
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
     let in_a = client
-        .register_port("loopers_in_l", jack::AudioIn::default())
+        .register_port("in_l", jack::AudioIn::default())
         .unwrap();
     let in_b = client
-        .register_port("loopers_in_r", jack::AudioIn::default())
+        .register_port("in_r", jack::AudioIn::default())
         .unwrap();
     let mut out_a = client
-        .register_port("loopers_out_l", jack::AudioOut::default())
+        .register_port("main_out_l", jack::AudioOut::default())
         .unwrap();
     let mut out_b = client
-        .register_port("loopers_out_r", jack::AudioOut::default())
+        .register_port("main_out_r", jack::AudioOut::default())
         .unwrap();
 
     let mut met_out_a = client
@@ -143,10 +185,19 @@ fn main() {
         .unwrap();
 
     let midi_in = client
-        .register_port("rust_midi_in", jack::MidiIn::default())
+        .register_port("loopers_midi_in", jack::MidiIn::default())
         .unwrap();
 
+    let mut looper_ports: HashMap<u32, [Port<AudioOut>; 2]> = HashMap::new();
+
+    let mut host = JackHost {
+        client: &client,
+        looper_ports: &mut looper_ports,
+        ps: None,
+    };
+
     let mut engine = Engine::new(
+        &mut host,
         config,
         gui_sender,
         gui_to_engine_receiver,
@@ -155,16 +206,25 @@ fn main() {
         restore,
     );
 
+
     let process_callback =
         move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
             let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
             let out_l = out_a.as_mut_slice(ps);
             let out_r = out_b.as_mut_slice(ps);
             for b in &mut *out_l {
-                *b = 0f32
+                *b = 0f32;
             }
             for b in &mut *out_r {
-                *b = 0f32
+                *b = 0f32;
+            }
+
+            for l in looper_ports.values_mut() {
+                for c in l {
+                    for v in c.as_mut_slice(ps) {
+                        *v = 0f32;
+                    }
+                }
             }
 
             let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
@@ -174,6 +234,13 @@ fn main() {
                 }
             }
 
+            let mut host = JackHost {
+                client: &_client,
+                looper_ports: &mut looper_ports,
+                ps: Some(ps),
+            };
+
+
             let midi_events: Vec<MidiEvent> = midi_in
                 .iter(ps)
                 .map(|e| MidiEvent {
@@ -182,6 +249,7 @@ fn main() {
                 .collect();
 
             engine.process(
+                &mut host,
                 in_bufs,
                 out_l,
                 out_r,
