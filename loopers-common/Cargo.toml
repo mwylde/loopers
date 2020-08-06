@@ -17,5 +17,7 @@ log = "0.4"
 
 tempfile = "3"
 
+derive_more = "0.99"
+
 [build-dependencies]
 serde = { version = "1.0", features = ["derive"] }

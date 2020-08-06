@@ -1285,11 +1285,12 @@ type CacheUpdaterFn = fn(
     time_width: FrameTime,
     w: f32,
     h: f32,
+    scale: f32,
     canvas: &mut Canvas,
-);
+) -> Size;
 
 struct DrawCache<T: Eq + Copy> {
-    image: Option<Image>,
+    image: Option<(Image, Size)>,
     key: Option<T>,
     draw_fn: CacheUpdaterFn,
 }
@@ -1313,21 +1314,20 @@ impl<T: Eq + Copy> DrawCache<T> {
         h: f32,
         use_cache: bool,
         canvas: &mut Canvas,
-    ) {
+    ) -> Size {
         if !use_cache {
-            (self.draw_fn)(data, looper, time_width, w, h, canvas);
-            return;
+            return (self.draw_fn)(data, looper, time_width, w, h, 1.0, canvas);
         }
 
         let size = ((w * IMAGE_SCALE) as i32, (h * IMAGE_SCALE) as i32);
 
-        if self.key.is_none()
+        let (image, size) = if self.key.is_none()
             || self.key.unwrap() != key
             || self.image.is_none()
             || self
                 .image
                 .as_ref()
-                .map(|i| (i.width(), i.height()))
+                .map(|(i, _)| (i.width(), i.height()))
                 .unwrap()
                 != size
         {
@@ -1343,30 +1343,35 @@ impl<T: Eq + Copy> DrawCache<T> {
             )
             .unwrap();
 
-            (self.draw_fn)(
+            let draw_size = (self.draw_fn)(
                 data,
                 looper,
                 time_width,
                 w * IMAGE_SCALE,
                 h * IMAGE_SCALE,
+                IMAGE_SCALE,
                 &mut surface.canvas(),
             );
 
             let image = surface.image_snapshot();
-            self.image = Some(image);
+            self.image = Some((image, draw_size));
             self.key = Some(key);
-        }
 
-        if let Some(image) = self.image.as_ref() {
-            canvas.save();
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_filter_quality(FilterQuality::High);
-            paint.set_color(Color::from_rgb(255, 255, 0));
-            canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
-            canvas.draw_image(image, (0.0, 0.0), Some(&paint));
-            canvas.restore();
-        }
+            self.image.as_ref().unwrap()
+        } else {
+            self.image.as_ref().unwrap()
+        };
+
+        canvas.save();
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_filter_quality(FilterQuality::High);
+        paint.set_color(Color::from_rgb(255, 255, 0));
+        canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
+        canvas.draw_image(image, (0.0, 0.0), Some(&paint));
+        canvas.restore();
+
+        *size
     }
 }
 
@@ -1493,8 +1498,9 @@ impl WaveformView {
         _: FrameTime,
         w: f32,
         h: f32,
+        _: f32,
         canvas: &mut Canvas,
-    ) {
+    ) -> Size {
         let p = Self::path_for_waveform([&looper.waveform[0], &looper.waveform[1]], w, h);
 
         let mut paint = Paint::default();
@@ -1502,6 +1508,9 @@ impl WaveformView {
         paint.set_color(dark_color_for_mode(looper.state));
         paint.set_style(Style::Fill);
         canvas.draw_path(&p, &paint);
+
+        // this actually isn't right probably?
+        Size::new(w, h)
 
         // paint.set_color(Color::from_argb(150, 255, 255, 255));
         // paint.set_stroke_width(2.0);
@@ -1524,32 +1533,43 @@ impl WaveformView {
         time_width: FrameTime,
         w: f32,
         h: f32,
+        scale: f32,
         canvas: &mut Canvas,
-    ) {
+    ) -> Size {
         let mut beat_p = Path::new();
         let mut bar_p = Path::new();
 
-        let samples_per_beat = FrameTime::from_ms(
-            1000.0 / (data.engine_state.metric_structure.tempo.bpm() / 60.0) as f64,
-        );
-        let number_of_beats = (time_width.0 as f32 / samples_per_beat.0 as f32).ceil() as usize;
-        for i in 0..number_of_beats as i64 {
-            let x = i as f32 * w / number_of_beats as f32;
+        let ms = data.engine_state.metric_structure;
 
-            if i % data.engine_state.metric_structure.time_signature.upper as i64 == 0 {
+        let samples_per_beat = FrameTime::from_ms(
+            1000.0 / (ms.tempo.bpm() / 60.0) as f64,
+        );
+
+        let number_of_beats = (time_width.0 as f32 / samples_per_beat.0 as f32).ceil() as usize;
+        let beat_width = w / number_of_beats as f32;
+
+        // make sure we get a full number of measures
+        let number_of_beats = (number_of_beats / ms.time_signature.upper as usize + 1) *
+            ms.time_signature.upper as usize;
+
+        let mut x = 0.0;
+        for i in 0..number_of_beats as i64 {
+            if i % ms.time_signature.upper as i64 == 0 {
                 bar_p.move_to(Point::new(x, 5.0));
                 bar_p.line_to(Point::new(x, h - 5.0));
             } else {
                 beat_p.move_to(Point::new(x, 20.0));
                 beat_p.line_to(Point::new(x, h - 20.0));
             }
+
+            x += beat_width;
         }
 
         let mut beat_paint = Paint::default();
         beat_paint
             .set_color(Color::from_argb(170, 200, 200, 255))
             .set_anti_alias(true)
-            .set_stroke_width(1.0)
+            .set_stroke_width(1.0 * scale)
             .set_style(Style::Stroke)
             .set_blend_mode(BlendMode::Lighten);
 
@@ -1557,7 +1577,7 @@ impl WaveformView {
         bar_paint
             .set_color(Color::from_argb(255, 255, 255, 255))
             .set_anti_alias(true)
-            .set_stroke_width(3.0)
+            .set_stroke_width(3.0 * scale)
             .set_style(Style::Stroke);
         let mut bar_outer_paint = bar_paint.clone();
         bar_outer_paint.set_color(Color::from_argb(130, 0, 0, 0));
@@ -1566,6 +1586,8 @@ impl WaveformView {
         canvas.draw_path(&beat_p, &beat_paint);
         canvas.draw_path(&bar_p, &bar_outer_paint);
         canvas.draw_path(&bar_p, &bar_paint);
+
+        Size::new(x, h)
     }
 
     fn draw(
@@ -1658,29 +1680,46 @@ impl WaveformView {
         // draw bar and beat lines
         {
             canvas.save();
-            let x = -self
-                .time_to_x(data.engine_state.time, w)
-                .rem_euclid(w as f64);
+            // draw the first at the previous measure start before time
+            let ms = data.engine_state.metric_structure;
+            let next_beat = ms.tempo.next_full_beat(data.engine_state.time);
+            let mut beat_of_measure = ms.time_signature.beat_of_measure(ms.tempo.beat(next_beat));
+            if beat_of_measure == 0 {
+                beat_of_measure = ms.time_signature.upper;
+            }
+
+            // we need to make sure that we go back far enough that the start is off of the screen
+            // so we just subtract measures until we are
+            // there's an analytical solution to this but I'm too lazy to figure it out rightn ow
+            let mut start_time = next_beat -
+                FrameTime(beat_of_measure as i64 * ms.tempo.samples_per_beat() as i64);
+            let mut x = -self.time_to_x(data.engine_state.time - start_time, w);
+            while x > 0.0 {
+                start_time = start_time - FrameTime(ms.time_signature.upper as i64 *
+                    ms.tempo.samples_per_beat() as i64);
+                x = -self.time_to_x(data.engine_state.time - start_time, w);
+            }
+
             canvas.translate((x as f32, 0.0));
-            self.beats.draw(
-                data.engine_state.metric_structure,
+            let size = self.beats.draw(
+                ms,
                 data,
                 looper,
                 self.time_width,
                 w,
                 h,
-                false,
+                true,
                 canvas,
             );
-            canvas.translate((w, 0.0));
+            canvas.translate((size.width, 0.0));
             self.beats.draw(
-                data.engine_state.metric_structure,
+                ms,
                 data,
                 looper,
                 self.time_width,
                 w,
                 h,
-                false,
+                true,
                 canvas,
             );
             canvas.restore();

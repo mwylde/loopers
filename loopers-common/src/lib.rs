@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate derive_more;
 
 pub mod api;
 pub mod config;

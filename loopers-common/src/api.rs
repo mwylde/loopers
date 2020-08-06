@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use derive_more::{Add, Mul, Sub, Div};
 
 #[cfg(test)]
 mod tests {
@@ -43,7 +44,8 @@ mod tests {
 
 pub const SAMPLE_RATE: f64 = 44.100;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd,
+         Add, Mul, Sub, Div)]
 pub struct FrameTime(pub i64);
 
 impl FrameTime {
