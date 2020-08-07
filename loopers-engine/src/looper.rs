@@ -645,6 +645,7 @@ pub enum ControlMessage {
     ReadOutput(FrameTime),
     Shutdown,
     Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
+    Deleted,
 }
 
 const TRANSFER_BUF_SIZE: usize = 16;
@@ -865,6 +866,11 @@ impl LooperBackend {
             }
             ControlMessage::Shutdown => {
                 info!("Got shutdown message, stopping");
+                return false;
+            }
+            ControlMessage::Deleted => {
+                info!("Looper was deleted");
+                self.gui_sender.send_update(GuiCommand::RemoveLooper(self.id));
                 return false;
             }
             ControlMessage::Serialize(path, channel) => {
@@ -1301,6 +1307,7 @@ impl Looper {
                 // TODO: I think I need to tell the gui this
                 //self.session_saver.remove_looper(l.id);
                 self.deleted = true;
+                self.send_to_backend(ControlMessage::Deleted);
             }
             RecordOverdubPlay => {
                 if self.length_in_samples() == 0 {

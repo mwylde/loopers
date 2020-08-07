@@ -215,6 +215,77 @@ impl Button for AddButton {
     }
 }
 
+struct DeleteButton {
+    state: ButtonState,
+}
+
+impl DeleteButton {
+    fn new() -> Self {
+        DeleteButton {
+            state: ButtonState::Default,
+        }
+    }
+
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        looper: &LooperData,
+        size: f32,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) {
+        let mut p = Path::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((size, size));
+        p.move_to((size, 0.0));
+        p.line_to((0.0, size));
+
+        let on_click = |button: MouseButton| {
+            if button == MouseButton::Left {
+                if let Err(e) = sender.send(
+                    Command::Looper(LooperCommand::Delete, LooperTarget::Id(looper.id))) {
+                    error!("Failed to send loop delete command: {:?}", e);
+                }
+            };
+        };
+
+        self.handle_event(canvas, &Rect::from_size((size, size)).with_outset((5.0, 5.0)), on_click, last_event);
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_style(Style::Stroke);
+
+        let mut circle_paint = paint.clone();
+
+        paint.set_color(match self.state {
+            ButtonState::Default => Color::from_rgb(150, 0, 00),
+            ButtonState::Hover => Color::from_rgb(255, 0, 0),
+            ButtonState::Pressed => Color::WHITE,
+        });
+
+        circle_paint.set_color(match self.state {
+            ButtonState::Default => Color::from_rgb(150, 0, 00),
+            ButtonState::Hover | ButtonState::Pressed => Color::from_rgb(255, 0, 0),
+        });
+
+        circle_paint.set_color(Color::from_rgb(200, 0, 0));
+        circle_paint.set_stroke_width(1.0);
+        if self.state == ButtonState::Pressed {
+            circle_paint.set_style(Style::Fill);
+        }
+        canvas.draw_circle((size / 2.0, size / 2.0), size, &circle_paint);
+
+        paint.set_stroke_width(3.0);
+        canvas.draw_path(&p, &paint);
+    }
+}
+
+impl Button for DeleteButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.state = state;
+    }
+}
+
 impl MainPage {
     pub fn new() -> Self {
         MainPage {
@@ -326,7 +397,9 @@ impl MainPage {
         paint.set_color(Color::from_rgb(255, 255, 255));
         paint.set_style(Style::Stroke);
 
-        canvas.draw_path(&path, &paint);
+        if !data.loopers.is_empty() {
+            canvas.draw_path(&path, &paint);
+        }
         canvas.restore();
 
         // draw the looper add button if we have fewer than 5 loopers
@@ -1087,6 +1160,7 @@ struct LooperView {
     buttons: Vec<Vec<(LooperMode, ControlButton)>>,
     state: ButtonState,
     active_button: ActiveButton,
+    delete_button: DeleteButton,
 }
 
 impl LooperView {
@@ -1140,6 +1214,7 @@ impl LooperView {
             ],
             state: ButtonState::Default,
             active_button: ActiveButton::new(),
+            delete_button: DeleteButton::new(),
         }
     }
 
@@ -1170,11 +1245,15 @@ impl LooperView {
             25.0,
         );
 
+        let bounds = Rect::from_size((WAVEFORM_OFFSET_X + WAVEFORM_WIDTH, LOOPER_HEIGHT));
+
+        // sets our state, which tells us if the mouse is hovering
+        self.handle_event(canvas, &bounds, |_| {}, last_event);
+
         // Draw waveform
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
-        let size = self
-            .waveform_view
+        self.waveform_view
             .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
 
         // draw active button
@@ -1193,9 +1272,7 @@ impl LooperView {
             last_event,
         );
         canvas.restore();
-
-        // sets our state, which tells us if the mouse is hovering
-        self.handle_event(canvas, &Rect::from_size(size), |_| {}, last_event);
+        canvas.restore();
 
         if data.show_buttons
             && (self.state == ButtonState::Hover || self.state == ButtonState::Pressed)
@@ -1203,11 +1280,19 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(200, 0, 0, 0));
-            canvas.draw_rect(Rect::new(0.0, 0.0, WAVEFORM_WIDTH, LOOPER_HEIGHT), &paint);
+            canvas.draw_rect(&bounds.with_offset((0.0, 10.0)), &paint);
 
-            let mut y = 7.0;
+            // draw delete button
+            let delete_size = 10.0;
+            canvas.save();
+            canvas.translate((45.0, 10.0 + LOOPER_HEIGHT / 2.0 - delete_size / 2.0));
+            self.delete_button.draw(canvas, looper, delete_size, sender, last_event);
+            canvas.restore();
+
+            // draw
+            let mut y = 17.0;
             for row in &mut self.buttons {
-                let mut x = 200.0;
+                let mut x = 300.0;
                 let mut button_height = 0f32;
 
                 for (mode, button) in row {
@@ -1257,9 +1342,9 @@ impl LooperView {
             canvas.draw_rect(
                 Rect::new(
                     0.0,
-                    0.0,
+                    10.0,
                     WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
-                    LOOPER_HEIGHT,
+                    LOOPER_HEIGHT + 10.0,
                 ),
                 &paint,
             );
@@ -1267,7 +1352,7 @@ impl LooperView {
 
         canvas.restore();
 
-        Size::new(WAVEFORM_OFFSET_X + WAVEFORM_WIDTH, LOOPER_HEIGHT)
+        bounds.size()
     }
 }
 

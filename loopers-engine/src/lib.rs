@@ -264,7 +264,11 @@ impl Engine {
                 }
             }
             LooperTarget::Index(idx) => {
-                if let Some(l) = self.loopers.get_mut(idx as usize) {
+                if let Some(l) = self.loopers
+                    .iter_mut()
+                    .filter(|l| !l.deleted)
+                    .skip(idx as usize)
+                    .next() {
                     selected = Some(l.id);
                     handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
                 } else {
@@ -606,6 +610,13 @@ impl Engine {
                 Err(_) => break,
             }
         }
+
+        // Remove any deleted loopers
+        for l in self.loopers.iter().filter(|l| l.deleted) {
+            self.session_saver.remove_looper(l.id);
+        }
+        self.loopers.retain(|l| !l.deleted);
+
 
         // ensure out internal output buffer is big enough (this should only allocate when the
         // buffer size is increased)
