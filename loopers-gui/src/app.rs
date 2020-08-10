@@ -1146,7 +1146,7 @@ impl BottomButtonView {
             };
 
             let size = button.draw(canvas, false, on_click, last_event);
-            x += size.width() + 10.0;
+            x += size.width + 10.0;
             canvas.restore();
         }
 
@@ -1157,7 +1157,7 @@ impl BottomButtonView {
 struct LooperView {
     id: u32,
     waveform_view: WaveformView,
-    buttons: Vec<Vec<(LooperMode, ControlButton)>>,
+    buttons: Vec<Vec<Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size>>>,
     state: ButtonState,
     active_button: ActiveButton,
     delete_button: DeleteButton,
@@ -1172,50 +1172,79 @@ impl LooperView {
             buttons: vec![
                 vec![
                     // top row
-                    (
-                        LooperMode::Recording,
-                        ControlButton::new(
-                            "record",
-                            color_for_mode(LooperMode::Recording),
-                            Some(100.0),
-                            button_height,
-                        ),
-                    ),
-                    (
-                        LooperMode::Soloed,
-                        ControlButton::new(
-                            "solo",
-                            color_for_mode(LooperMode::Soloed),
-                            Some(100.0),
-                            button_height,
-                        ),
-                    ),
+                    Self::new_state_button(LooperMode::Recording, "record", button_height),
+                    Self::new_state_button(LooperMode::Soloed, "solo", button_height),
                 ],
                 vec![
-                    (
-                        LooperMode::Overdubbing,
-                        ControlButton::new(
-                            "overdub",
-                            color_for_mode(LooperMode::Overdubbing),
-                            Some(100.0),
-                            button_height,
-                        ),
-                    ),
-                    (
-                        LooperMode::Muted,
-                        ControlButton::new(
-                            "mute",
-                            color_for_mode(LooperMode::Muted),
-                            Some(100.0),
-                            button_height,
-                        ),
-                    ),
+                    Self::new_state_button(LooperMode::Overdubbing, "overdub", button_height),
+                    Self::new_state_button(LooperMode::Muted, "mute", button_height),
                 ],
             ],
             state: ButtonState::Default,
             active_button: ActiveButton::new(),
             delete_button: DeleteButton::new(),
         }
+    }
+
+    #[allow(dead_code)]
+    fn new_command_button(name: &str, color: Color, command: Command, h: f32)
+                          -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size>
+    {
+
+        let mut button = ControlButton::new(
+            name,
+            color,
+            Some(100.0),
+            h,
+        );
+
+        Box::new(move |canvas, _, sender, last_event| {
+            button.draw(canvas, false, |button| {
+                if button == MouseButton::Left {
+                    if let Err(e) = sender.send(command.clone()) {
+                        error!("Failed to send command: {:?}", e);
+                    }
+                }
+            }, last_event)
+        })
+    }
+
+    fn new_state_button(mode: LooperMode, name: &str, h: f32)
+        -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size> {
+        let mut button = ControlButton::new(
+            name,
+            color_for_mode(mode),
+            Some(100.0),
+            h,
+        );
+
+        Box::new(move |canvas, looper, sender, last_event| {
+            button.draw(canvas, looper.state == mode, |button| {
+                if button == MouseButton::Left {
+                    use LooperMode::*;
+                    let command = match (looper.state, mode) {
+                        (Recording, Recording) => Some(LooperCommand::Overdub),
+                        (_, Recording) => Some(LooperCommand::Record),
+                        (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
+                        (_, Overdubbing) => Some(LooperCommand::Overdub),
+                        (Muted, Muted) => Some(LooperCommand::Play),
+                        (_, Muted) => Some(LooperCommand::Mute),
+                        (s, t) => {
+                            warn!("unhandled button state ({:?}, {:?})", s, t);
+                            None
+                        }
+                    };
+
+                    if let Some(command) = command {
+                        if let Err(e) = sender
+                            .send(Command::Looper(command, LooperTarget::Id(looper.id)))
+                        {
+                            error!("Failed to send command: {:?}", e);
+                        }
+                    }
+                }
+            }, last_event)
+        })
     }
 
     fn draw(
@@ -1295,41 +1324,14 @@ impl LooperView {
                 let mut x = 300.0;
                 let mut button_height = 0f32;
 
-                for (mode, button) in row {
+                for button in row {
                     canvas.save();
                     canvas.translate((x, y));
-                    let on_click = |button| {
-                        let mode = *mode;
-                        if button == MouseButton::Left {
-                            use LooperMode::*;
-                            let command = match (looper.state, mode) {
-                                (Recording, Recording) => Some(LooperCommand::Overdub),
-                                (_, Recording) => Some(LooperCommand::Record),
-                                (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
-                                (_, Overdubbing) => Some(LooperCommand::Overdub),
-                                (Muted, Muted) => Some(LooperCommand::Play),
-                                (_, Muted) => Some(LooperCommand::Mute),
-                                (s, t) => {
-                                    warn!("unhandled button state ({:?}, {:?})", s, t);
-                                    None
-                                }
-                            };
-
-                            if let Some(command) = command {
-                                if let Err(e) = sender
-                                    .send(Command::Looper(command, LooperTarget::Id(looper.id)))
-                                {
-                                    error!("Failed to send command: {:?}", e);
-                                }
-                            }
-                        }
-                    };
-
-                    let bounds = button.draw(canvas, looper.state == *mode, on_click, last_event);
+                    let bounds = (button)(canvas, looper, sender, last_event);
                     canvas.restore();
 
-                    x += bounds.width() + 15.0;
-                    button_height = button_height.max(bounds.height());
+                    x += bounds.width + 15.0;
+                    button_height = button_height.max(bounds.height);
                 }
 
                 y += button_height + 10.0;

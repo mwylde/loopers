@@ -116,7 +116,7 @@ impl ControlButton {
         is_active: bool,
         on_click: F,
         last_event: Option<GuiEvent>,
-    ) -> Rect {
+    ) -> Size {
         let bounds = Rect::new(0.0, 0.0, self.width, self.height);
 
         self.handle_event(canvas, &bounds, on_click, last_event);
@@ -150,7 +150,7 @@ impl ControlButton {
 
         canvas.draw_text_blob(&self.text, (x, y), &text_paint);
 
-        bounds
+        bounds.size()
     }
 }
 
