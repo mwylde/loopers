@@ -1186,6 +1186,10 @@ impl LooperView {
                     // top row
                     Self::new_state_button(LooperMode::Recording, "record", button_height),
                     Self::new_state_button(LooperMode::Soloed, "solo", button_height),
+                    Self::new_command_button(
+                        "clear", Color::YELLOW,
+                        Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
+                        button_height),
                 ],
                 vec![
                     Self::new_state_button(LooperMode::Overdubbing, "overdub", button_height),

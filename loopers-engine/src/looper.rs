@@ -648,6 +648,7 @@ pub enum ControlMessage {
     Shutdown,
     Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
     Deleted,
+    Clear,
 }
 
 const TRANSFER_BUF_SIZE: usize = 16;
@@ -858,6 +859,13 @@ impl LooperBackend {
             }
             ControlMessage::TransitionTo(mode) => {
                 self.transition_to(mode);
+            }
+            ControlMessage::Clear => {
+                self.samples.clear();
+                self.mode = LooperMode::Playing;
+                self.in_time = FrameTime(0);
+                self.out_time = FrameTime(0);
+                self.gui_sender.send_update(GuiCommand::ClearLooper(self.id));
             }
             ControlMessage::SetTime(time) => {
                 self.out_time = FrameTime(time.0.max(0));
@@ -1306,6 +1314,11 @@ impl Looper {
             Play => self.transition_to(LooperMode::Playing),
             Mute => self.transition_to(LooperMode::Muted),
             Solo => self.transition_to(LooperMode::Soloed),
+            Clear => {
+                self.length_in_samples = 0;
+                self.mode = LooperMode::Playing;
+                self.send_to_backend(ControlMessage::Clear);
+            }
             Delete => {
                 self.deleted = true;
                 self.send_to_backend(ControlMessage::Deleted);

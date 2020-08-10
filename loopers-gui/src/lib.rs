@@ -164,6 +164,12 @@ impl Gui {
                 Ok(GuiCommand::RemoveLooper(id)) => {
                     self.state.loopers.remove(&id);
                 }
+                Ok(GuiCommand::ClearLooper(id)) => {
+                    if let Some(looper) = self.state.loopers.get_mut(&id) {
+                        looper.waveform = [vec![], vec![]];
+                        looper.length = 0;
+                    }
+                }
                 Ok(GuiCommand::LooperStateChange(id, mode)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         l.state = mode;

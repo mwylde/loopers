@@ -29,6 +29,7 @@ pub enum GuiCommand {
     AddLooper(u32),
     AddLooperWithSamples(u32, u64, Box<Waveform>),
     RemoveLooper(u32),
+    ClearLooper(u32),
 
     LooperStateChange(u32, LooperMode),
 
