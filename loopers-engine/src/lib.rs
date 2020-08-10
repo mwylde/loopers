@@ -452,7 +452,8 @@ impl Engine {
         }
     }
 
-    fn perform_looper_io<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], time: FrameTime, idx_range: Range<usize>) {
+    fn perform_looper_io<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]],
+                                          time: FrameTime, idx_range: Range<usize>, solo: bool) {
         if time.0 >= 0 {
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted {
@@ -464,7 +465,7 @@ impl Engine {
                         &mut self.tmp_right[idx_range.clone()],
                     ];
 
-                    looper.process_output(time, &mut o);
+                    looper.process_output(time, &mut o, solo);
 
                     // copy the output to the looper input in the host, if we can find one
                     if let Some([l , r]) = host.output_for_looper(looper.id)  {
@@ -509,6 +510,8 @@ impl Engine {
 
         let mut time = time as u64;
 
+        let solo = self.loopers.iter().any(|l| l.mode == LooperMode::Soloed);
+
         let next_time = (self.time + frames as i64) as u64;
         while time < next_time {
             if let Some(_) = self
@@ -545,7 +548,8 @@ impl Engine {
                         (trigger_at - time) as usize
                     );
 
-                    self.perform_looper_io(host, &in_bufs, FrameTime(time as i64), idx_range.clone());
+                    self.perform_looper_io(host, &in_bufs, FrameTime(time as i64),
+                                           idx_range.clone(), solo);
                     time = trigger_at;
                     idx = idx_range.end;
                 }
@@ -553,7 +557,8 @@ impl Engine {
                 self.handle_command(host, &trigger.0.command, true);
             } else {
                 // there are no more triggers for this period, so just process the rest and finish
-                self.perform_looper_io(host, &in_bufs, FrameTime(time as i64), idx..frames as usize);
+                self.perform_looper_io(host, &in_bufs, FrameTime(time as i64),
+                                       idx..frames as usize, solo);
                 time = next_time;
             }
         }

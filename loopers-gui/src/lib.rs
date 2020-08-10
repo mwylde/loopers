@@ -59,6 +59,17 @@ pub struct LooperData {
     waveform: Waveform,
 }
 
+
+impl LooperData {
+    fn mode_with_solo(&self, data: &AppData) -> LooperMode {
+        let solo = data.loopers.iter().any(|(_, l)| l.state == LooperMode::Soloed);
+        if solo && self.state != LooperMode::Soloed {
+            LooperMode::Muted
+        } else {
+            self.state
+        }
+    }
+}
 #[derive(Clone)]
 pub struct AppData {
     engine_state: EngineStateSnapshot,

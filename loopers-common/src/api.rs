@@ -77,6 +77,7 @@ pub enum LooperCommand {
     Overdub,
     Play,
     Mute,
+    Solo,
 
     // Composite commands
     RecordOverdubPlay,

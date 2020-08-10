@@ -1229,6 +1229,8 @@ impl LooperView {
                         (_, Overdubbing) => Some(LooperCommand::Overdub),
                         (Muted, Muted) => Some(LooperCommand::Play),
                         (_, Muted) => Some(LooperCommand::Mute),
+                        (Soloed, Soloed) => Some(LooperCommand::Play),
+                        (_, Soloed) => Some(LooperCommand::Solo),
                         (s, t) => {
                             warn!("unhandled button state ({:?}, {:?})", s, t);
                             None
@@ -1267,7 +1269,7 @@ impl LooperView {
         // Draw loop completion indicate
         draw_circle_indicator(
             canvas,
-            color_for_mode(looper.state),
+            color_for_mode(looper.mode_with_solo(data)),
             ratio,
             25.0,
             25.0,
@@ -1340,12 +1342,12 @@ impl LooperView {
             // draw overlay to darken time that is past
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_color(Color::from_argb(120, 0, 0, 0));
+            paint.set_color(Color::from_argb(160, 0, 0, 0));
             canvas.draw_rect(
                 Rect::new(
-                    0.0,
+                    WAVEFORM_OFFSET_X,
                     10.0,
-                    WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
+                    WAVEFORM_OFFSET_X + WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
                     LOOPER_HEIGHT + 10.0,
                 ),
                 &paint,
@@ -1580,7 +1582,7 @@ impl WaveformView {
     }
 
     fn draw_waveform(
-        _: &AppData,
+        data: &AppData,
         looper: &LooperData,
         _: FrameTime,
         w: f32,
@@ -1592,7 +1594,7 @@ impl WaveformView {
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        paint.set_color(dark_color_for_mode(looper.state));
+        paint.set_color(dark_color_for_mode(looper.mode_with_solo(data)));
         paint.set_style(Style::Fill);
         canvas.draw_path(&p, &paint);
 
@@ -1746,7 +1748,7 @@ impl WaveformView {
                     }
 
                     self.waveform.draw(
-                        (looper.length, looper.last_time, looper.state),
+                        (looper.length, looper.last_time, looper.mode_with_solo(data)),
                         data,
                         looper,
                         self.time_width,

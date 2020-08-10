@@ -156,6 +156,7 @@ mod tests {
         l.process_output(
             FrameTime(input_left.len() as i64),
             &mut [&mut o_l, &mut o_r],
+            false,
         );
         process_until_done(&mut l);
 
@@ -189,7 +190,7 @@ mod tests {
 
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
@@ -205,7 +206,7 @@ mod tests {
         // first record our overdub
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         l.process_input(t as u64, &[&input_left, &input_right]);
@@ -221,7 +222,7 @@ mod tests {
         // on the next go-around, it should be played back
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         l.process_input(t as u64, &[&input_left, &input_right]);
@@ -254,7 +255,7 @@ mod tests {
 
         let mut o_l = vec![0f64; buf_size];
         let mut o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         l.process_input(0, &[&input_left, &input_right]);
@@ -263,7 +264,7 @@ mod tests {
         time += buf_size as i64;
 
         // first give the part before the state change (which will be recorded)
-        l.process_output(FrameTime(time), &mut [&mut o_l[0..100], &mut o_r[0..100]]);
+        l.process_output(FrameTime(time), &mut [&mut o_l[0..100], &mut o_r[0..100]], false);
         process_until_done(&mut l);
 
         input_left = vec![2f32; buf_size];
@@ -283,6 +284,7 @@ mod tests {
         l.process_output(
             FrameTime(time),
             &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]],
+            false
         );
         process_until_done(&mut l);
 
@@ -306,7 +308,7 @@ mod tests {
 
         o_l = vec![0f64; buf_size];
         o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
@@ -328,7 +330,7 @@ mod tests {
 
         o_l = vec![0f64; buf_size];
         o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
@@ -359,7 +361,7 @@ mod tests {
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -381,7 +383,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
             process_until_done(&mut l);
 
             time += 32;
@@ -393,7 +395,7 @@ mod tests {
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
 
         verify_length(&l, CROSS_FADE_SAMPLES as u64 * 2);
 
@@ -438,7 +440,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
             process_until_done(&mut l);
 
             time += 32;
@@ -469,7 +471,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
             process_until_done(&mut l);
 
             time += 32;
@@ -486,7 +488,7 @@ mod tests {
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -496,13 +498,13 @@ mod tests {
         // Go around again (we don't have the crossfaded samples until the second time around)
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
         let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
         let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r]);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
         process_until_done(&mut l);
 
         for i in 0..o_l.len() {
@@ -1303,6 +1305,7 @@ impl Looper {
             Overdub => self.transition_to(LooperMode::Overdubbing),
             Play => self.transition_to(LooperMode::Playing),
             Mute => self.transition_to(LooperMode::Muted),
+            Solo => self.transition_to(LooperMode::Soloed),
             Delete => {
                 // TODO: I think I need to tell the gui this
                 //self.session_saver.remove_looper(l.id);
@@ -1352,7 +1355,9 @@ impl Looper {
 
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
-    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]]) {
+    //
+    // If the solo flag is set, we will only output if we are in solo mode.
+    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]], solo: bool) {
         if time.0 < 0 || self.length_in_samples == 0 {
             return;
         }
@@ -1367,7 +1372,8 @@ impl Looper {
         let backoff = crossbeam_utils::Backoff::new();
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
-                if self.mode == LooperMode::Playing || self.mode == LooperMode::Overdubbing {
+                if (solo && self.mode == LooperMode::Soloed) ||
+                    (!solo && (self.mode == LooperMode::Playing || self.mode == LooperMode::Overdubbing)) {
                     outputs[0][out_idx] += l;
                     outputs[1][out_idx] += r;
                 }

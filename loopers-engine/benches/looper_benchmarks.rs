@@ -33,7 +33,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
                 l
             },
             |mut l| {
-                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r]);
+                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r], false);
             },
             BatchSize::SmallInput,
         )
@@ -52,7 +52,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
             |mut l| {
                 l.process_input(0, &[&samples[0], &samples[1]]);
                 l.backend.as_mut().unwrap().process_until_done();
-                l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r]);
+                l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], false);
                 l.backend.as_mut().unwrap().process_until_done();
 
                 l.transition_to(LooperMode::Playing);
@@ -60,7 +60,7 @@ pub fn looper_benchmark(c: &mut Criterion) {
 
                 l.process_input(128, &[&samples[0], &samples[1]]);
                 l.backend.as_mut().unwrap().process_until_done();
-                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r]);
+                l.process_output(FrameTime(128), &mut [&mut o_l, &mut o_r], false);
                 l.backend.as_mut().unwrap().process_until_done();
             },
             BatchSize::SmallInput,
