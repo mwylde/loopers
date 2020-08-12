@@ -2,7 +2,6 @@ use skia_safe::*;
 
 use crate::{AppData, GuiEvent, LooperData};
 
-use crate::skia::{HEIGHT, WIDTH};
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
@@ -138,19 +137,12 @@ impl ClockTimeAnimation {
     }
 }
 
-pub struct MainPage {
-    loopers: BTreeMap<u32, LooperView>,
-    beat_animation: Option<FrameTimeAnimation>,
-    bottom_bar: BottomBarView,
-    add_button: AddButton,
-    bottom_buttons: BottomButtonView,
-    modal_manager: ModalManager,
-}
-
-const LOOPER_MARGIN: f32 = 10.0;
+const LOOPER_MARGIN: f32 = 20.0;
 const LOOPER_HEIGHT: f32 = 80.0;
+const BOTTOM_MARGIN: f32 = 70.0;
 const WAVEFORM_OFFSET_X: f32 = 100.0;
-const WAVEFORM_WIDTH: f32 = 650.0;
+const LOOPER_CIRCLE_INDICATOR_WIDTH: f32 = 50.0;
+const WAVEFORM_RIGHT_MARGIN: f32 = 55.0;
 const WAVEFORM_ZERO_RATIO: f32 = 0.25;
 
 struct AddButton {
@@ -285,6 +277,14 @@ impl Button for DeleteButton {
         self.state = state;
     }
 }
+pub struct MainPage {
+    loopers: BTreeMap<u32, LooperView>,
+    beat_animation: Option<FrameTimeAnimation>,
+    bottom_bar: BottomBarView,
+    add_button: AddButton,
+    bottom_buttons: BottomButtonView,
+    modal_manager: ModalManager,
+}
 
 impl MainPage {
     pub fn new() -> Self {
@@ -298,10 +298,19 @@ impl MainPage {
         }
     }
 
+    pub fn min_size(&self, data: &AppData) -> Size {
+        Size::new(
+            720.0,
+            data.loopers.len() as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN) + BOTTOM_MARGIN,
+        )
+    }
+
     pub fn draw(
         &mut self,
         canvas: &mut Canvas,
         data: &AppData,
+        w: f32,
+        h: f32,
         sender: &mut Sender<Command>,
         last_event: Option<GuiEvent>,
     ) {
@@ -326,8 +335,8 @@ impl MainPage {
 
         self.modal_manager.draw(
             canvas,
-            WIDTH as f32,
-            HEIGHT as f32,
+            w as f32,
+            h as f32,
             data,
             sender,
             last_event,
@@ -338,16 +347,18 @@ impl MainPage {
             canvas.save();
             canvas.translate(Vector::new(0.0, y));
 
-            let size = looper.draw(canvas, data, &data.loopers[id], sender, last_event);
+            let size = looper.draw(canvas, data, &data.loopers[id],
+                                   w, sender, last_event);
 
-            y += size.height + LOOPER_MARGIN + 10.0;
+            y += size.height + LOOPER_MARGIN;
 
             canvas.restore();
         }
 
         // draw play head
-        let x = WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO;
-        let h = y - 10.0;
+        let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
+        let x = waveform_width * WAVEFORM_ZERO_RATIO;
+        let looper_h = y - 10.0;
 
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 0.0));
@@ -356,9 +367,9 @@ impl MainPage {
             path.move_to(Point::new(x - 5.0, 10.0));
             path.line_to(Point::new(x + 5.0, 10.0));
             path.move_to(Point::new(x, 10.0));
-            path.line_to(Point::new(x, h));
-            path.move_to(Point::new(x - 5.0, h));
-            path.line_to(Point::new(x + 5.0, h));
+            path.line_to(Point::new(x, looper_h));
+            path.move_to(Point::new(x - 5.0, looper_h));
+            path.line_to(Point::new(x + 5.0, looper_h));
         }
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -402,13 +413,14 @@ impl MainPage {
         }
         canvas.restore();
 
-        // draw the looper add button if we have fewer than 5 loopers
-        if self.loopers.len() < 5 {
+        // draw the looper add button if we can fit more on the screen
+        let max_loopers = ((h - BOTTOM_MARGIN) / (LOOPER_MARGIN + LOOPER_HEIGHT)).floor() as usize;
+        if self.loopers.len() < max_loopers {
             self.add_button.draw(canvas, data, sender, last_event);
         }
 
         // draw the bottom bars
-        let mut bottom = HEIGHT as f32;
+        let mut bottom = h as f32;
         if data.show_buttons {
             canvas.save();
             canvas.translate((10.0, bottom - 40.0));
@@ -422,7 +434,7 @@ impl MainPage {
         canvas.translate(Vector::new(0.0, bottom - bar_height));
         self.bottom_bar.draw(
             data,
-            WIDTH as f32,
+            w as f32,
             30.0,
             canvas,
             &mut self.modal_manager,
@@ -1254,6 +1266,7 @@ impl LooperView {
         canvas: &mut Canvas,
         data: &AppData,
         looper: &LooperData,
+        w: f32,
         sender: &mut Sender<Command>,
         last_event: Option<GuiEvent>,
     ) -> Size {
@@ -1271,12 +1284,14 @@ impl LooperView {
             canvas,
             color_for_mode(looper.mode_with_solo(data)),
             ratio,
-            25.0,
-            25.0,
-            25.0,
+            LOOPER_CIRCLE_INDICATOR_WIDTH / 2.0,
+            LOOPER_CIRCLE_INDICATOR_WIDTH / 2.0,
+            LOOPER_CIRCLE_INDICATOR_WIDTH / 2.0,
         );
 
-        let bounds = Rect::from_size((WAVEFORM_OFFSET_X + WAVEFORM_WIDTH, LOOPER_HEIGHT));
+        let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
+
+        let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT));
 
         // sets our state, which tells us if the mouse is hovering
         self.handle_event(canvas, &bounds, |_| {}, last_event);
@@ -1285,11 +1300,11 @@ impl LooperView {
         canvas.save();
         canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 10.0));
         self.waveform_view
-            .draw(canvas, data, looper, WAVEFORM_WIDTH, LOOPER_HEIGHT);
+            .draw(canvas, data, looper, waveform_width, LOOPER_HEIGHT);
 
         // draw active button
         canvas.save();
-        canvas.translate((WAVEFORM_WIDTH + 25.0, 20.0));
+        canvas.translate((waveform_width + 25.0, 20.0));
         self.active_button.draw(
             canvas,
             data.engine_state.active_looper == looper.id,
@@ -1347,7 +1362,7 @@ impl LooperView {
                 Rect::new(
                     WAVEFORM_OFFSET_X,
                     10.0,
-                    WAVEFORM_OFFSET_X + WAVEFORM_WIDTH * WAVEFORM_ZERO_RATIO,
+                    WAVEFORM_OFFSET_X + waveform_width * WAVEFORM_ZERO_RATIO,
                     LOOPER_HEIGHT + 10.0,
                 ),
                 &paint,
@@ -1791,6 +1806,7 @@ impl WaveformView {
                 self.time_width,
                 w,
                 h,
+                // TODO: turning on the cache currently causes rendering issues
                 false,
                 canvas,
             );

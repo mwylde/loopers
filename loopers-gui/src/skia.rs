@@ -9,7 +9,7 @@ use glutin::event::ElementState;
 use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
-use glutin::{ContextBuilder, GlProfile};
+use glutin::{ContextBuilder, GlProfile, PixelFormat};
 
 use crate::{Gui, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
 use gl::types::*;
@@ -20,19 +20,46 @@ use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
+use winit::dpi::PhysicalSize;
 
-pub const WIDTH: i32 = 800;
-pub const HEIGHT: i32 = 600;
+const INITIAL_WIDTH: i32 = 800;
+const INITIAL_HEIGHT: i32 = 600;
 
 const FPS: u64 = 60;
+
+fn create_surface(gr_context: &mut Context, pixel_format: &PixelFormat,
+                  fb_info: FramebufferInfo, size: PhysicalSize<u32>, scale_factor: f32) -> Surface {
+    let backend_render_target = BackendRenderTarget::new_gl(
+        (
+            size.width.try_into().unwrap(),
+            size.height.try_into().unwrap(),
+        ),
+        pixel_format.multisampling.map(|s| s.try_into().unwrap()),
+        pixel_format.stencil_bits.try_into().unwrap(),
+        fb_info,
+    );
+
+    let mut surface = Surface::from_backend_render_target(
+        gr_context,
+        &backend_render_target,
+        SurfaceOrigin::BottomLeft,
+        ColorType::RGBA8888,
+        None,
+        None,
+    ).unwrap();
+
+    surface.canvas().scale((scale_factor, scale_factor));
+
+    surface
+}
 
 pub fn skia_main(mut gui: Gui) {
     let el = EventLoop::new();
     let wb = WindowBuilder::new()
         .with_title("loopers-gui")
         .with_inner_size(glutin::dpi::LogicalSize {
-            width: WIDTH,
-            height: HEIGHT,
+            width: INITIAL_WIDTH,
+            height: INITIAL_HEIGHT,
         });
 
     let cb = ContextBuilder::new()
@@ -47,7 +74,7 @@ pub fn skia_main(mut gui: Gui) {
     let windowed_context = unsafe { windowed_context.make_current().unwrap() };
     let pixel_format = windowed_context.get_pixel_format();
 
-    println!(
+    debug!(
         "Pixel format of the window's GL context: {:?}",
         pixel_format
     );
@@ -65,29 +92,10 @@ pub fn skia_main(mut gui: Gui) {
     };
 
     let size = windowed_context.window().inner_size();
-    let backend_render_target = BackendRenderTarget::new_gl(
-        (
-            size.width.try_into().unwrap(),
-            size.height.try_into().unwrap(),
-        ),
-        pixel_format.multisampling.map(|s| s.try_into().unwrap()),
-        pixel_format.stencil_bits.try_into().unwrap(),
-        fb_info,
-    );
-    let mut surface = Surface::from_backend_render_target(
-        &mut gr_context,
-        &backend_render_target,
-        SurfaceOrigin::BottomLeft,
-        ColorType::RGBA8888,
-        None,
-        None,
-    )
-    .unwrap();
-
     let sf = windowed_context.window().scale_factor() as f32;
-    surface.canvas().scale((sf, sf));
 
-    let _start_time = Instant::now();
+    let mut surface = create_surface(&mut gr_context, &pixel_format, fb_info, size, sf);
+
 
     let inter_frame_time = Duration::from_micros(1_000_000 / FPS);
 
@@ -110,7 +118,10 @@ pub fn skia_main(mut gui: Gui) {
         match event {
             Event::LoopDestroyed => {}
             Event::WindowEvent { event, .. } => match event {
-                WindowEvent::Resized(physical_size) => windowed_context.resize(physical_size),
+                WindowEvent::Resized(physical_size) => {
+                    windowed_context.resize(physical_size);
+                    surface = create_surface(&mut gr_context, &pixel_format, fb_info, physical_size, sf);
+                },
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::KeyboardInput {
                     input:
@@ -176,14 +187,17 @@ pub fn skia_main(mut gui: Gui) {
                     let mut canvas = surface.canvas();
                     canvas.clear(Color::BLACK);
 
+                    let size = windowed_context.window().inner_size();
+
                     if capture_debug_frame {
                         let mut recorder = PictureRecorder::new();
                         let mut recording_canvas =
-                            recorder.begin_recording(Rect::from_iwh(WIDTH, HEIGHT), None, None);
+                            recorder.begin_recording(Rect::from_iwh(
+                                size.width as i32, size.height as i32), None, None);
 
                         recording_canvas.clear(Color::BLACK);
 
-                        gui.draw(&mut recording_canvas, last_event);
+                        gui.draw(&mut recording_canvas, size.width as f32, size.height as f32, last_event);
 
                         let picture = recorder.finish_recording_as_picture(None).unwrap();
                         let data = picture.serialize();
@@ -199,7 +213,7 @@ pub fn skia_main(mut gui: Gui) {
                         capture_debug_frame = false;
                     }
 
-                    gui.draw(&mut canvas, last_event);
+                    gui.draw(&mut canvas, size.width as f32, size.height as f32, last_event);
 
                     last_event = None;
 
@@ -221,8 +235,8 @@ pub fn skia_main(mut gui: Gui) {
                         canvas.draw_text_blob(
                             &text,
                             Point::new(
-                                WIDTH as f32 - text.bounds().width() + 10.0,
-                                HEIGHT as f32 - 10.0,
+                                size.width as f32 - text.bounds().width() + 10.0,
+                                size.height as f32 - 10.0,
                             ),
                             &paint,
                         );
@@ -236,6 +250,10 @@ pub fn skia_main(mut gui: Gui) {
                 }
 
                 windowed_context.swap_buffers().unwrap();
+
+                let min_size = gui.min_size();
+                windowed_context.window()
+                    .set_min_inner_size(Some(PhysicalSize::new(min_size.width as i32, min_size.height as i32)));
 
                 let frame_len = frame_times.len();
                 frame_times[frame_counter % frame_len] =

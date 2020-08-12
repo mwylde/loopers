@@ -7,7 +7,7 @@ mod app;
 mod skia;
 mod widgets;
 
-use skia_safe::Canvas;
+use skia_safe::{Canvas, Size};
 
 use crossbeam_channel::{Sender, TryRecvError};
 use glutin::dpi::PhysicalPosition;
@@ -216,10 +216,14 @@ impl Gui {
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, last_event: Option<GuiEvent>) {
+    pub fn min_size(&self) -> Size {
+        self.root.min_size(&self.state)
+    }
+
+    pub fn draw(&mut self, canvas: &mut Canvas, w: f32, h: f32, last_event: Option<GuiEvent>) {
         if self.initialized {
             self.root
-                .draw(canvas, &self.state, &mut self.sender, last_event);
+                .draw(canvas, &self.state, w, h, &mut self.sender, last_event);
         }
     }
 }
