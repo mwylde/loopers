@@ -230,6 +230,7 @@ impl Engine {
         let ms = self.metric_structure;
         let time = FrameTime(self.time);
         let triggers = &mut self.triggers;
+        let gui_sender = &mut self.gui_sender;
 
         fn handle_or_trigger(
             triggered: bool,
@@ -239,12 +240,15 @@ impl Engine {
             target: LooperTarget,
             looper: &mut Looper,
             triggers: &mut BinaryHeap<Reverse<Trigger>>,
+            gui_sender: &mut GuiSender,
         ) {
             if triggered {
                 looper.handle_command(lc);
-            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper)
-            {
-                Engine::add_trigger(triggers, trigger);
+            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper) {
+                Engine::add_trigger(triggers,trigger.clone());
+
+                gui_sender.send_update(GuiCommand::AddTrigger(
+                    looper.id, trigger.triggered_at(), lc));
             } else {
                 looper.handle_command(lc);
             }
@@ -255,7 +259,7 @@ impl Engine {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
                 } else {
                     warn!(
                         "Could not find looper with id {} while handling command {:?}",
@@ -270,20 +274,20 @@ impl Engine {
                     .skip(idx as usize)
                     .next() {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
                 } else {
                     warn!("No looper at index {} while handling command {:?}", idx, lc);
                 }
             }
             LooperTarget::All => {
                 for l in &mut self.loopers {
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
                 }
             }
             LooperTarget::Selected => {
                 let active = self.active;
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers);
+                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
                 } else {
                     error!(
                         "selected looper {} not found while handling command {:?}",

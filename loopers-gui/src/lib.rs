@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use winit::event::MouseButton;
 
 use crate::app::MainPage;
-use loopers_common::api::{Command, FrameTime, LooperMode};
+use loopers_common::api::{Command, FrameTime, LooperMode, LooperCommand};
 
 const SHOW_BUTTONS: bool = true;
 
@@ -57,6 +57,7 @@ pub struct LooperData {
     last_time: FrameTime,
     state: LooperMode,
     waveform: Waveform,
+    trigger: Option<(FrameTime, LooperCommand)>
 }
 
 
@@ -124,6 +125,15 @@ impl Gui {
                 Ok(GuiCommand::StateSnapshot(state)) => {
                     self.state.engine_state = state;
                     self.initialized = true;
+
+                    // clear past triggers
+                    for l in self.state.loopers.values_mut() {
+                        if let Some((time, _)) = l.trigger {
+                            if time < state.time {
+                                l.trigger = None;
+                            }
+                        }
+                    }
                 }
                 Ok(GuiCommand::AddLooper(id)) => {
                     self.state.loopers.insert(
@@ -134,6 +144,7 @@ impl Gui {
                             last_time: FrameTime(0),
                             state: LooperMode::Playing,
                             waveform: [vec![], vec![]],
+                            trigger: None,
                         },
                     );
                 }
@@ -146,6 +157,7 @@ impl Gui {
                             last_time: FrameTime(length as i64 - 1),
                             state: LooperMode::Playing,
                             waveform: *waveform,
+                            trigger: None,
                         },
                     );
                 }
@@ -194,6 +206,11 @@ impl Gui {
                 }
                 Err(TryRecvError::Disconnected) => {
                     panic!("Channel disconnected");
+                }
+                Ok(GuiCommand::AddTrigger(id, time, command)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.trigger = Some((time, command))
+                    }
                 }
             }
         }

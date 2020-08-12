@@ -1307,12 +1307,11 @@ impl Looper {
             Mute => self.transition_to(LooperMode::Muted),
             Solo => self.transition_to(LooperMode::Soloed),
             Delete => {
-                // TODO: I think I need to tell the gui this
-                //self.session_saver.remove_looper(l.id);
                 self.deleted = true;
                 self.send_to_backend(ControlMessage::Deleted);
             }
             RecordOverdubPlay => {
+                // TODO: this logic is duplicated in the gui, would be good to unify somehow
                 if self.length_in_samples() == 0 {
                     self.transition_to(LooperMode::Recording);
                 } else if self.mode == LooperMode::Recording || self.mode == LooperMode::Playing {

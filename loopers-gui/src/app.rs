@@ -1687,12 +1687,6 @@ impl WaveformView {
         w: f32,
         h: f32,
     ) -> Size {
-        // let mut paint = Paint::default();
-        // paint.set_anti_alias(true);
-        // paint.set_color(Color::from_rgb(0, 65, 122));
-
-        //canvas.draw_rect(Rect::new(0.0, 0.0, w, h), &paint);
-
         let full_w = (looper.length as f64 / self.time_width.0 as f64) * w as f64;
 
         canvas.save();
@@ -1830,6 +1824,67 @@ impl WaveformView {
             );
 
             canvas.restore();
+        }
+
+        // draw trigger if present and in future
+        if let Some((time, lc)) = looper.trigger {
+            if time > data.engine_state.time {
+                let mut paint = Paint::default();
+                paint.set_anti_alias(true);
+
+                let mut text = None;
+                match lc {
+                    LooperCommand::Record => {
+                        paint.set_color(color_for_mode(LooperMode::Recording));
+                        text = Some("recording");
+                    },
+                    LooperCommand::Overdub => {
+                        paint.set_color(color_for_mode(LooperMode::Overdubbing));
+                        text = Some("overdubbing");
+                    },
+                    LooperCommand::Play => {
+                        paint.set_color(color_for_mode(LooperMode::Playing));
+                        text = Some("playing");
+                    },
+                    LooperCommand::Mute => {
+                        paint.set_color(color_for_mode(LooperMode::Muted));
+                        text = Some("muting");
+                    },
+                    LooperCommand::Solo => {
+                        paint.set_color(color_for_mode(LooperMode::Soloed));
+                        text = Some("soloing");
+                    },
+                    LooperCommand::RecordOverdubPlay => {
+                        if looper.length == 0 {
+                            paint.set_color(color_for_mode(LooperMode::Recording));
+                            text = Some("recording");
+                        } else if looper.state == LooperMode::Recording || looper.state == LooperMode::Playing {
+                            paint.set_color(color_for_mode(LooperMode::Overdubbing));
+                            text = Some("overdubbing");
+                        } else {
+                            paint.set_color(color_for_mode(LooperMode::Playing));
+                            text = Some("playing");
+                        }
+                    },
+                    _ => {}
+                }
+
+                paint.set_alpha_f(0.9);
+
+                let x = -self.time_to_x(data.engine_state.time - time, w) as f32;
+                let rect = Rect::new(x, 15.0, w, h - 15.0);
+                canvas.draw_rect(&rect, &paint);
+
+                if let Some(text) = text {
+                    let font = Font::new(Typeface::default(), 24.0);
+                    let mut text_paint = Paint::default();
+                    text_paint.set_color(Color::BLACK);
+                    text_paint.set_anti_alias(true);
+
+                    let time_blob = TextBlob::new(&text, &font).unwrap();
+                    canvas.draw_text_blob(&time_blob, Point::new(x + 10.0, h / 2.0 + 6.0), &text_paint);
+                }
+            }
         }
 
         canvas.restore();
