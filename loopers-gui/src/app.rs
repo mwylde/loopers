@@ -1791,7 +1791,7 @@ impl WaveformView {
                 self.time_width,
                 w,
                 h,
-                true,
+                false,
                 canvas,
             );
             canvas.translate((size.width, 0.0));
@@ -1802,7 +1802,7 @@ impl WaveformView {
                 self.time_width,
                 w,
                 h,
-                true,
+                false,
                 canvas,
             );
             canvas.restore();
