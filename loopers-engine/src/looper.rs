@@ -861,8 +861,8 @@ impl LooperBackend {
                 self.transition_to(mode);
             }
             ControlMessage::Clear => {
+                self.transition_to(LooperMode::Playing);
                 self.samples.clear();
-                self.mode = LooperMode::Playing;
                 self.in_time = FrameTime(0);
                 self.out_time = FrameTime(0);
                 self.gui_sender.send_update(GuiCommand::ClearLooper(self.id));
@@ -1303,6 +1303,13 @@ impl Looper {
             }
         }
         self.in_progress_output = None;
+
+        if self.mode == LooperMode::Recording && time < FrameTime(0) {
+            // we will clear our buffer
+            self.length_in_samples = 0;
+            self.send_to_backend(ControlMessage::Clear);
+        }
+
         self.send_to_backend(ControlMessage::SetTime(time));
     }
 
