@@ -820,7 +820,7 @@ impl MetronomeButton {
                     };
 
                     if let Err(e) = sender.send(Command::SetMetronomeLevel(vol)) {
-                        error!("Failed to set metronome voluem: {:?}", e);
+                        error!("Failed to set metronome volume: {:?}", e);
                     }
                 }
             },
@@ -1788,7 +1788,7 @@ impl WaveformView {
 
             // we need to make sure that we go back far enough that the start is off of the screen
             // so we just subtract measures until we are
-            // there's an analytical solution to this but I'm too lazy to figure it out rightn ow
+            // there's an analytical solution to this but I'm too lazy to figure it out right now
             let mut start_time = next_beat -
                 FrameTime(beat_of_measure as i64 * ms.tempo.samples_per_beat() as i64);
             let mut x = -self.time_to_x(data.engine_state.time - start_time, w);
