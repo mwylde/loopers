@@ -352,6 +352,9 @@ impl Engine {
             Start => {
                 self.state = EngineState::Active;
             }
+            Pause => {
+                self.state = EngineState::Stopped;
+            }
             Stop => {
                 self.state = EngineState::Stopped;
                 self.reset();

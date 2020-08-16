@@ -1,5 +1,3 @@
-use skia_safe::*;
-
 use crate::{AppData, GuiEvent, LooperData};
 
 use crate::widgets::{
@@ -10,8 +8,11 @@ use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
+use skia_safe::*;
 use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
+use skia_safe::path::Path;
+use skia_safe::Rect;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
@@ -20,6 +21,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::event::MouseButton;
+use loopers_common::gui_channel::EngineState;
 
 lazy_static! {
     static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
@@ -300,7 +302,7 @@ impl MainPage {
 
     pub fn min_size(&self, data: &AppData) -> Size {
         Size::new(
-            720.0,
+            800.0,
             data.loopers.len() as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN) + BOTTOM_MARGIN,
         )
     }
@@ -486,7 +488,7 @@ impl BottomBarView {
         let size = self.metronome_button.draw(canvas, data, sender, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
-        let size = self.time_view.draw(h, data, canvas);
+        let size = self.time_view.draw(h, data, canvas, sender, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
         self.peak_view.draw(canvas, data, 160.0, h);
@@ -854,14 +856,21 @@ impl Button for MetronomeButton {
     }
 }
 
-struct TimeView {}
+struct TimeView {
+    play_pause_button: PlayPauseButton,
+    stop_button: StopButton,
+}
 
 impl TimeView {
     fn new() -> Self {
-        Self {}
+        Self {
+            play_pause_button: PlayPauseButton::new(),
+            stop_button: StopButton::new(),
+        }
     }
 
-    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas) -> Size {
+    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas,
+            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
         let mut ms = data.engine_state.time.to_ms();
         let mut negative = "";
         if ms < 0.0 {
@@ -892,7 +901,7 @@ impl TimeView {
 
         // TODO: should probably figure out what this bounds actually represents, since it does
         //       not seem to be a bounding box of the text as I would expect
-        x += time_blob.bounds().width() - 30.0;
+        x += 110.0;
 
         let current_beat = data
             .engine_state
@@ -914,8 +923,23 @@ impl TimeView {
             TextBlob::new(format!("{:03}.{}", measure, beat_of_measure), &font).unwrap();
 
         canvas.draw_text_blob(&measure_blob, Point::new(x, h - 12.0), &text_paint);
+        x += 80.0;
 
-        Size::new(x + measure_blob.bounds().width(), h)
+        // draw play controls
+        canvas.save();
+        canvas.translate((x, 0.0));
+
+        x += self.play_pause_button.draw(canvas, data, sender, last_event).width + 10.0;
+        canvas.restore();
+
+        canvas.save();
+        canvas.translate((x, 0.0));
+
+        x += self.stop_button.draw(canvas, data, sender, last_event).width;
+
+        canvas.restore();
+
+        Size::new(x, h)
     }
 }
 
@@ -1077,6 +1101,144 @@ impl PeakMeterView {
         }
 
         Size::new(w, h)
+    }
+}
+
+struct PlayPauseButton {
+    button_state: ButtonState,
+}
+
+impl PlayPauseButton {
+    fn new() -> Self {
+        Self {
+            button_state: ButtonState::Default,
+        }
+    }
+
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
+        let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
+
+        self.handle_event(
+            canvas,
+            &bounds,
+            |button| {
+                if button == MouseButton::Left {
+                    let command = if data.engine_state.engine_state == EngineState::Active {
+                        Command::Pause
+                    } else {
+                        Command::Start
+                    };
+
+                    if let Err(e) = sender.send(command) {
+                        error!("Failed to set engine state: {:?}", e);
+                    }
+                }
+            },
+            last_event,
+        );
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_color(Color::WHITE);
+        paint.set_style(Style::Fill);
+
+        if self.button_state != ButtonState::Default {
+            match self.button_state {
+                ButtonState::Hover => paint.set_color(Color::from_rgb(120, 120, 120)),
+                ButtonState::Pressed => paint.set_color(Color::from_rgb(60, 60, 60)),
+                ButtonState::Default => unreachable!(),
+            };
+        }
+
+        if data.engine_state.engine_state == EngineState::Stopped {
+            // draw play icon
+            let mut path = Path::new();
+            path.move_to((0.0, 0.0));
+            path.line_to((0.0, 20.0));
+            path.line_to((20.0, 10.0));
+            path.line_to((0.0, 0.0));
+            path.close();
+            canvas.draw_path(&path, &paint);
+        } else {
+            // draw pause button
+            let rect1 = Rect::new(0.0, 0.0, 7.5, 20.0);
+            let rect2 = Rect::new(12.5, 0.0, 20.0, 20.0);
+            canvas.draw_rect(&rect1, &paint);
+            canvas.draw_rect(&rect2, &paint);
+        }
+
+        Size::new(25.0, 25.0)
+    }
+}
+
+impl Button for PlayPauseButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.button_state = state;
+    }
+}
+
+struct StopButton {
+    button_state: ButtonState,
+}
+
+impl StopButton {
+    fn new() -> Self {
+        Self {
+            button_state: ButtonState::Default,
+        }
+    }
+
+    fn draw(
+        &mut self,
+        canvas: &mut Canvas,
+        _data: &AppData,
+        sender: &mut Sender<Command>,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
+        let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
+
+        self.handle_event(
+            canvas,
+            &bounds,
+            |button| {
+                if button == MouseButton::Left {
+                    if let Err(e) = sender.send(Command::Stop) {
+                        error!("Failed to stop engine: {:?}", e);
+                    }
+                }
+            },
+            last_event,
+        );
+
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_color(Color::WHITE);
+        paint.set_style(Style::Fill);
+
+        if self.button_state != ButtonState::Default {
+            match self.button_state {
+                ButtonState::Hover => paint.set_color(Color::from_rgb(120, 120, 120)),
+                ButtonState::Pressed => paint.set_color(Color::from_rgb(60, 60, 60)),
+                ButtonState::Default => unreachable!(),
+            };
+        }
+
+        let rect = Rect::new(0.0, 0.0, 20.0, 20.0);
+        canvas.draw_rect(&rect, &paint);
+
+        Size::new(25.0, 25.0)
+    }
+}
+
+impl Button for StopButton {
+    fn set_state(&mut self, state: ButtonState) {
+        self.button_state = state;
     }
 }
 
