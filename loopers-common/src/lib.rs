@@ -29,5 +29,6 @@ pub trait Host<'a> {
     fn remove_looper(&mut self, id: u32) -> Result<(), String>;
 
     fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
-        where 'a: 'b;
+    where
+        'a: 'b;
 }

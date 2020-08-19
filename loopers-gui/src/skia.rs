@@ -27,8 +27,13 @@ const INITIAL_HEIGHT: i32 = 600;
 
 const FPS: u64 = 60;
 
-fn create_surface(gr_context: &mut Context, pixel_format: &PixelFormat,
-                  fb_info: FramebufferInfo, size: PhysicalSize<u32>, scale_factor: f32) -> Surface {
+fn create_surface(
+    gr_context: &mut Context,
+    pixel_format: &PixelFormat,
+    fb_info: FramebufferInfo,
+    size: PhysicalSize<u32>,
+    scale_factor: f32,
+) -> Surface {
     let backend_render_target = BackendRenderTarget::new_gl(
         (
             size.width.try_into().unwrap(),
@@ -46,7 +51,8 @@ fn create_surface(gr_context: &mut Context, pixel_format: &PixelFormat,
         ColorType::RGBA8888,
         None,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     surface.canvas().scale((scale_factor, scale_factor));
 
@@ -96,7 +102,6 @@ pub fn skia_main(mut gui: Gui) {
 
     let mut surface = create_surface(&mut gr_context, &pixel_format, fb_info, size, sf);
 
-
     let inter_frame_time = Duration::from_micros(1_000_000 / FPS);
 
     let mut last_time = Instant::now();
@@ -120,8 +125,9 @@ pub fn skia_main(mut gui: Gui) {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::Resized(physical_size) => {
                     windowed_context.resize(physical_size);
-                    surface = create_surface(&mut gr_context, &pixel_format, fb_info, physical_size, sf);
-                },
+                    surface =
+                        create_surface(&mut gr_context, &pixel_format, fb_info, physical_size, sf);
+                }
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::KeyboardInput {
                     input:
@@ -191,13 +197,20 @@ pub fn skia_main(mut gui: Gui) {
 
                     if capture_debug_frame {
                         let mut recorder = PictureRecorder::new();
-                        let mut recording_canvas =
-                            recorder.begin_recording(Rect::from_iwh(
-                                size.width as i32, size.height as i32), None, None);
+                        let mut recording_canvas = recorder.begin_recording(
+                            Rect::from_iwh(size.width as i32, size.height as i32),
+                            None,
+                            None,
+                        );
 
                         recording_canvas.clear(Color::BLACK);
 
-                        gui.draw(&mut recording_canvas, size.width as f32, size.height as f32, last_event);
+                        gui.draw(
+                            &mut recording_canvas,
+                            size.width as f32,
+                            size.height as f32,
+                            last_event,
+                        );
 
                         let picture = recorder.finish_recording_as_picture(None).unwrap();
                         let data = picture.serialize();
@@ -213,7 +226,12 @@ pub fn skia_main(mut gui: Gui) {
                         capture_debug_frame = false;
                     }
 
-                    gui.draw(&mut canvas, size.width as f32, size.height as f32, last_event);
+                    gui.draw(
+                        &mut canvas,
+                        size.width as f32,
+                        size.height as f32,
+                        last_event,
+                    );
 
                     last_event = None;
 
@@ -252,8 +270,12 @@ pub fn skia_main(mut gui: Gui) {
                 windowed_context.swap_buffers().unwrap();
 
                 let min_size = gui.min_size();
-                windowed_context.window()
-                    .set_min_inner_size(Some(PhysicalSize::new(min_size.width as i32, min_size.height as i32)));
+                windowed_context
+                    .window()
+                    .set_min_inner_size(Some(PhysicalSize::new(
+                        min_size.width as i32,
+                        min_size.height as i32,
+                    )));
 
                 let frame_len = frame_times.len();
                 frame_times[frame_counter % frame_len] =

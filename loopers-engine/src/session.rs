@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::SaveLoadError;
 use loopers_common::api::SavedSession;
+use loopers_common::gui_channel::GuiSender;
 use std::sync::Arc;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -28,7 +29,7 @@ pub struct SessionSaver {
 }
 
 impl SessionSaver {
-    pub fn new() -> SessionSaver {
+    pub fn new(mut gui_channel: GuiSender) -> SessionSaver {
         let (tx, rx) = bounded(10);
 
         thread::spawn(move || {
@@ -37,9 +38,15 @@ impl SessionSaver {
             loop {
                 match rx.recv() {
                     Ok(SessionCommand::SaveSession(ms, metronome_volume, path)) => {
-                        Self::execute_save_session(ms, metronome_volume, (*path).clone(), &loopers)
-                            // TODO: handle this properly
-                            .unwrap();
+                        Self::execute_save_session(
+                            ms,
+                            metronome_volume,
+                            (*path).clone(),
+                            &loopers,
+                            &mut gui_channel,
+                        )
+                        // TODO: handle this properly
+                        .unwrap();
                     }
                     Ok(SessionCommand::AddLooper(id, tx)) => {
                         loopers.insert(id, tx);
@@ -63,6 +70,7 @@ impl SessionSaver {
         metronome_volume: u8,
         path: PathBuf,
         loopers: &HashMap<u32, Sender<looper::ControlMessage>>,
+        gui_channel: &mut GuiSender,
     ) -> Result<(), SaveLoadError> {
         let now = Local::now();
         let mut path = PathBuf::from(&path);
@@ -118,6 +126,11 @@ impl SessionSaver {
                     e
                 )));
             }
+        }
+
+        if let Err(_) = write!(gui_channel, "Session saved to {}", path.to_string_lossy())
+            .and_then(|_| gui_channel.flush()) {
+            warn!("failed to write gui message");
         }
 
         Ok(())

@@ -264,7 +264,11 @@ mod tests {
         time += buf_size as i64;
 
         // first give the part before the state change (which will be recorded)
-        l.process_output(FrameTime(time), &mut [&mut o_l[0..100], &mut o_r[0..100]], false);
+        l.process_output(
+            FrameTime(time),
+            &mut [&mut o_l[0..100], &mut o_r[0..100]],
+            false,
+        );
         process_until_done(&mut l);
 
         input_left = vec![2f32; buf_size];
@@ -284,7 +288,7 @@ mod tests {
         l.process_output(
             FrameTime(time),
             &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]],
-            false
+            false,
         );
         process_until_done(&mut l);
 
@@ -865,7 +869,8 @@ impl LooperBackend {
                 self.samples.clear();
                 self.in_time = FrameTime(0);
                 self.out_time = FrameTime(0);
-                self.gui_sender.send_update(GuiCommand::ClearLooper(self.id));
+                self.gui_sender
+                    .send_update(GuiCommand::ClearLooper(self.id));
             }
             ControlMessage::SetTime(time) => {
                 self.out_time = FrameTime(time.0.max(0));
@@ -880,7 +885,8 @@ impl LooperBackend {
             }
             ControlMessage::Deleted => {
                 info!("Looper was deleted");
-                self.gui_sender.send_update(GuiCommand::RemoveLooper(self.id));
+                self.gui_sender
+                    .send_update(GuiCommand::RemoveLooper(self.id));
                 return false;
             }
             ControlMessage::Serialize(path, channel) => {
@@ -1391,8 +1397,11 @@ impl Looper {
         let backoff = crossbeam_utils::Backoff::new();
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
-                if (solo && self.mode == LooperMode::Soloed) ||
-                    (!solo && (self.mode == LooperMode::Playing || self.mode == LooperMode::Overdubbing)) {
+                if (solo && self.mode == LooperMode::Soloed)
+                    || (!solo
+                        && (self.mode == LooperMode::Playing
+                            || self.mode == LooperMode::Overdubbing))
+                {
                     outputs[0][out_idx] += l;
                     outputs[1][out_idx] += r;
                 }

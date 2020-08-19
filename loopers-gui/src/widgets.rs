@@ -1,6 +1,4 @@
-use crate::{AppData, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
-use crossbeam_channel::Sender;
-use loopers_common::api::Command;
+use crate::{AppData, Controller, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
 use skia_safe::paint::Style;
 use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
@@ -169,7 +167,7 @@ pub trait Modal {
         w: f32,
         h: f32,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        sender: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size;
 }
@@ -200,12 +198,12 @@ impl ModalManager {
         w: f32,
         h: f32,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
         let mut cur = self.current.take();
         if let Some(modal) = &mut cur {
-            modal.draw(self, canvas, w, h, data, sender, last_event);
+            modal.draw(self, canvas, w, h, data, controller, last_event);
         }
 
         self.current = cur;
@@ -219,7 +217,7 @@ pub enum TextEditState {
 }
 
 pub trait TextEditable {
-    fn commit(&mut self, sender: &mut Sender<Command>);
+    fn commit(&mut self, controller: &mut Controller);
 
     fn start_editing(&mut self, initial: String) {
         *self.get_edit_state() = TextEditState::Editing(true, initial)
@@ -236,7 +234,7 @@ pub trait TextEditable {
         canvas: &mut Canvas,
         font: &Font,
         bounds: &Rect,
-        sender: &mut Sender<Command>,
+        sender: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
         let mut commit = false;

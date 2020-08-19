@@ -12,16 +12,16 @@ extern crate log;
 
 use clap::{App, Arg};
 use crossbeam_channel::bounded;
-use loopers_common::{config, Host};
+use jack::{AudioOut, Client, Port, ProcessScope};
 use loopers_common::config::MidiMapping;
 use loopers_common::gui_channel::GuiSender;
+use loopers_common::{config, Host};
 use loopers_engine::midi::MidiEvent;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
+use std::collections::HashMap;
 use std::fs::File;
 use std::{fs, io};
-use jack::{Client, AudioOut, Port, ProcessScope};
-use std::collections::HashMap;
 
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -59,17 +59,19 @@ pub struct JackHost<'a> {
     ps: Option<&'a ProcessScope>,
 }
 
-impl <'a> Host<'a> for JackHost<'a> {
+impl<'a> Host<'a> for JackHost<'a> {
     fn add_looper(&mut self, id: u32) -> Result<(), String> {
         if !self.looper_ports.contains_key(&id) {
-            let l = self.client.register_port(&format!("loop{}_out_l", id),
-                                              jack::AudioOut::default())
+            let l = self
+                .client
+                .register_port(&format!("loop{}_out_l", id), jack::AudioOut::default())
                 .map_err(|e| format!("could not create jack port: {:?}", e))?;
-            let r = self.client.register_port(&format!("loop{}_out_r", id),
-                                              jack::AudioOut::default())
+            let r = self
+                .client
+                .register_port(&format!("loop{}_out_r", id), jack::AudioOut::default())
                 .map_err(|e| format!("could not create jack port: {:?}", e))?;
 
-            self.looper_ports.insert(id, [l , r]);
+            self.looper_ports.insert(id, [l, r]);
         }
 
         Ok(())
@@ -77,16 +79,21 @@ impl <'a> Host<'a> for JackHost<'a> {
 
     fn remove_looper(&mut self, id: u32) -> Result<(), String> {
         if let Some([l, r]) = self.looper_ports.remove(&id) {
-            self.client.unregister_port(l)
+            self.client
+                .unregister_port(l)
                 .map_err(|e| format!("could not remove jack port: {:?}", e))?;
-            self.client.unregister_port(r)
+            self.client
+                .unregister_port(r)
                 .map_err(|e| format!("could not remove jack port: {:?}", e))?;
         }
 
         Ok(())
     }
 
-    fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]> where 'a: 'b {
+    fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
+    where
+        'a: 'b,
+    {
         let ps = self.ps?;
         let [l, r] = self.looper_ports.get_mut(&id)?;
         Some([l.as_mut_slice(ps), r.as_mut_slice(ps)])
@@ -116,7 +123,10 @@ fn main() {
 
     let (new_gui, gui_sender) = if matches.is_present("gui") {
         let (sender, receiver) = GuiSender::new();
-        (Some(Gui::new(receiver, gui_to_engine_sender)), sender)
+        (
+            Some(Gui::new(receiver, gui_to_engine_sender, sender.clone())),
+            sender,
+        )
     } else {
         (None, GuiSender::disconnected())
     };
@@ -206,7 +216,6 @@ fn main() {
         restore,
     );
 
-
     let process_callback =
         move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
             let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
@@ -239,7 +248,6 @@ fn main() {
                 looper_ports: &mut looper_ports,
                 ps: Some(ps),
             };
-
 
             let midi_events: Vec<MidiEvent> = midi_in
                 .iter(ps)

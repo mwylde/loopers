@@ -17,6 +17,7 @@ use loopers_common::api::{
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
+use loopers_common::Host;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::f32::NEG_INFINITY;
@@ -26,7 +27,6 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use loopers_common::Host;
 
 mod error;
 pub mod looper;
@@ -109,7 +109,7 @@ impl Engine {
             gui_sender: gui_sender.clone(),
             command_input,
 
-            loopers: vec![Looper::new(0, gui_sender).start()],
+            loopers: vec![Looper::new(0, gui_sender.clone()).start()],
             active: 0,
             id_counter: 1,
 
@@ -124,7 +124,7 @@ impl Engine {
             is_learning: false,
             last_midi: None,
 
-            session_saver: SessionSaver::new(),
+            session_saver: SessionSaver::new(gui_sender),
 
             tmp_left: vec![0f64; 2048],
             tmp_right: vec![0f64; 2048],
@@ -244,11 +244,15 @@ impl Engine {
         ) {
             if triggered {
                 looper.handle_command(lc);
-            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper) {
-                Engine::add_trigger(triggers,trigger.clone());
+            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper)
+            {
+                Engine::add_trigger(triggers, trigger.clone());
 
                 gui_sender.send_update(GuiCommand::AddTrigger(
-                    looper.id, trigger.triggered_at(), lc));
+                    looper.id,
+                    trigger.triggered_at(),
+                    lc,
+                ));
             } else {
                 looper.handle_command(lc);
             }
@@ -268,11 +272,13 @@ impl Engine {
                 }
             }
             LooperTarget::Index(idx) => {
-                if let Some(l) = self.loopers
+                if let Some(l) = self
+                    .loopers
                     .iter_mut()
                     .filter(|l| !l.deleted)
                     .skip(idx as usize)
-                    .next() {
+                    .next()
+                {
                     selected = Some(l.id);
                     handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
                 } else {
@@ -302,7 +308,11 @@ impl Engine {
         }
     }
 
-    fn load_session<'a, H: Host<'a>>(&mut self, host: &mut H, path: &Path) -> Result<(), SaveLoadError> {
+    fn load_session<'a, H: Host<'a>>(
+        &mut self,
+        host: &mut H,
+        path: &Path,
+    ) -> Result<(), SaveLoadError> {
         let mut file = File::open(&path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -343,7 +353,12 @@ impl Engine {
         Ok(())
     }
 
-    fn handle_command<'a, H: Host<'a>>(&mut self, host: &mut H, command: &Command, triggered: bool) {
+    fn handle_command<'a, H: Host<'a>>(
+        &mut self,
+        host: &mut H,
+        command: &Command,
+        triggered: bool,
+    ) {
         use Command::*;
         match command {
             Looper(lc, target) => {
@@ -380,7 +395,10 @@ impl Engine {
                 self.active = self.id_counter;
                 // TODO: better error handling
                 if let Err(e) = host.add_looper(self.id_counter) {
-                    error!("failed to create host port for looper {}: {}", self.id_counter, e);
+                    error!(
+                        "failed to create host port for looper {}: {}",
+                        self.id_counter, e
+                    );
                 }
                 self.id_counter += 1;
             }
@@ -459,8 +477,14 @@ impl Engine {
         }
     }
 
-    fn perform_looper_io<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]],
-                                          time: FrameTime, idx_range: Range<usize>, solo: bool) {
+    fn perform_looper_io<'a, H: Host<'a>>(
+        &mut self,
+        host: &mut H,
+        in_bufs: &[&[f32]],
+        time: FrameTime,
+        idx_range: Range<usize>,
+        solo: bool,
+    ) {
         if time.0 >= 0 {
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted {
@@ -475,19 +499,24 @@ impl Engine {
                     looper.process_output(time, &mut o, solo);
 
                     // copy the output to the looper input in the host, if we can find one
-                    if let Some([l , r]) = host.output_for_looper(looper.id)  {
-                        l.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                    if let Some([l, r]) = host.output_for_looper(looper.id) {
+                        l.iter_mut()
+                            .zip(&self.tmp_left[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
-                        r.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                        r.iter_mut()
+                            .zip(&self.tmp_left[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
                     }
 
                     // copy the output to the our main output
-                    self.output_left.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                    self.output_left
+                        .iter_mut()
+                        .zip(&self.tmp_left[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
-                    self.output_right.iter_mut().zip(&self.tmp_left[idx_range.clone()])
+                    self.output_right
+                        .iter_mut()
+                        .zip(&self.tmp_left[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
-
 
                     looper.process_input(
                         time.0 as u64,
@@ -555,8 +584,13 @@ impl Engine {
                         (trigger_at - time) as usize
                     );
 
-                    self.perform_looper_io(host, &in_bufs, FrameTime(time as i64),
-                                           idx_range.clone(), solo);
+                    self.perform_looper_io(
+                        host,
+                        &in_bufs,
+                        FrameTime(time as i64),
+                        idx_range.clone(),
+                        solo,
+                    );
                     time = trigger_at;
                     idx = idx_range.end;
                 }
@@ -564,8 +598,13 @@ impl Engine {
                 self.handle_command(host, &trigger.0.command, true);
             } else {
                 // there are no more triggers for this period, so just process the rest and finish
-                self.perform_looper_io(host, &in_bufs, FrameTime(time as i64),
-                                       idx..frames as usize, solo);
+                self.perform_looper_io(
+                    host,
+                    &in_bufs,
+                    FrameTime(time as i64),
+                    idx..frames as usize,
+                    solo,
+                );
                 time = next_time;
             }
         }
@@ -601,7 +640,8 @@ impl Engine {
         out_r: &mut [f32],
         mut met_bufs: [&mut [f32]; 2],
         frames: u64,
-        midi_events: &[MidiEvent]) {
+        midi_events: &[MidiEvent],
+    ) {
         // Convert midi events to commands
         if !self.is_learning {
             self.commands_from_midi(host, midi_events);
@@ -628,7 +668,6 @@ impl Engine {
             self.session_saver.remove_looper(l.id);
         }
         self.loopers.retain(|l| !l.deleted);
-
 
         // ensure out internal output buffer is big enough (this should only allocate when the
         // buffer size is increased)
@@ -670,8 +709,12 @@ impl Engine {
 
         // copy the input for the active looper
         if let Some([l, r]) = host.output_for_looper(self.active) {
-            l.iter_mut().zip(in_bufs[0].iter()).for_each(|(a, b)| *a += *b);
-            r.iter_mut().zip(in_bufs[1].iter()).for_each(|(a, b)| *a += *b);
+            l.iter_mut()
+                .zip(in_bufs[0].iter())
+                .for_each(|(a, b)| *a += *b);
+            r.iter_mut()
+                .zip(in_bufs[1].iter())
+                .for_each(|(a, b)| *a += *b);
         }
 
         for i in 0..frames as usize {

@@ -9,19 +9,23 @@ mod widgets;
 
 use skia_safe::{Canvas, Size};
 
-use crossbeam_channel::{Sender, TryRecvError};
+use crate::app::MainPage;
+use crossbeam_channel::{Sender, TryRecvError, TrySendError};
 use glutin::dpi::PhysicalPosition;
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode};
 use loopers_common::gui_channel::{
-    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, Waveform, WAVEFORM_DOWNSAMPLE,
+    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform,
+    WAVEFORM_DOWNSAMPLE,
 };
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::io::Write;
+use std::time::{Duration, Instant};
 use winit::event::MouseButton;
 
-use crate::app::MainPage;
-use loopers_common::api::{Command, FrameTime, LooperMode, LooperCommand};
-
 const SHOW_BUTTONS: bool = true;
+
+pub const MESSAGE_DISPLAY_TIME_SECS: u64 = 4;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MouseEventType {
@@ -57,13 +61,15 @@ pub struct LooperData {
     last_time: FrameTime,
     state: LooperMode,
     waveform: Waveform,
-    trigger: Option<(FrameTime, LooperCommand)>
+    trigger: Option<(FrameTime, LooperCommand)>,
 }
-
 
 impl LooperData {
     fn mode_with_solo(&self, data: &AppData) -> LooperMode {
-        let solo = data.loopers.iter().any(|(_, l)| l.state == LooperMode::Soloed);
+        let solo = data
+            .loopers
+            .iter()
+            .any(|(_, l)| l.state == LooperMode::Soloed);
         if solo && self.state != LooperMode::Soloed {
             LooperMode::Muted
         } else {
@@ -71,24 +77,87 @@ impl LooperData {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct Log {
+    cur: Option<(Instant, LogMessage)>,
+    queue: VecDeque<LogMessage>,
+}
+
+impl Log {
+    fn new() -> Self {
+        Log {
+            cur: None,
+            queue: VecDeque::new(),
+        }
+    }
+
+    fn add(&mut self, message: LogMessage) {
+        if self.cur.is_none() {
+            self.cur = Some((Instant::now(), message));
+        } else {
+            self.queue.push_back(message);
+        }
+    }
+
+    fn update(&mut self) {
+        if let Some((t, _)) = &self.cur {
+            if Instant::now() - *t > Duration::from_secs(MESSAGE_DISPLAY_TIME_SECS) {
+                self.cur = self.queue.pop_front().map(|m| (Instant::now(), m));
+            }
+        }
+    }
+}
+
+pub struct Controller {
+    command_sender: Sender<Command>,
+    gui_sender: GuiSender,
+}
+
+impl Controller {
+    pub fn send_command(&mut self, command: Command, err: &str) {
+        match self.command_sender.try_send(command) {
+            Ok(_) => {}
+            Err(TrySendError::Full(_)) => {
+                self.log(err);
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                // TODO: handle these cases better
+                panic!("lost connection to engine");
+            }
+        }
+    }
+
+    pub fn log(&mut self, msg: &str) {
+        if let Err(_) = write!(self.gui_sender, "{}", msg).and_then(|_| self.gui_sender.flush()) {
+            error!("Failed to write message to gui");
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppData {
     engine_state: EngineStateSnapshot,
     loopers: HashMap<u32, LooperData>,
     show_buttons: bool,
+    messages: Log,
 }
 
 pub struct Gui {
     state: AppData,
     receiver: GuiReceiver,
-    sender: Sender<Command>,
+    controller: Controller,
     initialized: bool,
 
     root: MainPage,
 }
 
 impl Gui {
-    pub fn new(receiver: GuiReceiver, sender: Sender<Command>) -> Gui {
+    pub fn new(
+        receiver: GuiReceiver,
+        command_sender: Sender<Command>,
+        gui_sender: GuiSender,
+    ) -> Gui {
         Gui {
             state: AppData {
                 engine_state: EngineStateSnapshot {
@@ -105,10 +174,14 @@ impl Gui {
                 },
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,
+                messages: Log::new(),
             },
             receiver,
 
-            sender,
+            controller: Controller {
+                command_sender,
+                gui_sender,
+            },
 
             initialized: false,
             root: MainPage::new(),
@@ -220,6 +293,21 @@ impl Gui {
                 }
             }
         }
+
+        // clear out old log messages
+        self.state.messages.update();
+        // read log messages
+        match self.receiver.log_channel.try_recv() {
+            Ok(log) => {
+                self.state.messages.add(log);
+            }
+            Err(TryRecvError::Empty) => {
+                // do nothing
+            }
+            Err(TryRecvError::Disconnected) => {
+                panic!("Channel disconnected");
+            }
+        }
     }
 
     pub fn min_size(&self) -> Size {
@@ -229,7 +317,7 @@ impl Gui {
     pub fn draw(&mut self, canvas: &mut Canvas, w: f32, h: f32, last_event: Option<GuiEvent>) {
         if self.initialized {
             self.root
-                .draw(canvas, &self.state, w, h, &mut self.sender, last_event);
+                .draw(canvas, &self.state, w, h, &mut self.controller, last_event);
         }
     }
 }

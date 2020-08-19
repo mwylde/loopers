@@ -1,18 +1,18 @@
-use crate::{AppData, GuiEvent, LooperData};
+use crate::{AppData, Controller, GuiEvent, LooperData};
 
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use crossbeam_channel::Sender;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
+use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
-use skia_safe::*;
 use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
 use skia_safe::path::Path;
 use skia_safe::Rect;
+use skia_safe::*;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
@@ -21,7 +21,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::event::MouseButton;
-use loopers_common::gui_channel::EngineState;
 
 lazy_static! {
     static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
@@ -162,7 +161,7 @@ impl AddButton {
         &mut self,
         canvas: &mut Canvas,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
         canvas.save();
@@ -179,8 +178,7 @@ impl AddButton {
 
         let on_click = |button: MouseButton| {
             if button == MouseButton::Left {
-                // TODO: don't unwrap
-                sender.send(Command::AddLooper).unwrap();
+                controller.send_command(Command::AddLooper, "Failed to add looper");
             };
         };
 
@@ -225,7 +223,7 @@ impl DeleteButton {
         canvas: &mut Canvas,
         looper: &LooperData,
         size: f32,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
         let mut p = Path::new();
@@ -236,14 +234,19 @@ impl DeleteButton {
 
         let on_click = |button: MouseButton| {
             if button == MouseButton::Left {
-                if let Err(e) = sender.send(
-                    Command::Looper(LooperCommand::Delete, LooperTarget::Id(looper.id))) {
-                    error!("Failed to send loop delete command: {:?}", e);
-                }
+                controller.send_command(
+                    Command::Looper(LooperCommand::Delete, LooperTarget::Id(looper.id)),
+                    "Failed to delete looper",
+                );
             };
         };
 
-        self.handle_event(canvas, &Rect::from_size((size, size)).with_outset((5.0, 5.0)), on_click, last_event);
+        self.handle_event(
+            canvas,
+            &Rect::from_size((size, size)).with_outset((5.0, 5.0)),
+            on_click,
+            last_event,
+        );
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -313,7 +316,7 @@ impl MainPage {
         data: &AppData,
         w: f32,
         h: f32,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
         // add views for new loopers
@@ -335,22 +338,15 @@ impl MainPage {
             self.loopers.remove(&id);
         }
 
-        self.modal_manager.draw(
-            canvas,
-            w as f32,
-            h as f32,
-            data,
-            sender,
-            last_event,
-        );
+        self.modal_manager
+            .draw(canvas, w as f32, h as f32, data, controller, last_event);
 
         let mut y = 0.0;
         for (id, looper) in self.loopers.iter_mut() {
             canvas.save();
             canvas.translate(Vector::new(0.0, y));
 
-            let size = looper.draw(canvas, data, &data.loopers[id],
-                                   w, sender, last_event);
+            let size = looper.draw(canvas, data, &data.loopers[id], w, controller, last_event);
 
             y += size.height + LOOPER_MARGIN;
 
@@ -418,7 +414,7 @@ impl MainPage {
         // draw the looper add button if we can fit more on the screen
         let max_loopers = ((h - BOTTOM_MARGIN) / (LOOPER_MARGIN + LOOPER_HEIGHT)).floor() as usize;
         if self.loopers.len() < max_loopers {
-            self.add_button.draw(canvas, data, sender, last_event);
+            self.add_button.draw(canvas, data, controller, last_event);
         }
 
         // draw the bottom bars
@@ -426,7 +422,8 @@ impl MainPage {
         if data.show_buttons {
             canvas.save();
             canvas.translate((10.0, bottom - 40.0));
-            self.bottom_buttons.draw(canvas, sender, last_event);
+            self.bottom_buttons
+                .draw(canvas, data, controller, last_event);
             canvas.restore();
             bottom -= 40.0;
         };
@@ -440,7 +437,7 @@ impl MainPage {
             30.0,
             canvas,
             &mut self.modal_manager,
-            sender,
+            controller,
             last_event,
         );
         canvas.restore();
@@ -473,22 +470,24 @@ impl BottomBarView {
         h: f32,
         canvas: &mut Canvas,
         _modal_manager: &mut ModalManager,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
-        let size = self.tempo_view.draw(canvas, data, sender, last_event);
+        let size = self.tempo_view.draw(canvas, data, controller, last_event);
         canvas.save();
         canvas.translate((size.width.round() + 20.0, 0.0));
 
         let size = self
             .metronome_view
-            .draw(h, data, canvas, sender, last_event);
+            .draw(h, data, canvas, controller, last_event);
         canvas.translate((size.width.round(), 0.0));
 
-        let size = self.metronome_button.draw(canvas, data, sender, last_event);
+        let size = self
+            .metronome_button
+            .draw(canvas, data, controller, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
-        let size = self.time_view.draw(h, data, canvas, sender, last_event);
+        let size = self.time_view.draw(h, data, canvas, controller, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
         self.peak_view.draw(canvas, data, 160.0, h);
@@ -514,7 +513,7 @@ impl TempoView {
         &mut self,
         canvas: &mut Canvas,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let font = Font::new(Typeface::default(), 20.0);
@@ -563,7 +562,7 @@ impl TempoView {
 
         canvas.draw_str(text, Point::new(15.0, 18.0), &font, &text_paint);
 
-        self.draw_edit(canvas, &font, &bounds, sender, last_event);
+        self.draw_edit(canvas, &font, &bounds, controller, last_event);
 
         bounds.size()
     }
@@ -576,14 +575,12 @@ impl Button for TempoView {
 }
 
 impl TextEditable for TempoView {
-    fn commit(&mut self, sender: &mut Sender<Command>) {
+    fn commit(&mut self, controller: &mut Controller) {
         if let TextEditState::Editing(_, s) = &self.edit_state {
             if let Ok(tempo) = f32::from_str(&s) {
-                if let Err(e) = sender.send(Command::SetTempoBPM(tempo)) {
-                    error!("Failed to send tempo update: {:?}", e);
-                }
+                controller.send_command(Command::SetTempoBPM(tempo), "Failed to set tempo");
             } else if !s.is_empty() {
-                error!("invalid tempo {}", s);
+                controller.log(&format!("Tempo {} is not valid", s));
             }
         }
 
@@ -619,7 +616,7 @@ impl MetronomeView {
         h: f32,
         data: &AppData,
         canvas: &mut Canvas,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let upper = data.engine_state.metric_structure.time_signature.upper;
@@ -741,7 +738,7 @@ impl MetronomeView {
             canvas.draw_str(&lower.to_string(), (x, 20.0), &font, &text_paint);
         }
 
-        self.draw_edit(canvas, &font, &bounds, sender, last_event);
+        self.draw_edit(canvas, &font, &bounds, controller, last_event);
 
         bounds.size()
     }
@@ -754,7 +751,7 @@ impl Button for MetronomeView {
 }
 
 impl TextEditable for MetronomeView {
-    fn commit(&mut self, sender: &mut Sender<Command>) {
+    fn commit(&mut self, controller: &mut Controller) {
         if let TextEditState::Editing(_, s) = &self.edit_state {
             let pat = Regex::new(r"(\d\d?)\w*/\w*(\d\d?)").unwrap();
             if let Some(captures) = pat.captures(s) {
@@ -762,14 +759,15 @@ impl TextEditable for MetronomeView {
                 let lower = u8::from_str(captures.get(2).unwrap().as_str()).unwrap();
 
                 if TimeSignature::new(upper, lower).is_some() {
-                    if let Err(e) = sender.send(Command::SetTimeSignature(upper, lower)) {
-                        error!("Failed to send time signature update: {:?}", e);
-                    }
+                    controller.send_command(
+                        Command::SetTimeSignature(upper, lower),
+                        "Failed to update time signature",
+                    );
                 } else {
-                    error!("Invalid time signature {}", s);
+                    controller.log(&format!("Time signature {} is not valid", s));
                 }
             } else {
-                error!("Invalid time signature {}", s);
+                controller.log(&format!("Time signature {} is not valid", s));
             }
         }
 
@@ -801,7 +799,7 @@ impl MetronomeButton {
         &mut self,
         canvas: &mut Canvas,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let mut paint = Paint::default();
@@ -821,9 +819,10 @@ impl MetronomeButton {
                         0
                     };
 
-                    if let Err(e) = sender.send(Command::SetMetronomeLevel(vol)) {
-                        error!("Failed to set metronome volume: {:?}", e);
-                    }
+                    controller.send_command(
+                        Command::SetMetronomeLevel(vol),
+                        "Failed to set metronome volume",
+                    );
                 }
             },
             last_event,
@@ -869,8 +868,14 @@ impl TimeView {
         }
     }
 
-    fn draw(&mut self, h: f32, data: &AppData, canvas: &mut Canvas,
-            sender: &mut Sender<Command>, last_event: Option<GuiEvent>) -> Size {
+    fn draw(
+        &mut self,
+        h: f32,
+        data: &AppData,
+        canvas: &mut Canvas,
+        controller: &mut Controller,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let mut ms = data.engine_state.time.to_ms();
         let mut negative = "";
         if ms < 0.0 {
@@ -899,8 +904,6 @@ impl TimeView {
         let mut x = 10.0;
         canvas.draw_text_blob(&time_blob, Point::new(x, h - 12.0), &text_paint);
 
-        // TODO: should probably figure out what this bounds actually represents, since it does
-        //       not seem to be a bounding box of the text as I would expect
         x += 110.0;
 
         let current_beat = data
@@ -929,13 +932,20 @@ impl TimeView {
         canvas.save();
         canvas.translate((x, 0.0));
 
-        x += self.play_pause_button.draw(canvas, data, sender, last_event).width + 10.0;
+        x += self
+            .play_pause_button
+            .draw(canvas, data, controller, last_event)
+            .width
+            + 10.0;
         canvas.restore();
 
         canvas.save();
         canvas.translate((x, 0.0));
 
-        x += self.stop_button.draw(canvas, data, sender, last_event).width;
+        x += self
+            .stop_button
+            .draw(canvas, data, controller, last_event)
+            .width;
 
         canvas.restore();
 
@@ -1119,7 +1129,7 @@ impl PlayPauseButton {
         &mut self,
         canvas: &mut Canvas,
         data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
@@ -1135,9 +1145,7 @@ impl PlayPauseButton {
                         Command::Start
                     };
 
-                    if let Err(e) = sender.send(command) {
-                        error!("Failed to set engine state: {:?}", e);
-                    }
+                    controller.send_command(command, "Failed to send command to engine");
                 }
             },
             last_event,
@@ -1198,7 +1206,7 @@ impl StopButton {
         &mut self,
         canvas: &mut Canvas,
         _data: &AppData,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
@@ -1208,9 +1216,7 @@ impl StopButton {
             &bounds,
             |button| {
                 if button == MouseButton::Left {
-                    if let Err(e) = sender.send(Command::Stop) {
-                        error!("Failed to stop engine: {:?}", e);
-                    }
+                    controller.send_command(Command::Stop, "Failed to stop engine");
                 }
             },
             last_event,
@@ -1246,7 +1252,6 @@ impl Button for StopButton {
 enum BottomButtonBehavior {
     Save,
     Load,
-    Settings,
 }
 
 struct BottomButtonView {
@@ -1260,10 +1265,6 @@ impl BottomButtonView {
             buttons: vec![
                 (Save, ControlButton::new("save", Color::WHITE, None, 30.0)),
                 (Load, ControlButton::new("load", Color::WHITE, None, 30.0)),
-                (
-                    Settings,
-                    ControlButton::new("settings", Color::WHITE, None, 30.0),
-                ),
             ],
         }
     }
@@ -1271,7 +1272,8 @@ impl BottomButtonView {
     fn draw(
         &mut self,
         canvas: &mut Canvas,
-        sender: &mut Sender<Command>,
+        data: &AppData,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         let mut x = 0.0;
@@ -1285,13 +1287,12 @@ impl BottomButtonView {
                         BottomButtonBehavior::Save => {
                             if let Some(mut home_dir) = dirs::home_dir() {
                                 home_dir.push("looper-sessions");
-                                if let Err(e) =
-                                    sender.send(Command::SaveSession(Arc::new(home_dir)))
-                                {
-                                    error!("failed to send save command to engine: {:?}", e);
-                                }
+                                controller.send_command(
+                                    Command::SaveSession(Arc::new(home_dir)),
+                                    "failed to send save command to engine",
+                                );
                             } else {
-                                error!("Could not determine home dir");
+                                controller.log("Could not determine home dir");
                             }
                         }
                         BottomButtonBehavior::Load => {
@@ -1307,31 +1308,68 @@ impl BottomButtonView {
                                 &dir,
                                 Some((&["*.loopers"][..], "loopers project files")),
                             ) {
-                                if let Err(e) =
-                                    sender.send(Command::LoadSession(Arc::new(PathBuf::from(file))))
-                                {
-                                    error!("failed to send load command to engine: {:?}", e);
-                                }
+                                controller.send_command(
+                                    Command::LoadSession(Arc::new(PathBuf::from(file))),
+                                    "Failed to send load command to engine",
+                                );
                             }
                         }
-                        BottomButtonBehavior::Settings => {}
                     };
                 }
             };
 
             let size = button.draw(canvas, false, on_click, last_event);
             x += size.width + 10.0;
+
             canvas.restore();
         }
 
+        canvas.save();
+        canvas.translate((x, 0.0));
+        x += LogMessageView::draw(canvas, data).width;
+        canvas.restore();
+
         Size::new(x, 40.0)
+    }
+}
+
+struct LogMessageView {}
+
+impl LogMessageView {
+    fn draw(canvas: &mut Canvas, data: &AppData) -> Size {
+        let msg = data
+            .messages
+            .cur
+            .as_ref()
+            .map(|(_, l)| l.as_str());
+        if let Some(msg) = msg.as_ref() {
+            let font = Font::new(Typeface::default(), Some(14.0));
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_color(Color::WHITE);
+
+            if msg.len() > 0 {
+                let blob = TextBlob::new(msg, &font).unwrap();
+                let text_size = font.measure_str(msg, None).1.size();
+
+                canvas.draw_text_blob(blob, Point::new(10.0, 20.0), &paint);
+
+                text_size
+            } else {
+                Size::new(0.0, 0.03)
+            }
+        } else {
+            Size::new(0.0, 0.0)
+        }
     }
 }
 
 struct LooperView {
     id: u32,
     waveform_view: WaveformView,
-    buttons: Vec<Vec<Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size>>>,
+    buttons: Vec<
+        Vec<Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size>>,
+    >,
     state: ButtonState,
     active_button: ActiveButton,
     delete_button: DeleteButton,
@@ -1349,9 +1387,11 @@ impl LooperView {
                     Self::new_state_button(LooperMode::Recording, "record", button_height),
                     Self::new_state_button(LooperMode::Soloed, "solo", button_height),
                     Self::new_command_button(
-                        "clear", Color::YELLOW,
+                        "clear",
+                        Color::YELLOW,
                         Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
-                        button_height),
+                        button_height,
+                    ),
                 ],
                 vec![
                     Self::new_state_button(LooperMode::Overdubbing, "overdub", button_height),
@@ -1365,65 +1405,68 @@ impl LooperView {
     }
 
     #[allow(dead_code)]
-    fn new_command_button(name: &str, color: Color, command: Command, h: f32)
-                          -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size>
-    {
+    fn new_command_button(
+        name: &str,
+        color: Color,
+        command: Command,
+        h: f32,
+    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+        let mut button = ControlButton::new(name, color, Some(100.0), h);
 
-        let mut button = ControlButton::new(
-            name,
-            color,
-            Some(100.0),
-            h,
-        );
-
-        Box::new(move |canvas, _, sender, last_event| {
-            button.draw(canvas, false, |button| {
-                if button == MouseButton::Left {
-                    if let Err(e) = sender.send(command.clone()) {
-                        error!("Failed to send command: {:?}", e);
+        Box::new(move |canvas, _, controller, last_event| {
+            button.draw(
+                canvas,
+                false,
+                |button| {
+                    if button == MouseButton::Left {
+                        controller
+                            .send_command(command.clone(), "Failed to send command to engine");
                     }
-                }
-            }, last_event)
+                },
+                last_event,
+            )
         })
     }
 
-    fn new_state_button(mode: LooperMode, name: &str, h: f32)
-        -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Sender<Command>, Option<GuiEvent>) -> Size> {
-        let mut button = ControlButton::new(
-            name,
-            color_for_mode(mode),
-            Some(100.0),
-            h,
-        );
+    fn new_state_button(
+        mode: LooperMode,
+        name: &str,
+        h: f32,
+    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+        let mut button = ControlButton::new(name, color_for_mode(mode), Some(100.0), h);
 
-        Box::new(move |canvas, looper, sender, last_event| {
-            button.draw(canvas, looper.state == mode, |button| {
-                if button == MouseButton::Left {
-                    use LooperMode::*;
-                    let command = match (looper.state, mode) {
-                        (Recording, Recording) => Some(LooperCommand::Overdub),
-                        (_, Recording) => Some(LooperCommand::Record),
-                        (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
-                        (_, Overdubbing) => Some(LooperCommand::Overdub),
-                        (Muted, Muted) => Some(LooperCommand::Play),
-                        (_, Muted) => Some(LooperCommand::Mute),
-                        (Soloed, Soloed) => Some(LooperCommand::Play),
-                        (_, Soloed) => Some(LooperCommand::Solo),
-                        (s, t) => {
-                            warn!("unhandled button state ({:?}, {:?})", s, t);
-                            None
-                        }
-                    };
+        Box::new(move |canvas, looper, controller, last_event| {
+            button.draw(
+                canvas,
+                looper.state == mode,
+                |button| {
+                    if button == MouseButton::Left {
+                        use LooperMode::*;
+                        let command = match (looper.state, mode) {
+                            (Recording, Recording) => Some(LooperCommand::Overdub),
+                            (_, Recording) => Some(LooperCommand::Record),
+                            (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
+                            (_, Overdubbing) => Some(LooperCommand::Overdub),
+                            (Muted, Muted) => Some(LooperCommand::Play),
+                            (_, Muted) => Some(LooperCommand::Mute),
+                            (Soloed, Soloed) => Some(LooperCommand::Play),
+                            (_, Soloed) => Some(LooperCommand::Solo),
+                            (s, t) => {
+                                warn!("unhandled button state ({:?}, {:?})", s, t);
+                                None
+                            }
+                        };
 
-                    if let Some(command) = command {
-                        if let Err(e) = sender
-                            .send(Command::Looper(command, LooperTarget::Id(looper.id)))
-                        {
-                            error!("Failed to send command: {:?}", e);
+                        if let Some(command) = command {
+                            controller.send_command(
+                                Command::Looper(command, LooperTarget::Id(looper.id)),
+                                "Failed to update looper mode",
+                            );
                         }
                     }
-                }
-            }, last_event)
+                },
+                last_event,
+            )
         })
     }
 
@@ -1433,7 +1476,7 @@ impl LooperView {
         data: &AppData,
         looper: &LooperData,
         w: f32,
-        sender: &mut Sender<Command>,
+        controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
         assert_eq!(self.id, looper.id);
@@ -1476,9 +1519,10 @@ impl LooperView {
             data.engine_state.active_looper == looper.id,
             |button| {
                 if button == MouseButton::Left {
-                    if let Err(e) = sender.send(Command::SelectLooperById(looper.id)) {
-                        error!("Failed to send command {}", e);
-                    }
+                    controller.send_command(
+                        Command::SelectLooperById(looper.id),
+                        "Failed to send select command to engine",
+                    );
                 }
             },
             last_event,
@@ -1498,7 +1542,8 @@ impl LooperView {
             let delete_size = 10.0;
             canvas.save();
             canvas.translate((45.0, 10.0 + LOOPER_HEIGHT / 2.0 - delete_size / 2.0));
-            self.delete_button.draw(canvas, looper, delete_size, sender, last_event);
+            self.delete_button
+                .draw(canvas, looper, delete_size, controller, last_event);
             canvas.restore();
 
             // draw
@@ -1510,7 +1555,7 @@ impl LooperView {
                 for button in row {
                     canvas.save();
                     canvas.translate((x, y));
-                    let bounds = (button)(canvas, looper, sender, last_event);
+                    let bounds = (button)(canvas, looper, controller, last_event);
                     canvas.restore();
 
                     x += bounds.width + 15.0;
@@ -1811,16 +1856,14 @@ impl WaveformView {
 
         let ms = data.engine_state.metric_structure;
 
-        let samples_per_beat = FrameTime::from_ms(
-            1000.0 / (ms.tempo.bpm() / 60.0) as f64,
-        );
+        let samples_per_beat = FrameTime::from_ms(1000.0 / (ms.tempo.bpm() / 60.0) as f64);
 
         let number_of_beats = (time_width.0 as f32 / samples_per_beat.0 as f32).ceil() as usize;
         let beat_width = w / number_of_beats as f32;
 
         // make sure we get a full number of measures
-        let number_of_beats = (number_of_beats / ms.time_signature.upper as usize + 1) *
-            ms.time_signature.upper as usize;
+        let number_of_beats = (number_of_beats / ms.time_signature.upper as usize + 1)
+            * ms.time_signature.upper as usize;
 
         let mut x = 0.0;
         for i in 0..number_of_beats as i64 {
@@ -1955,12 +1998,14 @@ impl WaveformView {
             // we need to make sure that we go back far enough that the start is off of the screen
             // so we just subtract measures until we are
             // there's an analytical solution to this but I'm too lazy to figure it out right now
-            let mut start_time = next_beat -
-                FrameTime(beat_of_measure as i64 * ms.tempo.samples_per_beat() as i64);
+            let mut start_time =
+                next_beat - FrameTime(beat_of_measure as i64 * ms.tempo.samples_per_beat() as i64);
             let mut x = -self.time_to_x(data.engine_state.time - start_time, w);
             while x > 0.0 {
-                start_time = start_time - FrameTime(ms.time_signature.upper as i64 *
-                    ms.tempo.samples_per_beat() as i64);
+                start_time = start_time
+                    - FrameTime(
+                        ms.time_signature.upper as i64 * ms.tempo.samples_per_beat() as i64,
+                    );
                 x = -self.time_to_x(data.engine_state.time - start_time, w);
             }
 
@@ -1977,16 +2022,8 @@ impl WaveformView {
                 canvas,
             );
             canvas.translate((size.width, 0.0));
-            self.beats.draw(
-                ms,
-                data,
-                looper,
-                self.time_width,
-                w,
-                h,
-                false,
-                canvas,
-            );
+            self.beats
+                .draw(ms, data, looper, self.time_width, w, h, false, canvas);
             canvas.restore();
         }
 
@@ -2019,35 +2056,37 @@ impl WaveformView {
                     LooperCommand::Record => {
                         paint.set_color(color_for_mode(LooperMode::Recording));
                         text = Some("recording");
-                    },
+                    }
                     LooperCommand::Overdub => {
                         paint.set_color(color_for_mode(LooperMode::Overdubbing));
                         text = Some("overdubbing");
-                    },
+                    }
                     LooperCommand::Play => {
                         paint.set_color(color_for_mode(LooperMode::Playing));
                         text = Some("playing");
-                    },
+                    }
                     LooperCommand::Mute => {
                         paint.set_color(color_for_mode(LooperMode::Muted));
                         text = Some("muting");
-                    },
+                    }
                     LooperCommand::Solo => {
                         paint.set_color(color_for_mode(LooperMode::Soloed));
                         text = Some("soloing");
-                    },
+                    }
                     LooperCommand::RecordOverdubPlay => {
                         if looper.length == 0 {
                             paint.set_color(color_for_mode(LooperMode::Recording));
                             text = Some("recording");
-                        } else if looper.state == LooperMode::Recording || looper.state == LooperMode::Playing {
+                        } else if looper.state == LooperMode::Recording
+                            || looper.state == LooperMode::Playing
+                        {
                             paint.set_color(color_for_mode(LooperMode::Overdubbing));
                             text = Some("overdubbing");
                         } else {
                             paint.set_color(color_for_mode(LooperMode::Playing));
                             text = Some("playing");
                         }
-                    },
+                    }
                     _ => {}
                 }
 
@@ -2064,7 +2103,11 @@ impl WaveformView {
                     text_paint.set_anti_alias(true);
 
                     let time_blob = TextBlob::new(&text, &font).unwrap();
-                    canvas.draw_text_blob(&time_blob, Point::new(x + 10.0, h / 2.0 + 6.0), &text_paint);
+                    canvas.draw_text_blob(
+                        &time_blob,
+                        Point::new(x + 10.0, h / 2.0 + 6.0),
+                        &text_paint,
+                    );
                 }
             }
         }
