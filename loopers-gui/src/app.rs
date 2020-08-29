@@ -753,7 +753,7 @@ impl Button for MetronomeView {
 impl TextEditable for MetronomeView {
     fn commit(&mut self, controller: &mut Controller) {
         if let TextEditState::Editing(_, s) = &self.edit_state {
-            let pat = Regex::new(r"(\d\d?)\w*/\w*(\d\d?)").unwrap();
+            let pat = Regex::new(r"(\d\d?)\s*/\s*(\d\d?)").unwrap();
             if let Some(captures) = pat.captures(s) {
                 let upper = u8::from_str(captures.get(1).unwrap().as_str()).unwrap();
                 let lower = u8::from_str(captures.get(2).unwrap().as_str()).unwrap();
