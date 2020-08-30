@@ -4,7 +4,7 @@ use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, LooperSpeed};
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
@@ -1439,11 +1439,11 @@ impl LooperView {
         Box::new(move |canvas, looper, controller, last_event| {
             button.draw(
                 canvas,
-                looper.state == mode,
+                looper.mode == mode,
                 |button| {
                     if button == MouseButton::Left {
                         use LooperMode::*;
-                        let command = match (looper.state, mode) {
+                        let command = match (looper.mode, mode) {
                             (Recording, Recording) => Some(LooperCommand::Overdub),
                             (_, Recording) => Some(LooperCommand::Record),
                             (Overdubbing, Overdubbing) => Some(LooperCommand::Play),
@@ -1482,7 +1482,7 @@ impl LooperView {
     ) -> Size {
         assert_eq!(self.id, looper.id);
 
-        let ratio = if looper.length == 0 || looper.state == LooperMode::Recording {
+        let ratio = if looper.length == 0 || looper.mode == LooperMode::Recording {
             0f32
         } else {
             (data.engine_state.time.0.rem_euclid(looper.length as i64)) as f32
@@ -1528,6 +1528,10 @@ impl LooperView {
             },
             last_event,
         );
+
+        // draw speed
+        draw_speed_text(looper, canvas);
+
         canvas.restore();
         canvas.restore();
 
@@ -1585,6 +1589,21 @@ impl LooperView {
 
         bounds.size()
     }
+}
+
+fn draw_speed_text(looper: &LooperData, canvas: &mut Canvas) {
+    let mut paint = Paint::default();
+    paint.set_color(Color::WHITE);
+    paint.set_anti_alias(true);
+
+    let font = Font::new(Typeface::default(), 21.0);
+    let text = match looper.speed {
+        LooperSpeed::Half => "½x",
+        LooperSpeed::One => "1x",
+        LooperSpeed::Double => "2x",
+    };
+
+    canvas.draw_str(text, Point::new(-15.0, 35.0), &font, &paint);
 }
 
 impl Button for LooperView {
@@ -1919,7 +1938,7 @@ impl WaveformView {
 
         // draw waveform
         if looper.length > 0 {
-            if looper.state == LooperMode::Recording {
+            if looper.mode == LooperMode::Recording {
                 let pre_width = FrameTime((w * WAVEFORM_ZERO_RATIO * SAMPLES_PER_PIXEL) as i64)
                     .to_waveform() as f32;
                 // we're only going to render the part of the waveform that's in the past
@@ -1966,8 +1985,8 @@ impl WaveformView {
                         looper,
                         full_w as f32,
                         h,
-                        looper.state != LooperMode::Recording
-                            && looper.state != LooperMode::Overdubbing,
+                        looper.mode != LooperMode::Recording
+                            && looper.mode != LooperMode::Overdubbing,
                         canvas,
                     );
 
@@ -2070,8 +2089,8 @@ impl WaveformView {
                         if looper.length == 0 {
                             paint.set_color(color_for_mode(LooperMode::Recording));
                             text = Some("recording");
-                        } else if looper.state == LooperMode::Recording
-                            || looper.state == LooperMode::Playing
+                        } else if looper.mode == LooperMode::Recording
+                            || looper.mode == LooperMode::Playing
                         {
                             paint.set_color(color_for_mode(LooperMode::Overdubbing));
                             text = Some("overdubbing");

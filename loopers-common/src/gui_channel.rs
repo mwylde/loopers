@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, LooperCommand, LooperMode};
+use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
@@ -27,6 +27,12 @@ pub struct EngineStateSnapshot {
 
 pub type Waveform = [Vec<f32>; 2];
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct LooperState {
+    pub mode: LooperMode,
+    pub speed: LooperSpeed,
+}
+
 #[derive(Clone, Debug)]
 pub enum GuiCommand {
     StateSnapshot(EngineStateSnapshot),
@@ -35,7 +41,7 @@ pub enum GuiCommand {
     RemoveLooper(u32),
     ClearLooper(u32),
 
-    LooperStateChange(u32, LooperMode),
+    LooperStateChange(u32, LooperState),
 
     AddNewSample(u32, FrameTime, [f32; 2], u64),
     AddOverdubSample(u32, FrameTime, [f32; 2]),
