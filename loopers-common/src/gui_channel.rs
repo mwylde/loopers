@@ -2,9 +2,9 @@ use crate::api::{FrameTime, LooperCommand, LooperMode};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
-use std::io::{Write, ErrorKind};
 use std::borrow::Cow;
 use std::io;
+use std::io::{ErrorKind, Write};
 
 pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
 
@@ -138,14 +138,10 @@ impl Write for GuiSender {
             let message = self.cur_message.clone();
             self.cur_message.len = 0;
             self.cur_message.buffer.clear();
-            log_channel.try_send(message).map_err(|e| {
-                match e {
-                    TrySendError::Full(_) => {
-                        io::Error::new(ErrorKind::WouldBlock, "queue full")
-                    },
-                    TrySendError::Disconnected(_) => {
-                        io::Error::new(ErrorKind::BrokenPipe, "queue disconnected")
-                    }
+            log_channel.try_send(message).map_err(|e| match e {
+                TrySendError::Full(_) => io::Error::new(ErrorKind::WouldBlock, "queue full"),
+                TrySendError::Disconnected(_) => {
+                    io::Error::new(ErrorKind::BrokenPipe, "queue disconnected")
                 }
             })?;
         }

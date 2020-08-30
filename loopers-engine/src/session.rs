@@ -129,7 +129,8 @@ impl SessionSaver {
         }
 
         if let Err(_) = write!(gui_channel, "Session saved to {}", path.to_string_lossy())
-            .and_then(|_| gui_channel.flush()) {
+            .and_then(|_| gui_channel.flush())
+        {
             warn!("failed to write gui message");
         }
 

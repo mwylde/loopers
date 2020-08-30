@@ -1338,11 +1338,7 @@ struct LogMessageView {}
 
 impl LogMessageView {
     fn draw(canvas: &mut Canvas, data: &AppData) -> Size {
-        let msg = data
-            .messages
-            .cur
-            .as_ref()
-            .map(|(_, l)| l.as_str());
+        let msg = data.messages.cur.as_ref().map(|(_, l)| l.as_str());
         if let Some(msg) = msg.as_ref() {
             let font = Font::new(Typeface::default(), Some(14.0));
             let mut paint = Paint::default();
@@ -2005,18 +2001,12 @@ impl WaveformView {
 
             canvas.translate((x as f32, 0.0));
             let size = self.beats.draw(
-                ms,
-                data,
-                looper,
-                w,
-                h,
+                ms, data, looper, w, h,
                 // TODO: turning on the cache currently causes rendering issues
-                false,
-                canvas,
+                false, canvas,
             );
             canvas.translate((size.width, 0.0));
-            self.beats
-                .draw(ms, data, looper, w, h, false, canvas);
+            self.beats.draw(ms, data, looper, w, h, false, canvas);
             canvas.restore();
         }
 
