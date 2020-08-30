@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::error::SaveLoadError;
-use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper};
+use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper, LooperSpeed};
 use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
-use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE};
+use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE, LooperState};
 
 #[cfg(test)]
 mod tests {
@@ -653,6 +653,7 @@ pub enum ControlMessage {
     Serialize(PathBuf, Sender<Result<SavedLooper, SaveLoadError>>),
     Deleted,
     Clear,
+    SetSpeed(LooperSpeed),
 }
 
 const TRANSFER_BUF_SIZE: usize = 16;
@@ -777,6 +778,7 @@ pub struct LooperBackend {
     pub id: u32,
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
+    pub speed: LooperSpeed,
     pub deleted: bool,
 
     enable_crossfading: bool,
@@ -894,6 +896,15 @@ impl LooperBackend {
                 if let Err(e) = channel.try_send(result) {
                     warn!("failed to respond to serialize request: {:?}", e);
                 }
+            }
+            ControlMessage::SetSpeed(speed) => {
+                self.speed = speed;
+                self.gui_sender.send_update(GuiCommand::LooperStateChange
+                    (self.id,
+                     LooperState {
+                         mode: self.mode,
+                         speed: self.speed,
+                     }));
             }
         }
 
@@ -1042,7 +1053,11 @@ impl LooperBackend {
         STATE_MACHINE.handle_transition(self, mode);
 
         self.gui_sender
-            .send_update(GuiCommand::LooperStateChange(self.id, self.mode));
+            .send_update(GuiCommand::LooperStateChange(self.id,
+            LooperState {
+                mode,
+                speed: self.speed,
+            }));
     }
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
@@ -1143,6 +1158,7 @@ impl LooperBackend {
         let mut saved = SavedLooper {
             id: self.id,
             mode: self.mode,
+            speed: self.speed,
             samples: Vec::with_capacity(self.samples.len()),
         };
 
@@ -1207,6 +1223,7 @@ impl Looper {
             id,
             samples,
             mode: LooperMode::Playing,
+            speed: LooperSpeed::One,
             deleted: false,
             enable_crossfading: true,
             out_time: FrameTime(0),
@@ -1332,6 +1349,11 @@ impl Looper {
                 self.mode = LooperMode::Playing;
                 self.send_to_backend(ControlMessage::Clear);
             }
+
+            SetSpeed(speed) => {
+                self.send_to_backend(ControlMessage::SetSpeed(speed));
+            }
+
             Delete => {
                 self.deleted = true;
                 self.send_to_backend(ControlMessage::Deleted);

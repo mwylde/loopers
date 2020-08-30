@@ -12,11 +12,8 @@ use skia_safe::{Canvas, Size};
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
 use glutin::dpi::PhysicalPosition;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode};
-use loopers_common::gui_channel::{
-    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform,
-    WAVEFORM_DOWNSAMPLE,
-};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperSpeed};
+use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform, WAVEFORM_DOWNSAMPLE};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
@@ -59,7 +56,8 @@ pub struct LooperData {
     id: u32,
     length: u64,
     last_time: FrameTime,
-    state: LooperMode,
+    mode: LooperMode,
+    speed: LooperSpeed,
     waveform: Waveform,
     trigger: Option<(FrameTime, LooperCommand)>,
 }
@@ -69,11 +67,11 @@ impl LooperData {
         let solo = data
             .loopers
             .iter()
-            .any(|(_, l)| l.state == LooperMode::Soloed);
-        if solo && self.state != LooperMode::Soloed {
+            .any(|(_, l)| l.mode == LooperMode::Soloed);
+        if solo && self.mode != LooperMode::Soloed {
             LooperMode::Muted
         } else {
-            self.state
+            self.mode
         }
     }
 }
@@ -215,7 +213,8 @@ impl Gui {
                             id,
                             length: 0,
                             last_time: FrameTime(0),
-                            state: LooperMode::Playing,
+                            mode: LooperMode::Playing,
+                            speed: LooperSpeed::One,
                             waveform: [vec![], vec![]],
                             trigger: None,
                         },
@@ -228,7 +227,8 @@ impl Gui {
                             id,
                             length,
                             last_time: FrameTime(length as i64 - 1),
-                            state: LooperMode::Playing,
+                            mode: LooperMode::Playing,
+                            speed: LooperSpeed::One,
                             waveform: *waveform,
                             trigger: None,
                         },
@@ -243,9 +243,10 @@ impl Gui {
                         looper.length = 0;
                     }
                 }
-                Ok(GuiCommand::LooperStateChange(id, mode)) => {
+                Ok(GuiCommand::LooperStateChange(id, state)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
-                        l.state = mode;
+                        l.mode = state.mode;
+                        l.speed = state.speed;
                     } else {
                         warn!("Got looper state change for unknown looper {}", id);
                     }
