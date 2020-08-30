@@ -145,6 +145,7 @@ const WAVEFORM_OFFSET_X: f32 = 100.0;
 const LOOPER_CIRCLE_INDICATOR_WIDTH: f32 = 50.0;
 const WAVEFORM_RIGHT_MARGIN: f32 = 55.0;
 const WAVEFORM_ZERO_RATIO: f32 = 0.25;
+const SAMPLES_PER_PIXEL: f32 = 720.0;
 
 struct AddButton {
     state: ButtonState,
@@ -1597,7 +1598,6 @@ const IMAGE_SCALE: f32 = 4.0;
 type CacheUpdaterFn = fn(
     data: &AppData,
     looper: &LooperData,
-    time_width: FrameTime,
     w: f32,
     h: f32,
     scale: f32,
@@ -1624,14 +1624,13 @@ impl<T: Eq + Copy> DrawCache<T> {
         key: T,
         data: &AppData,
         looper: &LooperData,
-        time_width: FrameTime,
         w: f32,
         h: f32,
         use_cache: bool,
         canvas: &mut Canvas,
     ) -> Size {
         if !use_cache {
-            return (self.draw_fn)(data, looper, time_width, w, h, 1.0, canvas);
+            return (self.draw_fn)(data, looper, w, h, 1.0, canvas);
         }
 
         let size = ((w * IMAGE_SCALE) as i32, (h * IMAGE_SCALE) as i32);
@@ -1661,7 +1660,6 @@ impl<T: Eq + Copy> DrawCache<T> {
             let draw_size = (self.draw_fn)(
                 data,
                 looper,
-                time_width,
                 w * IMAGE_SCALE,
                 h * IMAGE_SCALE,
                 IMAGE_SCALE,
@@ -1744,7 +1742,6 @@ impl Button for ActiveButton {
 struct WaveformView {
     waveform: DrawCache<(u64, FrameTime, LooperMode)>,
     beats: DrawCache<MetricStructure>,
-    time_width: FrameTime,
     loop_icon: Image,
 }
 
@@ -1757,17 +1754,16 @@ impl WaveformView {
         Self {
             waveform: DrawCache::new(Self::draw_waveform),
             beats: DrawCache::new(Self::draw_beats),
-            time_width: FrameTime::from_ms(12_000.0),
             loop_icon,
         }
     }
 
-    fn time_to_pixels(&self, time: FrameTime, w: f32) -> f64 {
-        (w as f64 / self.time_width.0 as f64) * time.0 as f64
+    fn time_to_pixels(&self, time: FrameTime) -> f64 {
+        time.0 as f64 / SAMPLES_PER_PIXEL as f64
     }
 
     fn time_to_x(&self, time: FrameTime, w: f32) -> f64 {
-        let t_in_pixels = self.time_to_pixels(time, w);
+        let t_in_pixels = self.time_to_pixels(time);
         t_in_pixels - WAVEFORM_ZERO_RATIO as f64 * w as f64
     }
 
@@ -1810,7 +1806,6 @@ impl WaveformView {
     fn draw_waveform(
         data: &AppData,
         looper: &LooperData,
-        _: FrameTime,
         w: f32,
         h: f32,
         _: f32,
@@ -1845,7 +1840,6 @@ impl WaveformView {
     fn draw_beats(
         data: &AppData,
         _: &LooperData,
-        time_width: FrameTime,
         w: f32,
         h: f32,
         scale: f32,
@@ -1856,10 +1850,10 @@ impl WaveformView {
 
         let ms = data.engine_state.metric_structure;
 
-        let samples_per_beat = FrameTime::from_ms(1000.0 / (ms.tempo.bpm() / 60.0) as f64);
+        let samples_per_beat = FrameTime(ms.tempo.samples_per_beat() as i64);
 
-        let number_of_beats = (time_width.0 as f32 / samples_per_beat.0 as f32).ceil() as usize;
-        let beat_width = w / number_of_beats as f32;
+        let beat_width = samples_per_beat.0 as f32 / SAMPLES_PER_PIXEL;
+        let number_of_beats = (w / beat_width).ceil() as usize;
 
         // make sure we get a full number of measures
         let number_of_beats = (number_of_beats / ms.time_signature.upper as usize + 1)
@@ -1911,7 +1905,7 @@ impl WaveformView {
         w: f32,
         h: f32,
     ) -> Size {
-        let full_w = (looper.length as f64 / self.time_width.0 as f64) * w as f64;
+        let full_w = looper.length as f64 / SAMPLES_PER_PIXEL as f64;
 
         canvas.save();
 
@@ -1926,7 +1920,8 @@ impl WaveformView {
         // draw waveform
         if looper.length > 0 {
             if looper.state == LooperMode::Recording {
-                let pre_width = self.time_width.to_waveform() as f32 * WAVEFORM_ZERO_RATIO;
+                let pre_width = FrameTime((w * WAVEFORM_ZERO_RATIO * SAMPLES_PER_PIXEL) as i64)
+                    .to_waveform() as f32;
                 // we're only going to render the part of the waveform that's in the past
                 let len = (pre_width as usize).min(looper.waveform[0].len());
                 let start = looper.waveform[0].len() - len;
@@ -1969,7 +1964,6 @@ impl WaveformView {
                         (looper.length, looper.last_time, looper.mode_with_solo(data)),
                         data,
                         looper,
-                        self.time_width,
                         full_w as f32,
                         h,
                         looper.state != LooperMode::Recording
@@ -2014,7 +2008,6 @@ impl WaveformView {
                 ms,
                 data,
                 looper,
-                self.time_width,
                 w,
                 h,
                 // TODO: turning on the cache currently causes rendering issues
@@ -2023,7 +2016,7 @@ impl WaveformView {
             );
             canvas.translate((size.width, 0.0));
             self.beats
-                .draw(ms, data, looper, self.time_width, w, h, false, canvas);
+                .draw(ms, data, looper, w, h, false, canvas);
             canvas.restore();
         }
 
