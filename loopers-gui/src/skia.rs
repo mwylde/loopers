@@ -25,6 +25,10 @@ use winit::dpi::PhysicalSize;
 const INITIAL_WIDTH: i32 = 800;
 const INITIAL_HEIGHT: i32 = 600;
 
+lazy_static! {
+  pub static ref BACKGROUND_COLOR: Color = Color::from_rgb(29, 30, 39);
+}
+
 const FPS: u64 = 60;
 
 fn create_surface(
@@ -191,7 +195,7 @@ pub fn skia_main(mut gui: Gui) {
             Event::MainEventsCleared => {
                 {
                     let mut canvas = surface.canvas();
-                    canvas.clear(Color::BLACK);
+                    canvas.clear(BACKGROUND_COLOR.clone());
 
                     let size = windowed_context.window().inner_size();
 
@@ -331,3 +335,4 @@ fn char_from_key(key: VirtualKeyCode) -> Option<char> {
         _ => return None,
     })
 }
+

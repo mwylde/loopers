@@ -1,4 +1,4 @@
-use crate::{AppData, Controller, GuiEvent, LooperData};
+use crate::{AppData, Controller, GuiEvent, LooperData, skia::BACKGROUND_COLOR};
 
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
@@ -37,21 +37,21 @@ fn load_data(path: &str) -> Vec<u8> {
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Recording => Color::from_rgb(255, 0, 0),
+        LooperMode::Recording => Color::from_rgb(255, 78, 0),
         LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
-        LooperMode::Playing => Color::from_rgb(0, 255, 0),
-        LooperMode::Soloed => Color::from_rgb(0, 255, 0),
-        LooperMode::Muted => Color::from_rgb(135, 135, 135),
+        LooperMode::Playing => Color::from_rgb(118, 255, 0),
+        LooperMode::Soloed => Color::from_rgb(118, 255, 0),
+        LooperMode::Muted => Color::from_rgb(178, 178, 178),
     }
 }
 
 fn dark_color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Recording => Color::from_rgb(210, 45, 45),
-        LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
-        LooperMode::Playing => Color::from_rgb(0, 213, 0),
-        LooperMode::Soloed => Color::from_rgb(0, 213, 0),
-        LooperMode::Muted => Color::from_rgb(65, 65, 65),
+        LooperMode::Recording => Color::from_rgb(138, 42, 0),
+        LooperMode::Overdubbing => Color::from_rgb(0, 138, 138),
+        LooperMode::Playing => Color::from_rgb(63, 137, 0),
+        LooperMode::Soloed => Color::from_rgb(63, 137, 0),
+        LooperMode::Muted => Color::from_rgb(69, 69, 69),
     }
 }
 
@@ -682,7 +682,7 @@ impl MetronomeView {
         let font = Font::new(Typeface::default(), 20.0);
 
         let beat_color = if beat_of_measure == 0 {
-            Color::from_rgb(0, 255, 0)
+            color_for_mode(LooperMode::Playing)
         } else {
             Color::from_rgb(255, 239, 0)
         };
@@ -1533,7 +1533,10 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(200, 0, 0, 0));
-            canvas.draw_rect(&bounds.with_offset((0.0, 10.0)), &paint);
+            let rect = bounds.with_offset((10.0, 10.0))
+                .with_outset((WAVEFORM_OFFSET_X - 7.0, 5.0));
+
+            canvas.draw_rect(&rect, &paint);
 
             // draw delete button
             let delete_size = 10.0;
@@ -1544,7 +1547,7 @@ impl LooperView {
             canvas.restore();
 
             // draw
-            let mut y = 17.0;
+            let mut y = 20.0;
             for row in &mut self.buttons {
                 let mut x = 300.0;
                 let mut button_height = 0f32;
@@ -1565,7 +1568,8 @@ impl LooperView {
             // draw overlay to darken time that is past
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_color(Color::from_argb(160, 0, 0, 0));
+            paint.set_blend_mode(BlendMode::Darken);
+            paint.set_color(BACKGROUND_COLOR.clone().with_a(200));
             canvas.draw_rect(
                 Rect::new(
                     WAVEFORM_OFFSET_X,
@@ -1714,7 +1718,7 @@ impl ActiveButton {
         let mut active_paint = Paint::default();
         active_paint.set_anti_alias(true);
         if is_active {
-            active_paint.set_color(Color::from_rgb(160, 0, 0));
+            active_paint.set_color(color_for_mode(LooperMode::Recording));
             active_paint.set_style(Style::Fill);
         } else {
             active_paint.set_color(Color::from_rgb(230, 230, 230));
@@ -1811,26 +1815,12 @@ impl WaveformView {
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        paint.set_color(dark_color_for_mode(looper.mode_with_solo(data)));
+        paint.set_color(color_for_mode(looper.mode_with_solo(data)));
         paint.set_style(Style::Fill);
         canvas.draw_path(&p, &paint);
 
         // this actually isn't right probably?
         Size::new(w, h)
-
-        // paint.set_color(Color::from_argb(150, 255, 255, 255));
-        // paint.set_stroke_width(2.0);
-        // paint.set_style(Style::Stroke);
-        // paint.set_path_effect(PathEffect::discrete(5.0, 2.0, None));
-        // let mut p = Path::new();
-        // p.move_to((w - 3.0, 0.0));
-        // p.line_to((w - 3.0, h));
-        // canvas.draw_path(&p, &paint);
-        //
-        // paint.set_color(color_for_mode(looper.state));
-        // paint.set_style(Style::Stroke);
-        // paint.set_stroke_width(4.0);
-        // canvas.draw_path(&p, &paint);
     }
 
     fn draw_beats(

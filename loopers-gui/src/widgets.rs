@@ -126,12 +126,12 @@ impl ControlButton {
         paint.set_color(match self.state {
             ButtonState::Default => self.color,
             ButtonState::Hover => Color::from_rgb(130, 130, 130),
-            ButtonState::Pressed => Color::from_rgb(30, 255, 30),
+            ButtonState::Pressed => Color::from_rgb(255, 255, 255),
         });
 
         paint.set_stroke_width(2.0);
 
-        paint.set_style(if is_active {
+        paint.set_style(if is_active && self.state != ButtonState::Pressed {
             Style::Fill
         } else {
             Style::Stroke
