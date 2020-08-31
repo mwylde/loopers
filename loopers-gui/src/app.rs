@@ -4,7 +4,7 @@ use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SAMPLE_RATE};
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
@@ -138,14 +138,14 @@ impl ClockTimeAnimation {
     }
 }
 
-const LOOPER_MARGIN: f32 = 20.0;
+const LOOPER_MARGIN: f32 = 10.0;
 const LOOPER_HEIGHT: f32 = 80.0;
-const BOTTOM_MARGIN: f32 = 70.0;
+const BOTTOM_MARGIN: f32 = 110.0;
 const WAVEFORM_OFFSET_X: f32 = 100.0;
 const LOOPER_CIRCLE_INDICATOR_WIDTH: f32 = 50.0;
 const WAVEFORM_RIGHT_MARGIN: f32 = 55.0;
-const WAVEFORM_ZERO_RATIO: f32 = 0.25;
 const SAMPLES_PER_PIXEL: f32 = 720.0;
+const WAVEFORM_ZERO_OFFSET: f32 = (2.0 * SAMPLE_RATE as f32 * 1000.0) / SAMPLES_PER_PIXEL;
 
 struct AddButton {
     state: ButtonState,
@@ -355,8 +355,8 @@ impl MainPage {
         }
 
         // draw play head
-        let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
-        let x = waveform_width * WAVEFORM_ZERO_RATIO;
+        //let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
+        let x = WAVEFORM_ZERO_OFFSET;
         let looper_h = y - 10.0;
 
         canvas.save();
@@ -1548,7 +1548,7 @@ impl LooperView {
             // draw
             let mut y = 20.0;
             for row in &mut self.buttons {
-                let mut x = 300.0;
+                let mut x = WAVEFORM_OFFSET_X + WAVEFORM_ZERO_OFFSET + 20.0;
                 let mut button_height = 0f32;
 
                 for button in row {
@@ -1573,7 +1573,7 @@ impl LooperView {
                 Rect::new(
                     WAVEFORM_OFFSET_X,
                     10.0,
-                    WAVEFORM_OFFSET_X + waveform_width * WAVEFORM_ZERO_RATIO,
+                    WAVEFORM_OFFSET_X + WAVEFORM_ZERO_OFFSET,
                     LOOPER_HEIGHT + 10.0,
                 ),
                 &paint,
@@ -1761,9 +1761,9 @@ impl WaveformView {
         time.0 as f64 / SAMPLES_PER_PIXEL as f64
     }
 
-    fn time_to_x(&self, time: FrameTime, w: f32) -> f64 {
+    fn time_to_x(&self, time: FrameTime) -> f64 {
         let t_in_pixels = self.time_to_pixels(time);
-        t_in_pixels - WAVEFORM_ZERO_RATIO as f64 * w as f64
+        t_in_pixels - WAVEFORM_ZERO_OFFSET as f64
     }
 
     fn channel_transform(t: usize, d_t: f32, len: usize) -> (f32, f32) {
@@ -1905,16 +1905,16 @@ impl WaveformView {
         // draw waveform
         if looper.length > 0 {
             if looper.state == LooperMode::Recording {
-                let pre_width = FrameTime((w * WAVEFORM_ZERO_RATIO * SAMPLES_PER_PIXEL) as i64)
+                let pre_width = FrameTime((WAVEFORM_ZERO_OFFSET * SAMPLES_PER_PIXEL) as i64)
                     .to_waveform() as f32;
                 // we're only going to render the part of the waveform that's in the past
                 let len = (pre_width as usize).min(looper.waveform[0].len());
                 let start = looper.waveform[0].len() - len;
 
-                let width = (len as f32 / pre_width) * w * WAVEFORM_ZERO_RATIO;
+                let width = (len as f32 / pre_width) * WAVEFORM_ZERO_OFFSET;
 
                 canvas.save();
-                canvas.translate((w * WAVEFORM_ZERO_RATIO - width, 0.0));
+                canvas.translate((WAVEFORM_ZERO_OFFSET - width, 0.0));
                 let path = Self::path_for_waveform(
                     [&looper.waveform[0][start..], &looper.waveform[1][start..]],
                     width,
@@ -1933,7 +1933,7 @@ impl WaveformView {
                     ((data.engine_state.time.0 / looper.length as i64) - 1) * (looper.length as i64)
                 };
 
-                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 - start_time), w);
+                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 - start_time));
 
                 let mut first = true;
 
@@ -1979,13 +1979,13 @@ impl WaveformView {
             // there's an analytical solution to this but I'm too lazy to figure it out right now
             let mut start_time =
                 next_beat - FrameTime(beat_of_measure as i64 * ms.tempo.samples_per_beat() as i64);
-            let mut x = -self.time_to_x(data.engine_state.time - start_time, w);
+            let mut x = -self.time_to_x(data.engine_state.time - start_time);
             while x > 0.0 {
                 start_time = start_time
                     - FrameTime(
                         ms.time_signature.upper as i64 * ms.tempo.samples_per_beat() as i64,
                     );
-                x = -self.time_to_x(data.engine_state.time - start_time, w);
+                x = -self.time_to_x(data.engine_state.time - start_time);
             }
 
             canvas.translate((x as f32, 0.0));
@@ -2064,7 +2064,7 @@ impl WaveformView {
 
                 paint.set_alpha_f(0.9);
 
-                let x = -self.time_to_x(data.engine_state.time - time, w) as f32;
+                let x = -self.time_to_x(data.engine_state.time - time) as f32;
                 let rect = Rect::new(x, 15.0, w, h - 15.0);
                 canvas.draw_rect(&rect, &paint);
 
