@@ -37,6 +37,9 @@ mod tests {
 
         assert_eq!(15, tempo.beat(FrameTime(352768)));
         assert_eq!(16, tempo.beat(FrameTime(352800)));
+
+        assert_eq!(-4, tempo.beat(FrameTime(-88200)));
+        assert_eq!(-4, tempo.beat(FrameTime(-88199)));
     }
 
     #[test]
@@ -139,7 +142,11 @@ impl Tempo {
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
-        time.0 / self.samples_per_beat as i64
+         if time.0 >= 0 {
+             time.0 / self.samples_per_beat as i64
+         } else {
+             (time.0 as f32 / self.samples_per_beat as f32).floor() as i64
+         }
     }
 
     /// Returns the exact time of the next full beat from the given `time` (e.g., the 0 time of

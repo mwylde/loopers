@@ -103,7 +103,7 @@ impl ControlButton {
             text,
             text_size,
             color,
-            width: width.unwrap_or(text_size.width + 20.0),
+            width: width.unwrap_or(text_size.width + 24.0),
             height,
         }
     }

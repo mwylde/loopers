@@ -422,11 +422,11 @@ impl MainPage {
         let mut bottom = h as f32;
         if data.show_buttons {
             canvas.save();
-            canvas.translate((10.0, bottom - 40.0));
+            canvas.translate((10.0, bottom - 30.0));
             self.bottom_buttons
                 .draw(canvas, data, controller, last_event);
             canvas.restore();
-            bottom -= 40.0;
+            bottom -= 30.0;
         };
 
         canvas.save();
@@ -1264,8 +1264,8 @@ impl BottomButtonView {
         use BottomButtonBehavior::*;
         BottomButtonView {
             buttons: vec![
-                (Save, ControlButton::new("save", Color::WHITE, None, 30.0)),
-                (Load, ControlButton::new("load", Color::WHITE, None, 30.0)),
+                (Save, ControlButton::new("save", Color::WHITE, None, 22.0)),
+                (Load, ControlButton::new("load", Color::WHITE, None, 22.0)),
             ],
         }
     }
@@ -1349,7 +1349,7 @@ impl LogMessageView {
                 let blob = TextBlob::new(msg, &font).unwrap();
                 let text_size = font.measure_str(msg, None).1.size();
 
-                canvas.draw_text_blob(blob, Point::new(10.0, 20.0), &paint);
+                canvas.draw_text_blob(blob, Point::new(10.0, 16.0), &paint);
 
                 text_size
             } else {
@@ -1497,7 +1497,9 @@ impl LooperView {
 
         let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
 
-        let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT));
+        let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT))
+            .with_offset((10.0, 10.0))
+            .with_outset((WAVEFORM_OFFSET_X - 7.0, 5.0));
 
         // sets our state, which tells us if the mouse is hovering
         self.handle_event(canvas, &bounds, |_| {}, last_event);
@@ -1533,10 +1535,7 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(200, 0, 0, 0));
-            let rect = bounds.with_offset((10.0, 10.0))
-                .with_outset((WAVEFORM_OFFSET_X - 7.0, 5.0));
-
-            canvas.draw_rect(&rect, &paint);
+            canvas.draw_rect(&bounds, &paint);
 
             // draw delete button
             let delete_size = 10.0;
