@@ -142,11 +142,11 @@ impl Tempo {
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
-         if time.0 >= 0 {
-             time.0 / self.samples_per_beat as i64
-         } else {
-             (time.0 as f32 / self.samples_per_beat as f32).floor() as i64
-         }
+        if time.0 >= 0 {
+            time.0 / self.samples_per_beat as i64
+        } else {
+            (time.0 as f32 / self.samples_per_beat as f32).floor() as i64
+        }
     }
 
     /// Returns the exact time of the next full beat from the given `time` (e.g., the 0 time of

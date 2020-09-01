@@ -416,6 +416,35 @@ impl Engine {
                     warn!("tried to select non-existent looper index {}", idx);
                 }
             }
+            SelectNextLooper | SelectPreviousLooper => {
+                if let Some((i, _)) = self
+                    .loopers
+                    .iter()
+                    .filter(|l| !l.deleted)
+                    .enumerate()
+                    .find(|(_, l)| l.id == self.active)
+                {
+                    let count = self.loopers.iter().filter(|l| !l.deleted).count();
+
+                    let next = if *command == SelectNextLooper {
+                        (i + 1) % count
+                    } else {
+                        (i as isize - 1).rem_euclid(count as isize) as usize
+                    };
+
+                    if let Some(l) = self.loopers.iter().filter(|l| !l.deleted).skip(next).next() {
+                        self.active = l.id;
+                    }
+                } else {
+                    warn!(
+                        "Tried to select next looper, but active looper doesn't exist, selecting \
+                    first looper instead"
+                    );
+                    if let Some(l) = self.looper_by_index_mut(0) {
+                        self.active = l.id;
+                    }
+                }
+            }
             SaveSession(path) => {
                 if let Err(e) = self.session_saver.save_session(
                     self.metric_structure,

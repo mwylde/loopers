@@ -26,7 +26,7 @@ const INITIAL_WIDTH: i32 = 800;
 const INITIAL_HEIGHT: i32 = 600;
 
 lazy_static! {
-  pub static ref BACKGROUND_COLOR: Color = Color::from_rgb(29, 30, 39);
+    pub static ref BACKGROUND_COLOR: Color = Color::from_rgb(29, 30, 39);
 }
 
 const FPS: u64 = 60;
@@ -335,4 +335,3 @@ fn char_from_key(key: VirtualKeyCode) -> Option<char> {
         _ => return None,
     })
 }
-

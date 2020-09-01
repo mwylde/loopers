@@ -1,10 +1,12 @@
-use crate::{AppData, Controller, GuiEvent, LooperData, skia::BACKGROUND_COLOR};
+use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData};
 
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SAMPLE_RATE};
+use loopers_common::api::{
+    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SAMPLE_RATE,
+};
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;

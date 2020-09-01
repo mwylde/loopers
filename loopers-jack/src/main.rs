@@ -26,7 +26,7 @@ use std::{fs, io};
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
         .chain(io::stdout())
-        .level(log::LevelFilter::Error);
+        .level(log::LevelFilter::Warn);
 
     let file_config = fern::Dispatch::new()
         .chain(fern::log_file("output.log")?)

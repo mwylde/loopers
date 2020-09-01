@@ -133,6 +133,9 @@ pub enum Command {
     SelectLooperById(u32),
     SelectLooperByIndex(u8),
 
+    SelectPreviousLooper,
+    SelectNextLooper,
+
     SaveSession(Arc<PathBuf>),
     LoadSession(Arc<PathBuf>),
 
@@ -174,6 +177,9 @@ impl Command {
                     "SelectLooperByIndex expects a single numeric argument, the looper index"
                         .to_string(),
                 ),
+
+            "SelectPreviousLooper" => Ok(Command::SelectPreviousLooper),
+            "SelectNextLooper" => Ok(Command::SelectNextLooper),
 
             "SetMetronomeLevel" => args
                 .get(0)
