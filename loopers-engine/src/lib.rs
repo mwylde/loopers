@@ -11,9 +11,7 @@ use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{
-    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession,
-};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part};
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
@@ -51,6 +49,8 @@ pub struct Engine {
 
     loopers: Vec<Looper>,
     active: u32,
+
+    current_part: Part,
 
     metronome: Option<Metronome>,
 
@@ -109,8 +109,10 @@ impl Engine {
             gui_sender: gui_sender.clone(),
             command_input,
 
-            loopers: vec![Looper::new(0, gui_sender.clone()).start()],
+            loopers: vec![Looper::new(0, PartSet::new(), gui_sender.clone()).start()],
             active: 0,
+            current_part: Part::A,
+
             id_counter: 1,
 
             metronome: Some(Metronome::new(
@@ -389,7 +391,9 @@ impl Engine {
             SetTime(time) => self.set_time(*time),
             AddLooper => {
                 // TODO: make this non-allocating
-                let looper = crate::Looper::new(self.id_counter, self.gui_sender.clone()).start();
+                let looper = crate::Looper::new(self.id_counter,
+                                                PartSet::with(self.current_part),
+                                                self.gui_sender.clone()).start();
                 self.session_saver.add_looper(&looper);
                 self.loopers.push(looper);
                 self.active = self.id_counter;
@@ -444,6 +448,25 @@ impl Engine {
                         self.active = l.id;
                     }
                 }
+            }
+            PreviousPart => {
+                self.current_part = match self.current_part {
+                    Part::A => Part::D,
+                    Part::B => Part::A,
+                    Part::C => Part::B,
+                    Part::D => Part::C,
+                };
+            }
+            NextPart => {
+                self.current_part = match self.current_part {
+                    Part::A => Part::B,
+                    Part::B => Part::C,
+                    Part::C => Part::D,
+                    Part::D => Part::A,
+                };
+            }
+            GoToPart(part) => {
+                self.current_part = *part;
             }
             SaveSession(path) => {
                 if let Err(e) = self.session_saver.save_session(
@@ -525,7 +548,7 @@ impl Engine {
                         &mut self.tmp_right[idx_range.clone()],
                     ];
 
-                    looper.process_output(time, &mut o, solo);
+                    looper.process_output(time, &mut o, self.current_part, solo);
 
                     // copy the output to the looper input in the host, if we can find one
                     if let Some([l, r]) = host.output_for_looper(looper.id) {

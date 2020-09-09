@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::error::SaveLoadError;
-use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper, LooperSpeed};
+use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper, LooperSpeed, PartSet, Part};
 use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE, LooperState};
 
@@ -85,7 +85,7 @@ mod tests {
     fn test_new() {
         install_test_logger();
 
-        let looper = Looper::new(1, GuiSender::disconnected());
+        let looper = Looper::new(1, PartSet::new(), GuiSender::disconnected());
         verify_mode(&looper, LooperMode::Playing);
         assert_eq!(1, looper.id);
         assert_eq!(0, looper.length_in_samples());
@@ -95,7 +95,7 @@ mod tests {
     fn test_transitions() {
         install_test_logger();
 
-        let mut looper = Looper::new(1, GuiSender::disconnected());
+        let mut looper = Looper::new(1, PartSet::new(), GuiSender::disconnected());
 
         verify_mode(&looper, LooperMode::Playing);
 
@@ -129,7 +129,7 @@ mod tests {
     fn test_io() {
         install_test_logger();
 
-        let mut l = Looper::new(1, GuiSender::disconnected());
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.transition_to(LooperMode::Recording);
@@ -156,6 +156,7 @@ mod tests {
         l.process_output(
             FrameTime(input_left.len() as i64),
             &mut [&mut o_l, &mut o_r],
+            Part::A,
             false,
         );
         process_until_done(&mut l);
@@ -170,7 +171,7 @@ mod tests {
     fn test_overdub() {
         install_test_logger();
 
-        let mut l = Looper::new(1, GuiSender::disconnected());
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.transition_to(LooperMode::Recording);
@@ -190,7 +191,7 @@ mod tests {
 
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
@@ -206,7 +207,7 @@ mod tests {
         // first record our overdub
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         l.process_input(t as u64, &[&input_left, &input_right]);
@@ -222,7 +223,7 @@ mod tests {
         // on the next go-around, it should be played back
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
         let mut o_r = vec![0f64; TRANSFER_BUF_SIZE];
-        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         l.process_input(t as u64, &[&input_left, &input_right]);
@@ -244,7 +245,7 @@ mod tests {
 
         let buf_size = 128;
 
-        let mut l = Looper::new(2, GuiSender::disconnected());
+        let mut l = Looper::new(2, PartSet::new(), GuiSender::disconnected());
         l.backend.as_mut().unwrap().enable_crossfading = false;
         l.transition_to(LooperMode::Recording);
 
@@ -255,7 +256,7 @@ mod tests {
 
         let mut o_l = vec![0f64; buf_size];
         let mut o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         l.process_input(0, &[&input_left, &input_right]);
@@ -267,6 +268,7 @@ mod tests {
         l.process_output(
             FrameTime(time),
             &mut [&mut o_l[0..100], &mut o_r[0..100]],
+            Part::A,
             false,
         );
         process_until_done(&mut l);
@@ -288,6 +290,7 @@ mod tests {
         l.process_output(
             FrameTime(time),
             &mut [&mut o_l[100..buf_size], &mut o_r[100..buf_size]],
+            Part::A,
             false,
         );
         process_until_done(&mut l);
@@ -312,7 +315,7 @@ mod tests {
 
         o_l = vec![0f64; buf_size];
         o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
@@ -334,7 +337,7 @@ mod tests {
 
         o_l = vec![0f64; buf_size];
         o_r = vec![0f64; buf_size];
-        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         for i in 0..buf_size {
@@ -352,7 +355,7 @@ mod tests {
     fn test_post_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, GuiSender::disconnected());
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
         l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
@@ -365,7 +368,7 @@ mod tests {
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -387,7 +390,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
             process_until_done(&mut l);
 
             time += 32;
@@ -399,7 +402,7 @@ mod tests {
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
 
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
 
         verify_length(&l, CROSS_FADE_SAMPLES as u64 * 2);
 
@@ -428,7 +431,7 @@ mod tests {
     fn test_pre_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, GuiSender::disconnected());
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
 
         let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
         let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
@@ -444,7 +447,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
             process_until_done(&mut l);
 
             time += 32;
@@ -475,7 +478,7 @@ mod tests {
 
             let mut o_l = vec![0f64; 32];
             let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
             process_until_done(&mut l);
 
             time += 32;
@@ -492,7 +495,7 @@ mod tests {
 
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
@@ -502,13 +505,13 @@ mod tests {
         // Go around again (we don't have the crossfaded samples until the second time around)
         l.process_input(time as u64, &[&input_left, &input_right]);
         process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
         time += input_left.len() as i64;
 
         let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
         let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], false);
+        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
         for i in 0..o_l.len() {
@@ -550,7 +553,7 @@ mod tests {
             input_right2.push(sample / 2.0);
         }
 
-        let mut l = Looper::new(5, GuiSender::disconnected());
+        let mut l = Looper::new(5, PartSet::new(), GuiSender::disconnected());
 
         l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
@@ -654,6 +657,7 @@ pub enum ControlMessage {
     Deleted,
     Clear,
     SetSpeed(LooperSpeed),
+    SetParts(PartSet),
 }
 
 const TRANSFER_BUF_SIZE: usize = 16;
@@ -779,6 +783,7 @@ pub struct LooperBackend {
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
     pub speed: LooperSpeed,
+    pub parts: PartSet,
     pub deleted: bool,
 
     enable_crossfading: bool,
@@ -904,6 +909,17 @@ impl LooperBackend {
                      LooperState {
                          mode: self.mode,
                          speed: self.speed,
+                         parts: self.parts,
+                     }));
+            }
+            ControlMessage::SetParts(parts) => {
+                self.parts = parts;
+                self.gui_sender.send_update(GuiCommand::LooperStateChange
+                    (self.id,
+                     LooperState {
+                         mode: self.mode,
+                         speed: self.speed,
+                         parts: self.parts,
                      }));
             }
         }
@@ -1057,6 +1073,7 @@ impl LooperBackend {
             LooperState {
                 mode,
                 speed: self.speed,
+                parts: self.parts,
             }));
     }
 
@@ -1158,6 +1175,7 @@ impl LooperBackend {
         let mut saved = SavedLooper {
             id: self.id,
             mode: self.mode,
+            parts: self.parts,
             speed: self.speed,
             samples: Vec::with_capacity(self.samples.len()),
         };
@@ -1185,6 +1203,7 @@ pub struct Looper {
     pub id: u32,
     pub mode: LooperMode,
     pub deleted: bool,
+    pub parts: PartSet,
 
     pub backend: Option<LooperBackend>,
     length_in_samples: u64,
@@ -1197,11 +1216,12 @@ pub struct Looper {
 }
 
 impl Looper {
-    pub fn new(id: u32, gui_output: GuiSender) -> Looper {
-        Self::new_with_samples(id, vec![], gui_output)
+    pub fn new(id: u32, parts: PartSet, gui_output: GuiSender) -> Looper {
+        Self::new_with_samples(id, parts, LooperSpeed::One,vec![], gui_output)
     }
 
-    fn new_with_samples(id: u32, samples: Vec<Sample>, mut gui_sender: GuiSender) -> Looper {
+    fn new_with_samples(id: u32, parts: PartSet, speed: LooperSpeed,
+                        samples: Vec<Sample>, mut gui_sender: GuiSender) -> Looper {
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
@@ -1223,7 +1243,8 @@ impl Looper {
             id,
             samples,
             mode: LooperMode::Playing,
-            speed: LooperSpeed::One,
+            speed,
+            parts,
             deleted: false,
             enable_crossfading: true,
             out_time: FrameTime(0),
@@ -1247,6 +1268,7 @@ impl Looper {
             id,
             backend: Some(backend),
             mode: LooperMode::Playing,
+            parts,
             deleted: false,
             length_in_samples: length,
             msg_counter: 0,
@@ -1283,7 +1305,7 @@ impl Looper {
             samples.push(sample);
         }
 
-        Ok(Self::new_with_samples(state.id, samples, gui_output))
+        Ok(Self::new_with_samples(state.id, state.parts, state.speed, samples, gui_output))
     }
 
     pub fn channel(&self) -> Sender<ControlMessage> {
@@ -1354,6 +1376,14 @@ impl Looper {
                 self.send_to_backend(ControlMessage::SetSpeed(speed));
             }
 
+            AddToPart(part) => {
+                self.parts[part] = true;
+                self.send_to_backend(ControlMessage::SetParts(self.parts));
+            }
+            RemoveFromPart(part) => {
+                self.parts[part] = false;
+                self.send_to_backend(ControlMessage::SetParts(self.parts));
+            }
             Delete => {
                 self.deleted = true;
                 self.send_to_backend(ControlMessage::Deleted);
@@ -1404,7 +1434,8 @@ impl Looper {
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
     //
     // If the solo flag is set, we will only output if we are in solo mode.
-    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]], solo: bool) {
+    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]],
+                          part: Part, solo: bool) {
         if time.0 < 0 || self.length_in_samples == 0 {
             return;
         }
@@ -1421,6 +1452,7 @@ impl Looper {
             if let Some((l, r)) = self.output_for_t(time) {
                 if (solo && self.mode == LooperMode::Soloed)
                     || (!solo
+                    && self.parts[part]
                         && (self.mode == LooperMode::Playing
                             || self.mode == LooperMode::Overdubbing))
                 {

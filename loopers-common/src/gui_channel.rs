@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed};
+use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
@@ -31,6 +31,7 @@ pub type Waveform = [Vec<f32>; 2];
 pub struct LooperState {
     pub mode: LooperMode,
     pub speed: LooperSpeed,
+    pub parts: PartSet,
 }
 
 #[derive(Clone, Debug)]

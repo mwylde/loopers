@@ -1,10 +1,11 @@
-use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
+use crate::gui_channel::{WAVEFORM_DOWNSAMPLE};
 use crate::music::MetricStructure;
 use derive_more::{Add, Div, Mul, Sub};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::ops::{Index, IndexMut};
 
 #[cfg(test)]
 mod tests {
@@ -99,6 +100,10 @@ pub enum LooperCommand {
     // Composite commands
     RecordOverdubPlay,
 
+    // not currently usable from midi
+    AddToPart(Part),
+    RemoveFromPart(Part),
+
     // delete
     Delete,
 }
@@ -141,6 +146,10 @@ pub enum Command {
 
     SelectPreviousLooper,
     SelectNextLooper,
+
+    PreviousPart,
+    NextPart,
+    GoToPart(Part),
 
     SaveSession(Arc<PathBuf>),
     LoadSession(Arc<PathBuf>),
@@ -187,6 +196,23 @@ impl Command {
             "SelectPreviousLooper" => Ok(Command::SelectPreviousLooper),
             "SelectNextLooper" => Ok(Command::SelectNextLooper),
 
+            "PreviousPart" => Ok(Command::PreviousPart),
+            "NextPart" => Ok(Command::NextPart),
+            "GoToPart" => args
+                .get(0)
+                .and_then(|s| match s.as_ref() {
+                    "A" => Some(Part::A),
+                    "B" => Some(Part::B),
+                    "C" => Some(Part::C),
+                    "D" => Some(Part::D),
+                    _ => None
+                })
+                .map(|p| Command::GoToPart(p))
+                .ok_or("GoToPart expects a part name (one of A, B, C, or D)"
+                           .to_string()
+                ),
+
+
             "SetMetronomeLevel" => args
                 .get(0)
                 .and_then(|s| u8::from_str(s).ok())
@@ -219,6 +245,61 @@ impl Command {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
+pub enum Part {
+    A, B, C, D
+}
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+pub struct PartSet {
+    a: bool,
+    b: bool,
+    c: bool,
+    d: bool,
+}
+
+impl PartSet {
+    pub fn new() -> PartSet {
+        PartSet {
+            a: true,
+            b: false,
+            c: false,
+            d: false
+        }
+    }
+
+    pub fn with(part: Part) -> PartSet {
+        let mut parts = PartSet {
+            a: false, b: false, c: false, d: false,
+        };
+        parts[part] = true;
+        parts
+    }
+}
+
+impl Index<Part> for PartSet {
+    type Output = bool;
+
+    fn index(&self, index: Part) -> &Self::Output {
+        match index {
+            Part::A => &self.a,
+            Part::B => &self.b,
+            Part::C => &self.c,
+            Part::D => &self.d,
+        }
+    }
+}
+
+impl IndexMut<Part> for PartSet {
+    fn index_mut(&mut self, index: Part) -> &mut Self::Output {
+        match index {
+            Part::A => &mut self.a,
+            Part::B => &mut self.b,
+            Part::C => &mut self.c,
+            Part::D => &mut self.d,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum LooperMode {
     Recording,
@@ -240,6 +321,7 @@ pub struct SavedLooper {
     pub id: u32,
     pub mode: LooperMode,
     pub speed: LooperSpeed,
+    pub parts: PartSet,
     pub samples: Vec<PathBuf>,
 }
 
