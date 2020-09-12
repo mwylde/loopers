@@ -784,6 +784,7 @@ impl Engine {
                 metric_structure: self.metric_structure,
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
+                part: self.current_part,
                 input_levels: Self::compute_peaks(&in_bufs),
                 metronome_volume: self
                     .metronome

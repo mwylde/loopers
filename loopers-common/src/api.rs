@@ -249,6 +249,18 @@ impl Command {
 pub enum Part {
     A, B, C, D
 }
+
+impl Part {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Part::A => "A",
+            Part::B => "B",
+            Part::C => "C",
+            Part::D => "D",
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PartSet {
     a: bool,
@@ -273,6 +285,10 @@ impl PartSet {
         };
         parts[part] = true;
         parts
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !(self.a || self.b || self.c || self.c)
     }
 }
 

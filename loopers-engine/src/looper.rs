@@ -1229,13 +1229,20 @@ impl Looper {
 
         let length = samples.get(0).map(|s| s.length()).unwrap_or(0);
 
+        let state = LooperState {
+            mode: LooperMode::Playing,
+            speed,
+            parts
+        };
+
         if samples.is_empty() {
-            gui_sender.send_update(GuiCommand::AddLooper(id));
+            gui_sender.send_update(GuiCommand::AddLooper(id, state));
         } else {
             gui_sender.send_update(GuiCommand::AddLooperWithSamples(
                 id,
                 length,
                 Box::new(compute_waveform(&samples, WAVEFORM_DOWNSAMPLE)),
+                state,
             ));
         }
 
@@ -1382,7 +1389,12 @@ impl Looper {
             }
             RemoveFromPart(part) => {
                 self.parts[part] = false;
-                self.send_to_backend(ControlMessage::SetParts(self.parts));
+                if self.parts.is_empty() {
+                    // don't allow the user to clear all parts
+                    self.parts[part] = true;
+                } else {
+                    self.send_to_backend(ControlMessage::SetParts(self.parts));
+                }
             }
             Delete => {
                 self.deleted = true;

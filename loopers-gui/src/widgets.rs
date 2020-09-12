@@ -132,7 +132,7 @@ impl ControlButton {
         paint.set_stroke_width(2.0);
 
         paint.set_style(if is_active && self.state != ButtonState::Pressed {
-            Style::Fill
+            Style::StrokeAndFill
         } else {
             Style::Stroke
         });
@@ -144,7 +144,7 @@ impl ControlButton {
         text_paint.set_color(Color::WHITE);
 
         let x = self.width * 0.5 - self.text_size.width * 0.5;
-        let y = self.height * 0.5 + self.text_size.height * 0.5 - 2.0;
+        let y = self.height * 0.5 + self.text_size.height * 0.5;
 
         canvas.draw_text_blob(&self.text, (x, y), &text_paint);
 

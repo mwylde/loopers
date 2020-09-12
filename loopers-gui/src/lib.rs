@@ -12,7 +12,7 @@ use skia_safe::{Canvas, Size};
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
 use glutin::dpi::PhysicalPosition;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperSpeed};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part};
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform, WAVEFORM_DOWNSAMPLE};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::{HashMap, VecDeque};
@@ -57,6 +57,7 @@ pub struct LooperData {
     length: u64,
     last_time: FrameTime,
     mode: LooperMode,
+    parts: PartSet,
     speed: LooperSpeed,
     waveform: Waveform,
     trigger: Option<(FrameTime, LooperCommand)>,
@@ -167,6 +168,7 @@ impl Gui {
                     },
                     active_looper: 0,
                     looper_count: 0,
+                    part: Part::A,
                     input_levels: [0.0, 0.0],
                     metronome_volume: 1.0,
                 },
@@ -206,29 +208,31 @@ impl Gui {
                         }
                     }
                 }
-                Ok(GuiCommand::AddLooper(id)) => {
+                Ok(GuiCommand::AddLooper(id, state)) => {
                     self.state.loopers.insert(
                         id,
                         LooperData {
                             id,
                             length: 0,
                             last_time: FrameTime(0),
-                            mode: LooperMode::Playing,
-                            speed: LooperSpeed::One,
+                            mode: state.mode,
+                            parts: state.parts,
+                            speed: state.speed,
                             waveform: [vec![], vec![]],
                             trigger: None,
                         },
                     );
                 }
-                Ok(GuiCommand::AddLooperWithSamples(id, length, waveform)) => {
+                Ok(GuiCommand::AddLooperWithSamples(id, length, waveform, state)) => {
                     self.state.loopers.insert(
                         id,
                         LooperData {
                             id,
                             length,
                             last_time: FrameTime(length as i64 - 1),
-                            mode: LooperMode::Playing,
-                            speed: LooperSpeed::One,
+                            mode: state.mode,
+                            parts: state.parts,
+                            speed: state.speed,
                             waveform: *waveform,
                             trigger: None,
                         },
@@ -246,6 +250,7 @@ impl Gui {
                 Ok(GuiCommand::LooperStateChange(id, state)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         l.mode = state.mode;
+                        l.parts = state.parts;
                         l.speed = state.speed;
                     } else {
                         warn!("Got looper state change for unknown looper {}", id);
