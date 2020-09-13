@@ -11,14 +11,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::error::SaveLoadError;
-use loopers_common::api::SavedSession;
+use loopers_common::api::{SavedSession, SyncMode};
 use loopers_common::gui_channel::GuiSender;
 use std::sync::Arc;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub enum SessionCommand {
-    SaveSession(MetricStructure, u8, Arc<PathBuf>),
+    SaveSession(MetricStructure, u8, SyncMode, Arc<PathBuf>),
     AddLooper(u32, Sender<looper::ControlMessage>),
     RemoveLooper(u32),
 }
@@ -37,10 +37,11 @@ impl SessionSaver {
 
             loop {
                 match rx.recv() {
-                    Ok(SessionCommand::SaveSession(ms, metronome_volume, path)) => {
+                    Ok(SessionCommand::SaveSession(ms, metronome_volume, sync_mode, path)) => {
                         Self::execute_save_session(
                             ms,
                             metronome_volume,
+                            sync_mode,
                             (*path).clone(),
                             &loopers,
                             &mut gui_channel,
@@ -68,6 +69,7 @@ impl SessionSaver {
     fn execute_save_session(
         metric_structure: MetricStructure,
         metronome_volume: u8,
+        sync_mode: SyncMode,
         path: PathBuf,
         loopers: &HashMap<u32, Sender<looper::ControlMessage>>,
         gui_channel: &mut GuiSender,
@@ -82,6 +84,7 @@ impl SessionSaver {
             save_time: now.timestamp_millis(),
             metric_structure,
             metronome_volume,
+            sync_mode,
             loopers: Vec::with_capacity(loopers.len()),
         };
 
@@ -153,12 +156,14 @@ impl SessionSaver {
         &mut self,
         metric_structure: MetricStructure,
         metronome_volume: u8,
+        sync_mode: SyncMode,
         path: Arc<PathBuf>,
     ) -> Result<(), SaveLoadError> {
         self.channel
             .try_send(SessionCommand::SaveSession(
                 metric_structure,
                 metronome_volume,
+                sync_mode,
                 path,
             ))
             .map_err(|err| match err {

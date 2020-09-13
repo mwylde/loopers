@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part};
+use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
@@ -22,6 +22,7 @@ pub struct EngineStateSnapshot {
     pub active_looper: u32,
     pub looper_count: usize,
     pub part: Part,
+    pub sync_mode: SyncMode,
     pub input_levels: [f32; 2],
     pub metronome_volume: f32,
 }

@@ -4,7 +4,7 @@ use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SAMPLE_RATE, LooperSpeed, Part};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SAMPLE_RATE, LooperSpeed, Part, SyncMode};
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
@@ -140,7 +140,7 @@ impl ClockTimeAnimation {
 
 const LOOPER_MARGIN: f32 = 10.0;
 const LOOPER_HEIGHT: f32 = 80.0;
-const BOTTOM_MARGIN: f32 = 110.0;
+const BOTTOM_MARGIN: f32 = 140.0;
 const WAVEFORM_OFFSET_X: f32 = 100.0;
 const LOOPER_CIRCLE_INDICATOR_WIDTH: f32 = 50.0;
 const WAVEFORM_RIGHT_MARGIN: f32 = 55.0;
@@ -423,8 +423,16 @@ impl MainPage {
             canvas.restore();
         }
 
-        // draw the bottom bars
         let mut bottom = h as f32;
+
+        // draw the message view if one exists
+        canvas.save();
+        canvas.translate((0.0, bottom - 90.0));
+        LogMessageView::draw(canvas, data).width;
+        canvas.restore();
+
+
+        // draw the bottom bars
         if data.show_buttons {
             canvas.save();
             canvas.translate((10.0, bottom - 30.0));
@@ -1258,6 +1266,7 @@ impl Button for StopButton {
 enum BottomButtonBehavior {
     Save,
     Load,
+    SetSyncMode(SyncMode),
     Part(Part),
 }
 
@@ -1272,6 +1281,11 @@ impl BottomButtonView {
             buttons: vec![
                 (BottomButtonBehavior::Save, ControlButton::new("save", c, None, 22.0)),
                 (BottomButtonBehavior::Load, ControlButton::new("load", c, None, 22.0)),
+
+                (BottomButtonBehavior::SetSyncMode(SyncMode::Free), ControlButton::new("free", c, None, 22.0)),
+                (BottomButtonBehavior::SetSyncMode(SyncMode::Beat), ControlButton::new("beat", c, None, 22.0)),
+                (BottomButtonBehavior::SetSyncMode(SyncMode::Measure), ControlButton::new("measure", c, None, 22.0)),
+
                 (BottomButtonBehavior::Part(Part::A), ControlButton::new("A", c, None, 22.0)),
                 (BottomButtonBehavior::Part(Part::B), ControlButton::new("B", c, None, 22.0)),
                 (BottomButtonBehavior::Part(Part::C), ControlButton::new("C", c, None, 22.0)),
@@ -1331,6 +1345,10 @@ impl BottomButtonView {
                             controller.send_command(Command::GoToPart(part),
                                                     "Failed to change parts");
                         }
+                        BottomButtonBehavior::SetSyncMode(mode) => {
+                            controller.send_command(Command::SetSyncMode(mode),
+                                                    "Failed to set sync mode");
+                        }
                     };
                 }
             };
@@ -1339,21 +1357,21 @@ impl BottomButtonView {
                 BottomButtonBehavior::Part(part) => {
                     data.engine_state.part == part
                 },
+                BottomButtonBehavior::SetSyncMode(mode) => {
+                    data.engine_state.sync_mode == mode
+                }
                 _ => false
             }, on_click, last_event);
             x += size.width + 10.0;
 
-            if behavior == BottomButtonBehavior::Load {
+            if behavior == BottomButtonBehavior::Load ||
+                behavior == BottomButtonBehavior::SetSyncMode(SyncMode::Measure) {
                 x += 30.0;
             }
 
             canvas.restore();
         }
 
-        canvas.save();
-        canvas.translate((x, 0.0));
-        x += LogMessageView::draw(canvas, data).width;
-        canvas.restore();
 
         Size::new(x, 40.0)
     }

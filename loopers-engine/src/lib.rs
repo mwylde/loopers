@@ -11,7 +11,7 @@ use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode};
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
@@ -51,6 +51,8 @@ pub struct Engine {
     active: u32,
 
     current_part: Part,
+
+    sync_mode: SyncMode,
 
     metronome: Option<Metronome>,
 
@@ -112,6 +114,8 @@ impl Engine {
             loopers: vec![Looper::new(0, PartSet::new(), gui_sender.clone()).start()],
             active: 0,
             current_part: Part::A,
+
+            sync_mode: SyncMode::Measure,
 
             id_counter: 1,
 
@@ -322,13 +326,15 @@ impl Engine {
         let dir = path.parent().unwrap();
 
         let mut session: SavedSession = toml::from_str(&contents).map_err(|err| {
-            debug!("Found invalid SavedSession during load: {:?}", err);
+            warn!("Found invalid SavedSession during load: {:?}", err);
+            // TODO: improve these error messages
             SaveLoadError::OtherError("Failed to restore session; file is invalid".to_string())
         })?;
 
         debug!("Restoring session: {:?}", session);
 
         self.metric_structure = session.metric_structure;
+        self.sync_mode = session.sync_mode;
 
         if let Some(metronome) = &mut self.metronome {
             metronome.set_volume((session.metronome_volume as f32 / 100.0).min(1.0).max(0.0));
@@ -468,6 +474,9 @@ impl Engine {
             GoToPart(part) => {
                 self.current_part = *part;
             }
+            SetSyncMode(sync_mode) => {
+                self.sync_mode = *sync_mode;
+            }
             SaveSession(path) => {
                 if let Err(e) = self.session_saver.save_session(
                     self.metric_structure,
@@ -475,6 +484,7 @@ impl Engine {
                         .as_ref()
                         .map(|m| (m.get_volume() * 100.0) as u8)
                         .unwrap_or(100),
+                    self.sync_mode,
                     Arc::clone(path),
                 ) {
                     error!("Failed to save session {:?}", e);
@@ -785,6 +795,7 @@ impl Engine {
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
                 part: self.current_part,
+                sync_mode: self.sync_mode,
                 input_levels: Self::compute_peaks(&in_bufs),
                 metronome_volume: self
                     .metronome

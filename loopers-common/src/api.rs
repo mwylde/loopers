@@ -151,6 +151,8 @@ pub enum Command {
     NextPart,
     GoToPart(Part),
 
+    SetSyncMode(SyncMode),
+
     SaveSession(Arc<PathBuf>),
     LoadSession(Arc<PathBuf>),
 
@@ -210,6 +212,19 @@ impl Command {
                 .map(|p| Command::GoToPart(p))
                 .ok_or("GoToPart expects a part name (one of A, B, C, or D)"
                            .to_string()
+                ),
+
+            "SetSyncMode" => args
+                .get(0)
+                .and_then(|s| match s.as_ref() {
+                    "Free" => Some(SyncMode::Free),
+                    "Beat" => Some(SyncMode::Beat),
+                    "Measure" => Some(SyncMode::Measure),
+                    _ => None
+                })
+                .map(|s| Command::SetSyncMode(s))
+                .ok_or("SetSyncMOde expects a sync mode (one of Free, Beat, or Measure)"
+                    .to_string()
                 ),
 
 
@@ -292,6 +307,12 @@ impl PartSet {
     }
 }
 
+impl Default for PartSet {
+    fn default() -> Self {
+        PartSet::new()
+    }
+}
+
 impl Index<Part> for PartSet {
     type Output = bool;
 
@@ -332,11 +353,28 @@ pub enum LooperSpeed {
     Double,
 }
 
+fn looper_speed_default() -> LooperSpeed {
+    LooperSpeed::One
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum SyncMode {
+    Free,
+    Beat,
+    Measure,
+}
+
+fn sync_mode_default() -> SyncMode {
+    SyncMode::Measure
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SavedLooper {
     pub id: u32,
     pub mode: LooperMode,
+    #[serde(default = "looper_speed_default")]
     pub speed: LooperSpeed,
+    #[serde(default)]
     pub parts: PartSet,
     pub samples: Vec<PathBuf>,
 }
@@ -347,5 +385,7 @@ pub struct SavedSession {
     #[serde(default)]
     pub metronome_volume: u8,
     pub metric_structure: MetricStructure,
+    #[serde(default = "sync_mode_default")]
+    pub sync_mode: SyncMode,
     pub loopers: Vec<SavedLooper>,
 }
