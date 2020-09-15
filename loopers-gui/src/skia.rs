@@ -207,7 +207,7 @@ pub fn skia_main(mut gui: Gui) {
                             None,
                         );
 
-                        recording_canvas.clear(Color::BLACK);
+                        canvas.clear(BACKGROUND_COLOR.clone());
 
                         gui.draw(
                             &mut recording_canvas,

@@ -25,6 +25,7 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use loopers_common::api::SyncMode::Free;
 
 mod error;
 pub mod looper;
@@ -209,23 +210,29 @@ impl Engine {
     // possibly convert a loop command into a trigger
     fn trigger_from_command(
         ms: MetricStructure,
+        sync_mode: SyncMode,
         time: FrameTime,
         lc: LooperCommand,
         target: LooperTarget,
         looper: &Looper,
     ) -> Option<Trigger> {
+        let trigger_condition = match sync_mode {
+            Free => return None,
+            SyncMode::Beat => TriggerCondition::Beat,
+            SyncMode::Measure => TriggerCondition::Measure,
+        };
+
         use LooperCommand::*;
         match (looper.length_in_samples() == 0, looper.mode, lc) {
             (_, _, Record)
             | (_, LooperMode::Recording, _)
             | (true, _, RecordOverdubPlay)
             | (_, LooperMode::Overdubbing, _) => Some(Trigger::new(
-                TriggerCondition::Measure,
+                trigger_condition,
                 Command::Looper(lc, target),
                 ms,
                 time,
-            ))
-            .unwrap(),
+            )),
             _ => None,
         }
     }
@@ -234,6 +241,7 @@ impl Engine {
         debug!("Handling loop command: {:?} for {:?}", lc, target);
 
         let ms = self.metric_structure;
+        let sync_mode = self.sync_mode;
         let time = FrameTime(self.time);
         let triggers = &mut self.triggers;
         let gui_sender = &mut self.gui_sender;
@@ -241,6 +249,7 @@ impl Engine {
         fn handle_or_trigger(
             triggered: bool,
             ms: MetricStructure,
+            sync_mode: SyncMode,
             time: FrameTime,
             lc: LooperCommand,
             target: LooperTarget,
@@ -250,7 +259,8 @@ impl Engine {
         ) {
             if triggered {
                 looper.handle_command(lc);
-            } else if let Some(trigger) = Engine::trigger_from_command(ms, time, lc, target, looper)
+            } else if let Some(trigger) = Engine::trigger_from_command(
+                ms, sync_mode, time, lc, target, looper)
             {
                 Engine::add_trigger(triggers, trigger.clone());
 
@@ -269,7 +279,7 @@ impl Engine {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
                 } else {
                     warn!(
                         "Could not find looper with id {} while handling command {:?}",
@@ -286,20 +296,20 @@ impl Engine {
                     .next()
                 {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
                 } else {
                     warn!("No looper at index {} while handling command {:?}", idx, lc);
                 }
             }
             LooperTarget::All => {
                 for l in &mut self.loopers {
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
                 }
             }
             LooperTarget::Selected => {
                 let active = self.active;
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
-                    handle_or_trigger(triggered, ms, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
                 } else {
                     error!(
                         "selected looper {} not found while handling command {:?}",

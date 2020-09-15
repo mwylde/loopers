@@ -33,11 +33,11 @@ mod tests {
             time_signature: TimeSignature::new(4, 4).unwrap(),
         };
 
-        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(0)).unwrap();
+        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(0));
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(1)).unwrap();
+        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(1));
 
         assert_eq!(FrameTime(88200), t.triggered_at());
 
@@ -46,8 +46,7 @@ mod tests {
             Command::Start,
             ms,
             FrameTime(-30000),
-        )
-        .unwrap();
+        );
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
@@ -56,10 +55,25 @@ mod tests {
             Command::Start,
             ms,
             FrameTime(88200),
-        )
-        .unwrap();
+        );
 
         assert_eq!(FrameTime(88200), t.triggered_at());
+    }
+
+    #[test]
+    fn test_beat_trigger() {
+        let ms = MetricStructure {
+            tempo: Tempo::from_bpm(120.0),
+            time_signature: TimeSignature::new(4, 4).unwrap(),
+        };
+
+        let t = Trigger::new(TriggerCondition::Beat, Command::Start, ms, FrameTime(0));
+
+        assert_eq!(FrameTime(0), t.triggered_at());
+
+        let t = Trigger::new(TriggerCondition::Beat, Command::Start, ms, FrameTime(1));
+
+        assert_eq!(FrameTime(22050), t.triggered_at);
     }
 
     proptest! {
@@ -71,7 +85,7 @@ mod tests {
             };
 
             let t = Trigger::new(TriggerCondition::Measure,
-                                 Command::Start, ms, FrameTime(time)).unwrap();
+                                 Command::Start, ms, FrameTime(time));
 
 
             assert_eq!(correct_measure_trigger(&t), t.triggered_at());
@@ -80,10 +94,9 @@ mod tests {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-#[allow(dead_code)]
 pub enum TriggerCondition {
     Measure,
-    Beat(u8),
+    Beat,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -101,23 +114,14 @@ impl Trigger {
         command: Command,
         metric_structure: MetricStructure,
         start_time: FrameTime,
-    ) -> Option<Trigger> {
-        let valid = match condition {
-            TriggerCondition::Measure => true,
-            TriggerCondition::Beat(b) => b < metric_structure.time_signature.upper,
-        };
-
-        if valid {
-            let triggered_at = Self::compute_triggered_at(condition, metric_structure, start_time);
-            Some(Trigger {
-                condition,
-                command,
-                metric_structure,
-                start_time,
-                triggered_at,
-            })
-        } else {
-            None
+    ) -> Trigger {
+        let triggered_at = Self::compute_triggered_at(condition, metric_structure, start_time);
+        Trigger {
+            condition,
+            command,
+            metric_structure,
+            start_time,
+            triggered_at,
         }
     }
 
@@ -136,13 +140,26 @@ impl Trigger {
                     let rem = start_time.0 % samples_per_measure;
 
                     if rem == 0 {
-                        FrameTime(start_time.0)
+                        start_time
                     } else {
                         FrameTime(start_time.0 + (samples_per_measure - rem))
                     }
                 }
             }
-            TriggerCondition::Beat(_) => unimplemented!(),
+            TriggerCondition::Beat => {
+                if start_time.0 < 0 {
+                    FrameTime(0)
+                } else {
+                    let spb = metric_structure.tempo.samples_per_beat() as i64;
+                    let rem = start_time.0 % spb;
+
+                    if rem == 0 {
+                        start_time
+                    } else {
+                        FrameTime(start_time.0 + (spb - rem))
+                    }
+                }
+            }
         }
     }
 
