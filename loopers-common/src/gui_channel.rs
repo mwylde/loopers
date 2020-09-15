@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode};
+use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode, Command};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
@@ -50,7 +50,8 @@ pub enum GuiCommand {
     AddOverdubSample(u32, FrameTime, [f32; 2]),
     SetLoopLength(u32, u64),
 
-    AddTrigger(u32, FrameTime, LooperCommand),
+    AddLoopTrigger(u32, FrameTime, LooperCommand),
+    AddGlobalTrigger(FrameTime, Command),
 }
 
 #[derive(Clone)]

@@ -264,7 +264,7 @@ impl Engine {
             {
                 Engine::add_trigger(triggers, trigger.clone());
 
-                gui_sender.send_update(GuiCommand::AddTrigger(
+                gui_sender.send_update(GuiCommand::AddLoopTrigger(
                     looper.id,
                     trigger.triggered_at(),
                     lc,
@@ -377,6 +377,38 @@ impl Engine {
         command: &Command,
         triggered: bool,
     ) {
+        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, f: F) where F: FnOnce(&mut Engine) {
+            if engine.state == EngineState::Stopped || triggered {
+                f(engine);
+                return;
+            }
+
+            let trigger_condition = match engine.sync_mode {
+                Free => {
+                    f(engine);
+                    return;
+                },
+                SyncMode::Beat => {
+                    TriggerCondition::Beat
+                },
+                SyncMode::Measure => {
+                    TriggerCondition::Measure
+                },
+            };
+
+            let trigger = Trigger::new(trigger_condition, command.clone(),
+                              engine.metric_structure, FrameTime(engine.time));
+
+            if trigger.triggered_at() < FrameTime(engine.time) {
+                f(engine);
+                return;
+            }
+
+            Engine::add_trigger(&mut engine.triggers, trigger.clone());
+            engine.gui_sender.send_update(GuiCommand::AddGlobalTrigger(trigger.triggered_at(),
+                                                                     trigger.command));
+        };
+
         use Command::*;
         match command {
             Looper(lc, target) => {
@@ -466,23 +498,29 @@ impl Engine {
                 }
             }
             PreviousPart => {
-                self.current_part = match self.current_part {
-                    Part::A => Part::D,
-                    Part::B => Part::A,
-                    Part::C => Part::B,
-                    Part::D => Part::C,
-                };
+                trigger_or_run(self, command, triggered, |engine| {
+                    engine.current_part = match engine.current_part {
+                        Part::A => Part::D,
+                        Part::B => Part::A,
+                        Part::C => Part::B,
+                        Part::D => Part::C,
+                    };
+                });
             }
             NextPart => {
-                self.current_part = match self.current_part {
-                    Part::A => Part::B,
-                    Part::B => Part::C,
-                    Part::C => Part::D,
-                    Part::D => Part::A,
-                };
+                trigger_or_run(self, command, triggered, |engine| {
+                    engine.current_part = match engine.current_part {
+                        Part::A => Part::B,
+                        Part::B => Part::C,
+                        Part::C => Part::D,
+                        Part::D => Part::A,
+                    };
+                });
             }
             GoToPart(part) => {
-                self.current_part = *part;
+                trigger_or_run(self, command, triggered, |engine| {
+                    engine.current_part = *part;
+                });
             }
             SetSyncMode(sync_mode) => {
                 self.sync_mode = *sync_mode;

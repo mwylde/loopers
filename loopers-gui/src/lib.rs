@@ -140,6 +140,7 @@ pub struct AppData {
     loopers: HashMap<u32, LooperData>,
     show_buttons: bool,
     messages: Log,
+    global_triggers: Vec<(FrameTime, Command)>,
 }
 
 pub struct Gui {
@@ -176,6 +177,7 @@ impl Gui {
                 loopers: HashMap::new(),
                 show_buttons: SHOW_BUTTONS,
                 messages: Log::new(),
+                global_triggers: Vec::new(),
             },
             receiver,
 
@@ -287,22 +289,32 @@ impl Gui {
                         l.length = len;
                     }
                 }
+                Ok(GuiCommand::AddGlobalTrigger(time, command)) => {
+                    self.state.global_triggers.push((time, command));
+                }
+                Ok(GuiCommand::AddLoopTrigger(id, time, command)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.trigger = Some((time, command))
+                    }
+                }
                 Err(TryRecvError::Empty) => {
                     break;
                 }
                 Err(TryRecvError::Disconnected) => {
                     panic!("Channel disconnected");
                 }
-                Ok(GuiCommand::AddTrigger(id, time, command)) => {
-                    if let Some(l) = self.state.loopers.get_mut(&id) {
-                        l.trigger = Some((time, command))
-                    }
-                }
             }
         }
 
+        // clear out old global triggers
+        let time = self.state.engine_state.time;
+        self.state.global_triggers.retain(|(t, _)| {
+            *t > time
+        });
+
         // clear out old log messages
         self.state.messages.update();
+
         // read log messages
         match self.receiver.log_channel.try_recv() {
             Ok(log) => {
