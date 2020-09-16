@@ -1330,6 +1330,7 @@ impl BottomButtonView {
                                 })
                                 .unwrap_or(PathBuf::new().to_string_lossy().to_string());
 
+                            // TODO: do this in a separate thread so it doesn't block the channel
                             if let Some(file) = tinyfiledialogs::open_file_dialog(
                                 "Open",
                                 &dir,
@@ -1353,7 +1354,26 @@ impl BottomButtonView {
                 }
             };
 
-            let size = button.draw(canvas, match behavior {
+            let mut progress_percent = 0.0;
+
+            if let BottomButtonBehavior::Part(part) = &behavior {
+                progress_percent = data.global_triggers.iter()
+                    .rev()
+                    .filter(|(_, _, c)| match c {
+                        Command::GoToPart(p) => p == part,
+                        // TODO: Think about how to support this for previous part / next part
+                        _ => false,
+                    }).min_by_key(|(_, t1, _)| t1.0)
+                    .map(|(t0, t1,  _)| {
+                        if *t1 == *t0 {
+                            0.0
+                        } else {
+                            (data.engine_state.time.0 as f32 - t0.0 as f32) / (t1.0 as f32 - t0.0 as f32)
+                        }
+                }).unwrap_or(0.0);
+            }
+
+            let size = button.draw_with_progress(canvas, match behavior {
                 BottomButtonBehavior::Part(part) => {
                     data.engine_state.part == part
                 },
@@ -1361,7 +1381,7 @@ impl BottomButtonView {
                     data.engine_state.sync_mode == mode
                 }
                 _ => false
-            }, on_click, last_event);
+            }, on_click, last_event, progress_percent);
             x += size.width + 10.0;
 
             if behavior == BottomButtonBehavior::Load ||

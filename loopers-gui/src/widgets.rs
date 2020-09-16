@@ -115,6 +115,17 @@ impl ControlButton {
         on_click: F,
         last_event: Option<GuiEvent>,
     ) -> Size {
+        self.draw_with_progress(canvas, is_active, on_click, last_event, 0.0)
+    }
+
+    pub fn draw_with_progress<F: FnOnce(MouseButton) -> ()>(
+        &mut self,
+        canvas: &mut Canvas,
+        is_active: bool,
+        on_click: F,
+        last_event: Option<GuiEvent>,
+        progress_percent: f32,
+    ) -> Size {
         let bounds = Rect::new(0.0, 0.0, self.width, self.height);
 
         self.handle_event(canvas, &bounds, on_click, last_event);
@@ -138,6 +149,22 @@ impl ControlButton {
         });
 
         canvas.draw_rect(&bounds, &paint);
+
+        if progress_percent > 0.0 {
+            let progress = Rect {
+                left: bounds.left,
+                top: bounds.bottom - progress_percent * bounds.height(),
+                right: bounds.right,
+                bottom: bounds.bottom
+            };
+
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_stroke_width(2.0);
+            paint.set_color(self.color);
+            paint.set_style(Style::Fill);
+            canvas.draw_rect(&progress, &paint);
+        }
 
         let mut text_paint = Paint::default();
         text_paint.set_anti_alias(true);

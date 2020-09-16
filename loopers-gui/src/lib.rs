@@ -140,7 +140,10 @@ pub struct AppData {
     loopers: HashMap<u32, LooperData>,
     show_buttons: bool,
     messages: Log,
-    global_triggers: Vec<(FrameTime, Command)>,
+    global_triggers: Vec<(
+        FrameTime, // time created
+        FrameTime, // trigger time
+        Command)>,
 }
 
 pub struct Gui {
@@ -290,7 +293,7 @@ impl Gui {
                     }
                 }
                 Ok(GuiCommand::AddGlobalTrigger(time, command)) => {
-                    self.state.global_triggers.push((time, command));
+                    self.state.global_triggers.push((self.state.engine_state.time, time, command));
                 }
                 Ok(GuiCommand::AddLoopTrigger(id, time, command)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
@@ -308,7 +311,7 @@ impl Gui {
 
         // clear out old global triggers
         let time = self.state.engine_state.time;
-        self.state.global_triggers.retain(|(t, _)| {
+        self.state.global_triggers.retain(|(_, t, _)| {
             *t > time
         });
 
