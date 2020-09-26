@@ -214,6 +214,7 @@ fn main() {
         beat_normal,
         beat_empahsis,
         restore,
+        client.sample_rate(),
     );
 
     let process_callback =

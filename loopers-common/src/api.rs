@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::ops::{Index, IndexMut};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(test)]
 mod tests {
@@ -43,7 +44,19 @@ mod tests {
     }
 }
 
-pub const SAMPLE_RATE: f64 = 44.100;
+static SAMPLE_RATE: AtomicUsize = AtomicUsize::new(44100);
+
+pub fn set_sample_rate(sample_rate: usize) {
+    SAMPLE_RATE.store(sample_rate, Ordering::SeqCst);
+}
+
+pub fn get_sample_rate() -> usize {
+    SAMPLE_RATE.load(Ordering::SeqCst)
+}
+
+pub fn get_sample_rate_ms() -> f64 {
+    get_sample_rate() as f64 / 1000.0
+}
 
 #[derive(
     Serialize,
@@ -65,11 +78,11 @@ pub struct FrameTime(pub i64);
 
 impl FrameTime {
     pub fn from_ms(ms: f64) -> FrameTime {
-        FrameTime((ms * SAMPLE_RATE) as i64)
+        FrameTime((ms * get_sample_rate_ms()) as i64)
     }
 
     pub fn to_ms(&self) -> f64 {
-        (self.0 as f64) / SAMPLE_RATE
+        (self.0 as f64) / get_sample_rate_ms()
     }
 
     pub fn to_waveform(&self) -> i64 {

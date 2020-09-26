@@ -11,7 +11,7 @@ use crate::sample::Sample;
 use crate::session::SessionSaver;
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode, set_sample_rate};
 use loopers_common::config::Config;
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
 use loopers_common::music::*;
@@ -99,6 +99,7 @@ impl Engine {
         beat_normal: Vec<f32>,
         beat_emphasis: Vec<f32>,
         restore: bool,
+        sample_rate: usize,
     ) -> Engine {
         let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
         let mut engine = Engine {
@@ -139,6 +140,8 @@ impl Engine {
             output_left: vec![0f64; 2048],
             output_right: vec![0f64; 2048],
         };
+
+        set_sample_rate(sample_rate);
 
         engine.reset();
 

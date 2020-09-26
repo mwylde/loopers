@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, SAMPLE_RATE};
+use crate::api::{FrameTime, get_sample_rate};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -129,12 +129,12 @@ impl Tempo {
     pub fn from_bpm(bpm: f32) -> Tempo {
         assert!(bpm > 0.0, "bpm must be positive");
         Tempo {
-            samples_per_beat: ((SAMPLE_RATE * 1000.0) / (bpm as f64 / 60.0)) as u64,
+            samples_per_beat: ((get_sample_rate() as f64) / (bpm as f64 / 60.0)) as u64,
         }
     }
 
     pub fn bpm(&self) -> f32 {
-        ((SAMPLE_RATE * 1000.0) / self.samples_per_beat as f64 * 60.0) as f32
+        ((get_sample_rate() as f64) / self.samples_per_beat as f64 * 60.0) as f32
     }
 
     pub fn samples_per_beat(&self) -> u64 {
