@@ -17,8 +17,16 @@ use std::sync::Arc;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 
+pub struct SaveSessionData {
+    pub metric_structure: MetricStructure,
+    pub metronome_volume: u8,
+    pub sync_mode: SyncMode,
+    pub path: Arc<PathBuf>,
+    pub sample_rate: usize,
+}
+
 pub enum SessionCommand {
-    SaveSession(MetricStructure, u8, SyncMode, Arc<PathBuf>),
+    SaveSession(SaveSessionData),
     AddLooper(u32, Sender<looper::ControlMessage>),
     RemoveLooper(u32),
 }
@@ -37,12 +45,9 @@ impl SessionSaver {
 
             loop {
                 match rx.recv() {
-                    Ok(SessionCommand::SaveSession(ms, metronome_volume, sync_mode, path)) => {
+                    Ok(SessionCommand::SaveSession(sd)) => {
                         Self::execute_save_session(
-                            ms,
-                            metronome_volume,
-                            sync_mode,
-                            (*path).clone(),
+                            sd,
                             &loopers,
                             &mut gui_channel,
                         )
@@ -67,24 +72,22 @@ impl SessionSaver {
     }
 
     fn execute_save_session(
-        metric_structure: MetricStructure,
-        metronome_volume: u8,
-        sync_mode: SyncMode,
-        path: PathBuf,
+        sd: SaveSessionData,
         loopers: &HashMap<u32, Sender<looper::ControlMessage>>,
         gui_channel: &mut GuiSender,
     ) -> Result<(), SaveLoadError> {
         let now = Local::now();
-        let mut path = PathBuf::from(&path);
+        let mut path = (&*sd.path).clone();
         path.push(now.format("%Y-%m-%d_%H:%M:%S").to_string());
 
         create_dir_all(&path)?;
 
         let mut session = SavedSession {
             save_time: now.timestamp_millis(),
-            metric_structure,
-            metronome_volume,
-            sync_mode,
+            metric_structure: sd.metric_structure,
+            metronome_volume: sd.metronome_volume,
+            sync_mode: sd.sync_mode,
+            sample_rate: sd.sample_rate,
             loopers: Vec::with_capacity(loopers.len()),
         };
 
@@ -154,18 +157,10 @@ impl SessionSaver {
 
     pub fn save_session(
         &mut self,
-        metric_structure: MetricStructure,
-        metronome_volume: u8,
-        sync_mode: SyncMode,
-        path: Arc<PathBuf>,
+        data: SaveSessionData,
     ) -> Result<(), SaveLoadError> {
         self.channel
-            .try_send(SessionCommand::SaveSession(
-                metric_structure,
-                metronome_volume,
-                sync_mode,
-                path,
-            ))
+            .try_send(SessionCommand::SaveSession(data))
             .map_err(|err| match err {
                 TrySendError::Full(_) => SaveLoadError::ChannelFull,
                 TrySendError::Disconnected(_) => SaveLoadError::ChannelClosed,

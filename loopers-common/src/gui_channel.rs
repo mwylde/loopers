@@ -55,9 +55,17 @@ pub enum GuiCommand {
 }
 
 #[derive(Clone)]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Clone)]
 pub struct LogMessage {
     buffer: ArrayVec<[u8; 256]>,
     len: usize,
+    level: LogLevel,
 }
 
 impl LogMessage {
@@ -65,11 +73,31 @@ impl LogMessage {
         LogMessage {
             buffer: ArrayVec::new(),
             len: 0,
+            level: LogLevel::Info,
+        }
+    }
+
+    pub fn error() -> Self {
+        LogMessage {
+            buffer: ArrayVec::new(),
+            len: 0,
+            level: LogLevel::Error,
         }
     }
 
     pub fn as_str(&self) -> Cow<'_, str> {
         String::from_utf8_lossy(&self.buffer[0..self.len])
+    }
+}
+
+impl Write for LogMessage {
+    fn write(&mut self, s: &[u8]) -> io::Result<usize> {
+        self.len += s.len();
+        self.buffer.write(s)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -125,6 +153,18 @@ impl GuiSender {
             }
         }
     }
+
+    pub fn send_log(&mut self, message: LogMessage) -> io::Result<()> {
+        if let Some(log_channel) = &self.log_channel {
+            log_channel.try_send(message).map_err(|e| match e {
+                TrySendError::Full(_) => io::Error::new(ErrorKind::WouldBlock, "queue full"),
+                TrySendError::Disconnected(_) => {
+                    io::Error::new(ErrorKind::BrokenPipe, "queue disconnected")
+                }
+            })?;
+        }
+        Ok(())
+    }
 }
 
 impl Clone for GuiSender {
@@ -144,17 +184,9 @@ impl Write for GuiSender {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if let Some(log_channel) = &self.log_channel {
-            let message = self.cur_message.clone();
-            self.cur_message.len = 0;
-            self.cur_message.buffer.clear();
-            log_channel.try_send(message).map_err(|e| match e {
-                TrySendError::Full(_) => io::Error::new(ErrorKind::WouldBlock, "queue full"),
-                TrySendError::Disconnected(_) => {
-                    io::Error::new(ErrorKind::BrokenPipe, "queue disconnected")
-                }
-            })?;
-        }
-        Ok(())
+        let message = self.cur_message.clone();
+        self.cur_message.len = 0;
+        self.cur_message.buffer.clear();
+        self.send_log(message)
     }
 }

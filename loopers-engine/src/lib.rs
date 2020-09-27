@@ -8,12 +8,12 @@ use crate::looper::Looper;
 use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
 use crate::sample::Sample;
-use crate::session::SessionSaver;
+use crate::session::{SessionSaver, SaveSessionData};
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode, set_sample_rate};
+use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode, set_sample_rate, get_sample_rate};
 use loopers_common::config::Config;
-use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender};
+use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage};
 use loopers_common::music::*;
 use loopers_common::Host;
 use std::cmp::Reverse;
@@ -21,7 +21,7 @@ use std::collections::BinaryHeap;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -344,6 +344,17 @@ impl Engine {
             SaveLoadError::OtherError("Failed to restore session; file is invalid".to_string())
         })?;
 
+        if session.sample_rate != get_sample_rate() {
+            let mut error = LogMessage::error();
+            if let Err(_) = write!(&mut error, "Session was saved with sample rate {}, but system rate \
+            is set to {}, playback will be affected", session.sample_rate, get_sample_rate()) {
+                error!("Different sample rate");
+            };
+            if let Err(e) = self.gui_sender.send_log(error) {
+                error!("failed to send log: {}", e);
+            }
+        }
+
         debug!("Restoring session: {:?}", session);
 
         self.metric_structure = session.metric_structure;
@@ -530,13 +541,16 @@ impl Engine {
             }
             SaveSession(path) => {
                 if let Err(e) = self.session_saver.save_session(
-                    self.metric_structure,
-                    self.metronome
-                        .as_ref()
-                        .map(|m| (m.get_volume() * 100.0) as u8)
-                        .unwrap_or(100),
-                    self.sync_mode,
-                    Arc::clone(path),
+                    SaveSessionData {
+                        metric_structure: self.metric_structure,
+                        metronome_volume: self.metronome
+                            .as_ref()
+                            .map(|m| (m.get_volume() * 100.0) as u8)
+                            .unwrap_or(100),
+                        sync_mode: self.sync_mode,
+                        path: Arc::clone(path),
+                        sample_rate: get_sample_rate(),
+                    }
                 ) {
                     error!("Failed to save session {:?}", e);
                 }

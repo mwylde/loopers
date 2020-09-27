@@ -400,5 +400,7 @@ pub struct SavedSession {
     pub metric_structure: MetricStructure,
     #[serde(default = "sync_mode_default")]
     pub sync_mode: SyncMode,
+    #[serde(default)]
+    pub sample_rate: usize,
     pub loopers: Vec<SavedLooper>,
 }
