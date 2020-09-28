@@ -12,16 +12,16 @@ use crate::session::{SessionSaver, SaveSessionData};
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode, set_sample_rate, get_sample_rate};
-use loopers_common::config::Config;
+use loopers_common::config::{Config, MidiMapping};
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage};
 use loopers_common::music::*;
-use loopers_common::Host;
+use loopers_common::{Host};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
-use std::io;
-use std::io::{Read, Write};
+use std::{io, fs};
+use std::io::{Read, Write, ErrorKind};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -83,18 +83,49 @@ fn max_abs(b: &[f32]) -> f32 {
 }
 
 pub fn last_session_path() -> io::Result<PathBuf> {
-    let mut config_path = dirs::config_dir().unwrap();
+    let mut config_path = dirs::config_dir().unwrap_or(PathBuf::new());
     config_path.push("loopers");
     create_dir_all(&config_path)?;
     config_path.push(".last-session");
     Ok(config_path)
 }
 
+pub fn read_config() -> Result<Config, String> {
+    // read config
+    let mut config_path = dirs::config_dir().unwrap_or(PathBuf::new());
+    config_path.push("loopers/config.toml");
+
+    let config_string = fs::read_to_string(config_path)
+        .unwrap_or_else(|e| {
+            if e.kind() != ErrorKind::NotFound {
+                error!("Failed to read config file: {}", e);
+            }
+            String::new()
+        });
+
+    let mut config: Config = toml::from_str(&config_string)
+        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+
+    let mut mapping_path = dirs::config_dir().unwrap_or(PathBuf::new());
+    mapping_path.push("loopers/midi_mappings.tsv");
+    if let Ok(file) = File::open(&mapping_path) {
+        match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
+            Ok(mms) => config.midi_mappings.extend(mms),
+            Err(e) => {
+                return Err(format!("Failed to load midi mappings: {:?}", e));
+            }
+        }
+    }
+
+    info!("Config: {:#?}", config);
+
+    Ok(config)
+}
+
 impl Engine {
     pub fn new<'a, H: Host<'a>>(
         host: &mut H,
-        config: Config,
-        gui_sender: GuiSender,
+        mut gui_sender: GuiSender,
         command_input: Receiver<Command>,
         beat_normal: Vec<f32>,
         beat_emphasis: Vec<f32>,
@@ -102,6 +133,21 @@ impl Engine {
         sample_rate: usize,
     ) -> Engine {
         let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
+
+        let config = match read_config() {
+            Ok(config) => config,
+            Err(err) => {
+                let mut error = LogMessage::error();
+                if let Err(e) = write!(error, "{}", err) {
+                    error!("Failed to report config error: {}", e);
+                } else {
+                    gui_sender.send_log(error);
+                }
+
+                Config::new()
+            }
+        };
+
         let mut engine = Engine {
             config,
 
@@ -350,9 +396,7 @@ impl Engine {
             is set to {}, playback will be affected", session.sample_rate, get_sample_rate()) {
                 error!("Different sample rate");
             };
-            if let Err(e) = self.gui_sender.send_log(error) {
-                error!("failed to send log: {}", e);
-            }
+            self.gui_sender.send_log(error);
         }
 
         debug!("Restoring session: {:?}", session);
@@ -682,6 +726,7 @@ impl Engine {
                 .peek()
                 .filter(|t| t.0.triggered_at().0 < next_time as i64)
             {
+                // The unwrap is safe due to th preceding peek
                 let trigger = self.triggers.pop().unwrap();
 
                 let trigger_at = trigger.0.triggered_at();

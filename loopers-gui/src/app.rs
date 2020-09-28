@@ -1328,7 +1328,7 @@ impl BottomButtonView {
                         BottomButtonBehavior::Load => {
                             let dir = dirs::home_dir()
                                 .map(|mut dir| {
-                                    dir.push("looper-sessions");
+                                    dir.push("looper-sessions/");
                                     dir.to_string_lossy().to_string()
                                 })
                                 .unwrap_or(PathBuf::new().to_string_lossy().to_string());

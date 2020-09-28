@@ -154,7 +154,13 @@ impl GuiSender {
         }
     }
 
-    pub fn send_log(&mut self, message: LogMessage) -> io::Result<()> {
+    pub fn send_log(&mut self, message: LogMessage) -> () {
+        if let Err(e) = self.send_log_with_result(message) {
+            warn!("Failed to send message to gui: {}", e);
+        }
+    }
+
+    fn send_log_with_result(&mut self, message: LogMessage) -> io::Result<()> {
         if let Some(log_channel) = &self.log_channel {
             log_channel.try_send(message).map_err(|e| match e {
                 TrySendError::Full(_) => io::Error::new(ErrorKind::WouldBlock, "queue full"),
@@ -187,6 +193,6 @@ impl Write for GuiSender {
         let message = self.cur_message.clone();
         self.cur_message.len = 0;
         self.cur_message.buffer.clear();
-        self.send_log(message)
+        self.send_log_with_result(message)
     }
 }

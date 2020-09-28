@@ -56,7 +56,7 @@ fn create_surface(
         None,
         None,
     )
-    .unwrap();
+    .expect("Unable to create surface");
 
     surface.canvas().scale((scale_factor, scale_factor));
 
@@ -81,7 +81,9 @@ pub fn skia_main(mut gui: Gui) {
 
     let windowed_context = cb.build_windowed(wb, &el).unwrap();
 
-    let windowed_context = unsafe { windowed_context.make_current().unwrap() };
+    let windowed_context = unsafe {
+        windowed_context.make_current().unwrap()
+    };
     let pixel_format = windowed_context.get_pixel_format();
 
     debug!(

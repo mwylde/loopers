@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::SaveLoadError;
 use loopers_common::api::{SavedSession, SyncMode};
-use loopers_common::gui_channel::GuiSender;
+use loopers_common::gui_channel::{GuiSender, LogMessage};
 use std::sync::Arc;
 
 const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -46,13 +46,18 @@ impl SessionSaver {
             loop {
                 match rx.recv() {
                     Ok(SessionCommand::SaveSession(sd)) => {
-                        Self::execute_save_session(
+                        if let Err(e) = Self::execute_save_session(
                             sd,
                             &loopers,
                             &mut gui_channel,
-                        )
-                        // TODO: handle this properly
-                        .unwrap();
+                        ) {
+                            let mut log = LogMessage::error();
+                            if let Err(e) = write!(log, "Failed to save session: {:?}", e) {
+                                error!("Failed to write error message: {}", e);
+                            } else {
+                                gui_channel.send_log(log);
+                            }
+                        }
                     }
                     Ok(SessionCommand::AddLooper(id, tx)) => {
                         loopers.insert(id, tx);

@@ -13,15 +13,13 @@ extern crate log;
 use clap::{App, Arg};
 use crossbeam_channel::bounded;
 use jack::{AudioOut, Client, Port, ProcessScope};
-use loopers_common::config::MidiMapping;
 use loopers_common::gui_channel::GuiSender;
-use loopers_common::{config, Host};
+use loopers_common::{Host};
 use loopers_engine::midi::MidiEvent;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::collections::HashMap;
-use std::fs::File;
-use std::{fs, io};
+use std::{io};
 
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -131,27 +129,6 @@ fn main() {
         (None, GuiSender::disconnected())
     };
 
-    // read config
-    let mut config_path = dirs::config_dir().unwrap();
-    config_path.push("loopers/config.toml");
-    let mut config: config::Config = fs::read_to_string(config_path)
-        .map(|s| toml::from_str(&s).expect("Failed to parse config file"))
-        .unwrap_or(config::Config {
-            midi_mappings: vec![],
-        });
-
-    let mut mapping_path = dirs::config_dir().unwrap();
-    mapping_path.push("loopers/midi_mappings.tsv");
-    if let Ok(file) = File::open(&mapping_path) {
-        match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
-            Ok(mms) => config.midi_mappings.extend(mms),
-            Err(e) => {
-                error!("Failed to load midi mappings: {:?}", e);
-            }
-        }
-    }
-
-    info!("Config: {:#?}", config);
 
     // read wav files
     let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
@@ -208,7 +185,6 @@ fn main() {
 
     let mut engine = Engine::new(
         &mut host,
-        config,
         gui_sender,
         gui_to_engine_receiver,
         beat_normal,
@@ -294,33 +270,29 @@ struct Notifications;
 
 impl jack::NotificationHandler for Notifications {
     fn thread_init(&self, _: &jack::Client) {
-        println!("JACK: thread init");
+        debug!("JACK: thread init");
     }
 
     fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
-        println!(
+        debug!(
             "JACK: shutdown with status {:?} because \"{}\"",
             status, reason
         );
     }
 
     fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
-        println!(
+        debug!(
             "JACK: freewheel mode is {}",
             if is_enabled { "on" } else { "off" }
         );
     }
 
     fn buffer_size(&mut self, _: &jack::Client, sz: jack::Frames) -> jack::Control {
-        println!("JACK: buffer size changed to {}", sz);
+        debug!("JACK: buffer size changed to {}", sz);
         jack::Control::Continue
     }
 
-    fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        warn!(
-            "JACK: sample rate changed to {}. This is not supported yet.",
-            srate
-        );
+    fn sample_rate(&mut self, _: &jack::Client, _: jack::Frames) -> jack::Control {
         jack::Control::Quit
     }
 
@@ -361,7 +333,7 @@ impl jack::NotificationHandler for Notifications {
         port_id_b: jack::PortId,
         are_connected: bool,
     ) {
-        println!(
+        debug!(
             "JACK: ports with id {} and {} are {}",
             port_id_a,
             port_id_b,

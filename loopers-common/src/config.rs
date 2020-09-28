@@ -60,6 +60,14 @@ pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
 }
 
+impl Config {
+    pub fn new() -> Config {
+        Config {
+            midi_mappings: vec![],
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MidiMapping {
     pub channel: u8,
