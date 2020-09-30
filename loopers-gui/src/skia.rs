@@ -72,6 +72,9 @@ pub fn skia_main(mut gui: Gui) {
             height: INITIAL_HEIGHT,
         });
 
+    let debug = std::env::var("DEBUG").is_ok();
+
+
     let cb = ContextBuilder::new()
         .with_depth_buffer(0)
         .with_stencil_buffer(8)
@@ -201,7 +204,7 @@ pub fn skia_main(mut gui: Gui) {
 
                     let size = windowed_context.window().inner_size();
 
-                    if capture_debug_frame {
+                    if debug && capture_debug_frame {
                         let mut recorder = PictureRecorder::new();
                         let mut recording_canvas = recorder.begin_recording(
                             Rect::from_iwh(size.width as i32, size.height as i32),
@@ -255,7 +258,7 @@ pub fn skia_main(mut gui: Gui) {
                     )
                     .unwrap();
 
-                    if frame_counter > frame_times.len() {
+                    if debug && frame_counter > frame_times.len() {
                         canvas.draw_text_blob(
                             &text,
                             Point::new(
