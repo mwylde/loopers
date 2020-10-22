@@ -1181,7 +1181,8 @@ impl LooperBackend {
         };
 
         for (i, s) in self.samples.iter().enumerate() {
-            let p = path.join(format!("loop_{}_{}.wav", self.id, i));
+            let name = format!("loop_{}_{}.wav", self.id, i);
+            let p = path.join(&name);
             let mut writer = hound::WavWriter::create(&p, spec.clone())?;
 
             for j in 0..s.length() as usize {
@@ -1189,7 +1190,8 @@ impl LooperBackend {
                 writer.write_sample(s.buffer[1][j])?;
             }
             writer.finalize()?;
-            saved.samples.push(p);
+            // use the relative path so that the directory can be moved and still be valid
+            saved.samples.push(PathBuf::from(name));
         }
 
         Ok(saved)

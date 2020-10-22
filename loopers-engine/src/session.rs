@@ -122,7 +122,7 @@ impl SessionSaver {
         path.push("project.loopers");
         let mut file = File::create(&path)?;
 
-        match toml::to_string(&session) {
+        match serde_json::to_string_pretty(&session) {
             Ok(v) => {
                 writeln!(file, "{}", v)?;
 

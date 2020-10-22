@@ -384,7 +384,7 @@ impl Engine {
 
         let dir = path.parent().unwrap();
 
-        let mut session: SavedSession = toml::from_str(&contents).map_err(|err| {
+        let mut session: SavedSession = serde_json::from_str(&contents).map_err(|err| {
             warn!("Found invalid SavedSession during load: {:?}", err);
             // TODO: improve these error messages
             SaveLoadError::OtherError("Failed to restore session; file is invalid".to_string())
