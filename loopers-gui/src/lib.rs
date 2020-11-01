@@ -11,14 +11,13 @@ use skia_safe::{Canvas, Size};
 
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
-use glutin::dpi::PhysicalPosition;
 use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode};
 use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform, WAVEFORM_DOWNSAMPLE};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::time::{Duration, Instant};
-use winit::event::MouseButton;
+use sdl2::mouse::MouseButton;
 
 const SHOW_BUTTONS: bool = true;
 
@@ -40,14 +39,14 @@ pub enum KeyEventType {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum KeyEventKey {
     Char(char),
-    Backspace,
+    Esc, Backspace,
     Enter,
-    Esc,
+
 }
 
 #[derive(Copy, Clone, Debug)]
 pub enum GuiEvent {
-    MouseEvent(MouseEventType, PhysicalPosition<f64>),
+    MouseEvent(MouseEventType, (i32, i32)),
     KeyEvent(KeyEventType, KeyEventKey),
 }
 

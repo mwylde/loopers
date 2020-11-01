@@ -147,8 +147,7 @@ impl GuiSender {
                     warn!("GUI message queue is full");
                 }
                 Err(TrySendError::Disconnected(_)) => {
-                    // TODO: think more about the correct behavior here
-                    panic!("GUI message queue is disconnected");
+                    // we're shutting down
                 }
             }
         }

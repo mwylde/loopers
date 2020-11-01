@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use winit::event::MouseButton;
+use sdl2::mouse::MouseButton;
 
 lazy_static! {
     static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");

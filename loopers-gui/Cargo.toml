@@ -13,8 +13,8 @@ dirs = "1.0"
 
 skia-safe = {version = "0.30", features = ["gl"]}
 
-glutin = "0.24"
-winit = "0.22"
+sdl2 = "0.34"
+
 tinyfiledialogs = "3.3"
 lazy_static = "1"
 chrono = "0.4.11"

@@ -4,7 +4,7 @@ use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
 };
 use std::time::UNIX_EPOCH;
-use winit::event::MouseButton;
+use sdl2::mouse::MouseButton;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
@@ -49,7 +49,7 @@ pub trait Button {
                         .total_matrix()
                         .invert()
                         .unwrap()
-                        .map_point((pos.x as f32, pos.y as f32));
+                        .map_point((pos.0 as f32, pos.1 as f32));
                     if bounds.contains(point) {
                         match typ {
                             MouseEventType::MouseDown(MouseButton::Left) => {
@@ -273,7 +273,7 @@ pub trait TextEditable {
                 .total_matrix()
                 .invert()
                 .unwrap()
-                .map_point((pos.x as f32, pos.y as f32));
+                .map_point((pos.0 as f32, pos.1 as f32));
 
             if !bounds.contains(point) {
                 commit = true;

@@ -264,6 +264,7 @@ fn main() {
     }
 
     active_client.deactivate().unwrap();
+    std::process::exit(0);
 }
 
 struct Notifications;
