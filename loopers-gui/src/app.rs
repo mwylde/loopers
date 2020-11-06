@@ -6,7 +6,7 @@ use crate::widgets::{
 };
 use loopers_common::api::{
     get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
-    Part, SyncMode,
+    Part, SyncMode, PARTS,
 };
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
@@ -17,7 +17,7 @@ use skia_safe::paint::Style;
 use skia_safe::path::Path;
 use skia_safe::Rect;
 use skia_safe::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -304,9 +304,20 @@ impl MainPage {
     }
 
     pub fn min_size(&self, data: &AppData) -> Size {
+        let mut parts = HashMap::new();
+        for l in data.loopers.values() {
+            for part in PARTS.iter() {
+                if l.parts[*part] {
+                    *parts.entry(part).or_insert(0) += 1;
+                }
+            }
+        }
+
+        let max = parts.values().max().unwrap_or(&1);
+
         Size::new(
             800.0,
-            data.loopers.len() as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN) + BOTTOM_MARGIN,
+            *max as f32 * (LOOPER_HEIGHT + LOOPER_MARGIN) + BOTTOM_MARGIN,
         )
     }
 
@@ -418,7 +429,7 @@ impl MainPage {
             canvas.restore();
         }
 
-        // draw the looper add button if we can fit more on the screen
+        // draw the looper add button if we can fit it
         let max_loopers = ((h - BOTTOM_MARGIN) / (LOOPER_MARGIN + LOOPER_HEIGHT)).floor() as usize;
         if visible_loopers < max_loopers {
             canvas.save();

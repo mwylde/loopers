@@ -1,7 +1,7 @@
 use skia_safe::gpu::gl::FramebufferInfo;
 use skia_safe::gpu::{BackendRenderTarget, Context, SurfaceOrigin};
 use skia_safe::{
-    Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Surface, TextBlob, Typeface,
+    Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob, Typeface,
 };
 use std::convert::TryInto;
 
@@ -113,6 +113,8 @@ pub fn skia_main(mut gui: Gui) {
 
     let mut last_event = None;
     let mut event_pump = sdl_context.event_pump().unwrap();
+
+    let mut min_size = Size::new(0.0, 0.0);
 
     'running: loop {
         window.gl_swap_window();
@@ -254,9 +256,20 @@ pub fn skia_main(mut gui: Gui) {
         }
         surface.canvas().flush();
 
-        let min_size = gui.min_size();
-        if let Err(e) = window.set_minimum_size(min_size.width as u32, min_size.height as u32) {
-            warn!("Failed to set minimum window size: {:?}", e);
+        let new_min_size = gui.min_size();
+        if new_min_size != min_size {
+            min_size = new_min_size;
+            if let Err(e) = window.set_minimum_size(min_size.width as u32, min_size.height as u32) {
+                warn!("Failed to set minimum window size: {:?}", e);
+            }
+
+            surface = create_surface(
+                &mut gr_context,
+                &pixel_format,
+                fb_info,
+                (window.size().0, window.size().1),
+                sf,
+            );
         }
 
         let frame_len = frame_times.len();

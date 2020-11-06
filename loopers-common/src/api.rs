@@ -353,6 +353,8 @@ impl IndexMut<Part> for PartSet {
     }
 }
 
+pub static PARTS: [Part; 4] = [Part::A, Part::B, Part::C, Part::D];
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum LooperMode {
     Recording,
