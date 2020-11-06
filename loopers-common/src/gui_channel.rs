@@ -1,4 +1,6 @@
-use crate::api::{FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode, Command};
+use crate::api::{
+    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, SyncMode,
+};
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};

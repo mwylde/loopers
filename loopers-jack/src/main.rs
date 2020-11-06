@@ -14,12 +14,12 @@ use clap::{App, Arg};
 use crossbeam_channel::bounded;
 use jack::{AudioOut, Client, Port, ProcessScope};
 use loopers_common::gui_channel::GuiSender;
-use loopers_common::{Host};
+use loopers_common::Host;
 use loopers_engine::midi::MidiEvent;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::collections::HashMap;
-use std::{io};
+use std::io;
 
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
@@ -128,7 +128,6 @@ fn main() {
     } else {
         (None, GuiSender::disconnected())
     };
-
 
     // read wav files
     let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();

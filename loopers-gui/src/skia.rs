@@ -10,13 +10,13 @@ use gl::types::*;
 use gl_rs as gl;
 
 use chrono::Local;
+use sdl2::event::{Event, WindowEvent};
+use sdl2::keyboard::{Keycode, Mod};
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::video::GLProfile;
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
-use sdl2::video::GLProfile;
-use sdl2::pixels::PixelFormatEnum;
-use sdl2::event::{Event, WindowEvent};
-use sdl2::keyboard::{Keycode, Mod};
 
 const INITIAL_WIDTH: i32 = 800;
 const INITIAL_HEIGHT: i32 = 600;
@@ -32,13 +32,8 @@ fn create_surface(
     size: (u32, u32),
     scale_factor: f32,
 ) -> Surface {
-
-    let backend_render_target = BackendRenderTarget::new_gl(
-        (size.0 as i32, size.1 as i32),
-        0,
-        8,
-        fb_info,
-    );
+    let backend_render_target =
+        BackendRenderTarget::new_gl((size.0 as i32, size.1 as i32), 0, 8, fb_info);
 
     let color_type = match pixel_format {
         PixelFormatEnum::RGBA8888 => ColorType::RGBA8888,
@@ -80,7 +75,7 @@ pub fn skia_main(mut gui: Gui) {
     gl_attr.set_accelerated_visual(true);
 
     let mut window = video_subsystem
-        .window("loopers",INITIAL_WIDTH as u32, INITIAL_HEIGHT as u32)
+        .window("loopers", INITIAL_WIDTH as u32, INITIAL_HEIGHT as u32)
         .opengl()
         .resizable()
         .build()
@@ -128,17 +123,19 @@ pub fn skia_main(mut gui: Gui) {
             match event {
                 Event::Window { win_event, .. } => match win_event {
                     WindowEvent::Resized(w, h) => {
-                        surface =
-                            create_surface(&mut gr_context, &pixel_format, fb_info,
-                                           (w as u32, h as u32), sf);
+                        surface = create_surface(
+                            &mut gr_context,
+                            &pixel_format,
+                            fb_info,
+                            (w as u32, h as u32),
+                            sf,
+                        );
                     }
                     WindowEvent::Close => break 'running,
                     _ => (),
                 },
                 Event::KeyDown {
-                    keycode,
-                    keymod,
-                    ..
+                    keycode, keymod, ..
                 } => {
                     if keycode == Some(Keycode::Question) && keymod.contains(Mod::LCTRLMOD) {
                         capture_debug_frame = true;
@@ -161,10 +158,8 @@ pub fn skia_main(mut gui: Gui) {
                                     };
 
                                     if let Some(key) = key {
-                                        last_event = Some(GuiEvent::KeyEvent(
-                                            KeyEventType::Pressed,
-                                            key,
-                                        ));
+                                        last_event =
+                                            Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key));
                                     }
                                 }
                             }
@@ -175,11 +170,21 @@ pub fn skia_main(mut gui: Gui) {
                 Event::MouseMotion { x, y, .. } => {
                     last_event = Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, y)));
                 }
-                Event::MouseButtonDown { x, y, mouse_btn, .. } => {
-                    last_event = Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(mouse_btn), (x, y)));
+                Event::MouseButtonDown {
+                    x, y, mouse_btn, ..
+                } => {
+                    last_event = Some(GuiEvent::MouseEvent(
+                        MouseEventType::MouseDown(mouse_btn),
+                        (x, y),
+                    ));
                 }
-                Event::MouseButtonUp { x, y, mouse_btn, .. } => {
-                    last_event = Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(mouse_btn), (x, y)));
+                Event::MouseButtonUp {
+                    x, y, mouse_btn, ..
+                } => {
+                    last_event = Some(GuiEvent::MouseEvent(
+                        MouseEventType::MouseUp(mouse_btn),
+                        (x, y),
+                    ));
                 }
                 Event::Quit { .. } => {
                     break 'running;
@@ -195,11 +200,8 @@ pub fn skia_main(mut gui: Gui) {
 
         if debug && capture_debug_frame {
             let mut recorder = PictureRecorder::new();
-            let mut recording_canvas = recorder.begin_recording(
-                Rect::from_iwh(size.0 as i32, size.1 as i32),
-                None,
-                None,
-            );
+            let mut recording_canvas =
+                recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None, None);
 
             canvas.clear(BACKGROUND_COLOR.clone());
 
@@ -214,8 +216,7 @@ pub fn skia_main(mut gui: Gui) {
             let data = picture.serialize();
             let now = Local::now();
 
-            let path =
-                format!("/tmp/skia_dump_{}.skp", now.format("%Y-%m-%d_%H:%M:%S"));
+            let path = format!("/tmp/skia_dump_{}.skp", now.format("%Y-%m-%d_%H:%M:%S"));
             let mut file = File::create(&path).unwrap();
 
             info!("Captured debug frame to {}", path);
@@ -224,12 +225,7 @@ pub fn skia_main(mut gui: Gui) {
             capture_debug_frame = false;
         }
 
-        gui.draw(
-            &mut canvas,
-            size.0 as f32,
-            size.1 as f32,
-            last_event,
-        );
+        gui.draw(&mut canvas, size.0 as f32, size.1 as f32, last_event);
 
         last_event = None;
 
@@ -237,15 +233,14 @@ pub fn skia_main(mut gui: Gui) {
         paint.set_color(Color::from_rgb(255, 255, 255));
         paint.set_anti_alias(true);
 
-        let avg_frame_time =
-            frame_times.iter().sum::<u64>() as f32 / frame_times.len() as f32;
+        let avg_frame_time = frame_times.iter().sum::<u64>() as f32 / frame_times.len() as f32;
         let fps = 1.0 / (avg_frame_time / 1_000_000.0);
 
         let text = TextBlob::new(
             &format!("{:.1} fps", fps),
             &Font::new(Typeface::default(), 12.0),
         )
-            .unwrap();
+        .unwrap();
 
         if debug && frame_counter > frame_times.len() {
             canvas.draw_text_blob(
@@ -260,16 +255,12 @@ pub fn skia_main(mut gui: Gui) {
         surface.canvas().flush();
 
         let min_size = gui.min_size();
-        if let Err(e) = window.set_minimum_size(
-            min_size.width as u32,
-            min_size.height as u32,
-        ) {
+        if let Err(e) = window.set_minimum_size(min_size.width as u32, min_size.height as u32) {
             warn!("Failed to set minimum window size: {:?}", e);
         }
 
         let frame_len = frame_times.len();
-        frame_times[frame_counter % frame_len] =
-            (Instant::now() - last_time).as_micros() as u64;
+        frame_times[frame_counter % frame_len] = (Instant::now() - last_time).as_micros() as u64;
         frame_counter += 1;
 
         last_time = Instant::now();

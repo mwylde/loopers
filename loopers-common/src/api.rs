@@ -1,12 +1,12 @@
-use crate::gui_channel::{WAVEFORM_DOWNSAMPLE};
+use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
 use crate::music::MetricStructure;
 use derive_more::{Add, Div, Mul, Sub};
 use serde::{Deserialize, Serialize};
+use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::ops::{Index, IndexMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests {
@@ -220,12 +220,10 @@ impl Command {
                     "B" => Some(Part::B),
                     "C" => Some(Part::C),
                     "D" => Some(Part::D),
-                    _ => None
+                    _ => None,
                 })
                 .map(|p| Command::GoToPart(p))
-                .ok_or("GoToPart expects a part name (one of A, B, C, or D)"
-                           .to_string()
-                ),
+                .ok_or("GoToPart expects a part name (one of A, B, C, or D)".to_string()),
 
             "SetSyncMode" => args
                 .get(0)
@@ -233,13 +231,12 @@ impl Command {
                     "Free" => Some(SyncMode::Free),
                     "Beat" => Some(SyncMode::Beat),
                     "Measure" => Some(SyncMode::Measure),
-                    _ => None
+                    _ => None,
                 })
                 .map(|s| Command::SetSyncMode(s))
-                .ok_or("SetSyncMOde expects a sync mode (one of Free, Beat, or Measure)"
-                    .to_string()
+                .ok_or(
+                    "SetSyncMOde expects a sync mode (one of Free, Beat, or Measure)".to_string(),
                 ),
-
 
             "SetMetronomeLevel" => args
                 .get(0)
@@ -275,7 +272,10 @@ impl Command {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 pub enum Part {
-    A, B, C, D
+    A,
+    B,
+    C,
+    D,
 }
 
 impl Part {
@@ -303,13 +303,16 @@ impl PartSet {
             a: true,
             b: false,
             c: false,
-            d: false
+            d: false,
         }
     }
 
     pub fn with(part: Part) -> PartSet {
         let mut parts = PartSet {
-            a: false, b: false, c: false, d: false,
+            a: false,
+            b: false,
+            c: false,
+            d: false,
         };
         parts[part] = true;
         parts

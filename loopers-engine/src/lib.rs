@@ -8,24 +8,29 @@ use crate::looper::Looper;
 use crate::metronome::Metronome;
 use crate::midi::MidiEvent;
 use crate::sample::Sample;
-use crate::session::{SessionSaver, SaveSessionData};
+use crate::session::{SaveSessionData, SessionSaver};
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, SavedSession, PartSet, Part, SyncMode, set_sample_rate, get_sample_rate};
+use loopers_common::api::SyncMode::Free;
+use loopers_common::api::{
+    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
+    Part, PartSet, SavedSession, SyncMode,
+};
 use loopers_common::config::{Config, MidiMapping};
-use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage};
+use loopers_common::gui_channel::{
+    EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
+};
 use loopers_common::music::*;
-use loopers_common::{Host};
+use loopers_common::Host;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
-use std::{io, fs};
-use std::io::{Read, Write, ErrorKind};
+use std::io::{ErrorKind, Read, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use loopers_common::api::SyncMode::Free;
+use std::{fs, io};
 
 mod error;
 pub mod looper;
@@ -95,13 +100,12 @@ pub fn read_config() -> Result<Config, String> {
     let mut config_path = dirs::config_dir().unwrap_or(PathBuf::new());
     config_path.push("loopers/config.toml");
 
-    let config_string = fs::read_to_string(config_path)
-        .unwrap_or_else(|e| {
-            if e.kind() != ErrorKind::NotFound {
-                error!("Failed to read config file: {}", e);
-            }
-            String::new()
-        });
+    let config_string = fs::read_to_string(config_path).unwrap_or_else(|e| {
+        if e.kind() != ErrorKind::NotFound {
+            error!("Failed to read config file: {}", e);
+        }
+        String::new()
+    });
 
     let mut config: Config = toml::from_str(&config_string)
         .map_err(|e| format!("Failed to parse config file: {}", e))?;
@@ -308,8 +312,8 @@ impl Engine {
         ) {
             if triggered {
                 looper.handle_command(lc);
-            } else if let Some(trigger) = Engine::trigger_from_command(
-                ms, sync_mode, time, lc, target, looper)
+            } else if let Some(trigger) =
+                Engine::trigger_from_command(ms, sync_mode, time, lc, target, looper)
             {
                 Engine::add_trigger(triggers, trigger.clone());
 
@@ -328,7 +332,9 @@ impl Engine {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(
+                        triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
+                    );
                 } else {
                     warn!(
                         "Could not find looper with id {} while handling command {:?}",
@@ -345,20 +351,26 @@ impl Engine {
                     .next()
                 {
                     selected = Some(l.id);
-                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(
+                        triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
+                    );
                 } else {
                     warn!("No looper at index {} while handling command {:?}", idx, lc);
                 }
             }
             LooperTarget::All => {
                 for l in &mut self.loopers {
-                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(
+                        triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
+                    );
                 }
             }
             LooperTarget::Selected => {
                 let active = self.active;
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
-                    handle_or_trigger(triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender);
+                    handle_or_trigger(
+                        triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
+                    );
                 } else {
                     error!(
                         "selected looper {} not found while handling command {:?}",
@@ -392,8 +404,13 @@ impl Engine {
 
         if session.sample_rate != get_sample_rate() {
             let mut error = LogMessage::error();
-            if let Err(_) = write!(&mut error, "Session was saved with sample rate {}, but system rate \
-            is set to {}, playback will be affected", session.sample_rate, get_sample_rate()) {
+            if let Err(_) = write!(
+                &mut error,
+                "Session was saved with sample rate {}, but system rate \
+            is set to {}, playback will be affected",
+                session.sample_rate,
+                get_sample_rate()
+            ) {
                 error!("Different sample rate");
             };
             self.gui_sender.send_log(error);
@@ -435,7 +452,10 @@ impl Engine {
         command: &Command,
         triggered: bool,
     ) {
-        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, f: F) where F: FnOnce(&mut Engine) {
+        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, f: F)
+        where
+            F: FnOnce(&mut Engine),
+        {
             if engine.state == EngineState::Stopped || triggered {
                 f(engine);
                 return;
@@ -445,17 +465,17 @@ impl Engine {
                 Free => {
                     f(engine);
                     return;
-                },
-                SyncMode::Beat => {
-                    TriggerCondition::Beat
-                },
-                SyncMode::Measure => {
-                    TriggerCondition::Measure
-                },
+                }
+                SyncMode::Beat => TriggerCondition::Beat,
+                SyncMode::Measure => TriggerCondition::Measure,
             };
 
-            let trigger = Trigger::new(trigger_condition, command.clone(),
-                              engine.metric_structure, FrameTime(engine.time));
+            let trigger = Trigger::new(
+                trigger_condition,
+                command.clone(),
+                engine.metric_structure,
+                FrameTime(engine.time),
+            );
 
             if trigger.triggered_at() < FrameTime(engine.time) {
                 f(engine);
@@ -463,8 +483,10 @@ impl Engine {
             }
 
             Engine::add_trigger(&mut engine.triggers, trigger.clone());
-            engine.gui_sender.send_update(GuiCommand::AddGlobalTrigger(trigger.triggered_at(),
-                                                                     trigger.command));
+            engine.gui_sender.send_update(GuiCommand::AddGlobalTrigger(
+                trigger.triggered_at(),
+                trigger.command,
+            ));
         };
 
         use Command::*;
@@ -497,9 +519,12 @@ impl Engine {
             SetTime(time) => self.set_time(*time),
             AddLooper => {
                 // TODO: make this non-allocating
-                let looper = crate::Looper::new(self.id_counter,
-                                                PartSet::with(self.current_part),
-                                                self.gui_sender.clone()).start();
+                let looper = crate::Looper::new(
+                    self.id_counter,
+                    PartSet::with(self.current_part),
+                    self.gui_sender.clone(),
+                )
+                .start();
                 self.session_saver.add_looper(&looper);
                 self.loopers.push(looper);
                 self.active = self.id_counter;
@@ -584,18 +609,17 @@ impl Engine {
                 self.sync_mode = *sync_mode;
             }
             SaveSession(path) => {
-                if let Err(e) = self.session_saver.save_session(
-                    SaveSessionData {
-                        metric_structure: self.metric_structure,
-                        metronome_volume: self.metronome
-                            .as_ref()
-                            .map(|m| (m.get_volume() * 100.0) as u8)
-                            .unwrap_or(100),
-                        sync_mode: self.sync_mode,
-                        path: Arc::clone(path),
-                        sample_rate: get_sample_rate(),
-                    }
-                ) {
+                if let Err(e) = self.session_saver.save_session(SaveSessionData {
+                    metric_structure: self.metric_structure,
+                    metronome_volume: self
+                        .metronome
+                        .as_ref()
+                        .map(|m| (m.get_volume() * 100.0) as u8)
+                        .unwrap_or(100),
+                    sync_mode: self.sync_mode,
+                    path: Arc::clone(path),
+                    sample_rate: get_sample_rate(),
+                }) {
                     error!("Failed to save session {:?}", e);
                 }
             }

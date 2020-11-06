@@ -46,11 +46,7 @@ impl SessionSaver {
             loop {
                 match rx.recv() {
                     Ok(SessionCommand::SaveSession(sd)) => {
-                        if let Err(e) = Self::execute_save_session(
-                            sd,
-                            &loopers,
-                            &mut gui_channel,
-                        ) {
+                        if let Err(e) = Self::execute_save_session(sd, &loopers, &mut gui_channel) {
                             let mut log = LogMessage::error();
                             if let Err(e) = write!(log, "Failed to save session: {:?}", e) {
                                 error!("Failed to write error message: {}", e);
@@ -160,10 +156,7 @@ impl SessionSaver {
             .expect("channel closed");
     }
 
-    pub fn save_session(
-        &mut self,
-        data: SaveSessionData,
-    ) -> Result<(), SaveLoadError> {
+    pub fn save_session(&mut self, data: SaveSessionData) -> Result<(), SaveLoadError> {
         self.channel
             .try_send(SessionCommand::SaveSession(data))
             .map_err(|err| match err {

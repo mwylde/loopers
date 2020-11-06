@@ -4,23 +4,26 @@ use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
     TextEditable,
 };
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperTarget, LooperSpeed, Part, SyncMode, get_sample_rate};
+use loopers_common::api::{
+    get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
+    Part, SyncMode,
+};
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
+use sdl2::mouse::MouseButton;
 use skia_safe::gpu::SurfaceOrigin;
 use skia_safe::paint::Style;
 use skia_safe::path::Path;
 use skia_safe::Rect;
 use skia_safe::*;
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use sdl2::mouse::MouseButton;
 
 lazy_static! {
     static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
@@ -340,8 +343,11 @@ impl MainPage {
 
         let mut y = 0.0;
         let mut visible_loopers = 0;
-        for (id, looper) in self.loopers.iter_mut()
-            .filter(|(id, _)| data.loopers[id].parts[data.engine_state.part]) {
+        for (id, looper) in self
+            .loopers
+            .iter_mut()
+            .filter(|(id, _)| data.loopers[id].parts[data.engine_state.part])
+        {
             visible_loopers += 1;
             canvas.save();
             canvas.translate(Vector::new(0.0, y));
@@ -433,7 +439,6 @@ impl MainPage {
         canvas.translate((0.0, bottom - 90.0));
         LogMessageView::draw(canvas, data).width;
         canvas.restore();
-
 
         // draw the bottom bars
         if data.show_buttons {
@@ -1282,17 +1287,42 @@ impl BottomButtonView {
         let c = Color::from_rgb(78, 78, 78);
         BottomButtonView {
             buttons: vec![
-                (BottomButtonBehavior::Save, ControlButton::new("save", c, None, 22.0)),
-                (BottomButtonBehavior::Load, ControlButton::new("load", c, None, 22.0)),
-
-                (BottomButtonBehavior::SetSyncMode(SyncMode::Free), ControlButton::new("free", c, None, 22.0)),
-                (BottomButtonBehavior::SetSyncMode(SyncMode::Beat), ControlButton::new("beat", c, None, 22.0)),
-                (BottomButtonBehavior::SetSyncMode(SyncMode::Measure), ControlButton::new("measure", c, None, 22.0)),
-
-                (BottomButtonBehavior::Part(Part::A), ControlButton::new("A", c, None, 22.0)),
-                (BottomButtonBehavior::Part(Part::B), ControlButton::new("B", c, None, 22.0)),
-                (BottomButtonBehavior::Part(Part::C), ControlButton::new("C", c, None, 22.0)),
-                (BottomButtonBehavior::Part(Part::D), ControlButton::new("D", c, None, 22.0)),
+                (
+                    BottomButtonBehavior::Save,
+                    ControlButton::new("save", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::Load,
+                    ControlButton::new("load", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::SetSyncMode(SyncMode::Free),
+                    ControlButton::new("free", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::SetSyncMode(SyncMode::Beat),
+                    ControlButton::new("beat", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::SetSyncMode(SyncMode::Measure),
+                    ControlButton::new("measure", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::Part(Part::A),
+                    ControlButton::new("A", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::Part(Part::B),
+                    ControlButton::new("B", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::Part(Part::C),
+                    ControlButton::new("C", c, None, 22.0),
+                ),
+                (
+                    BottomButtonBehavior::Part(Part::D),
+                    ControlButton::new("D", c, None, 22.0),
+                ),
             ],
         }
     }
@@ -1346,12 +1376,14 @@ impl BottomButtonView {
                             }
                         }
                         BottomButtonBehavior::Part(part) => {
-                            controller.send_command(Command::GoToPart(part),
-                                                    "Failed to change parts");
+                            controller
+                                .send_command(Command::GoToPart(part), "Failed to change parts");
                         }
                         BottomButtonBehavior::SetSyncMode(mode) => {
-                            controller.send_command(Command::SetSyncMode(mode),
-                                                    "Failed to set sync mode");
+                            controller.send_command(
+                                Command::SetSyncMode(mode),
+                                "Failed to set sync mode",
+                            );
                         }
                     };
                 }
@@ -1360,41 +1392,48 @@ impl BottomButtonView {
             let mut progress_percent = 0.0;
 
             if let BottomButtonBehavior::Part(part) = &behavior {
-                progress_percent = data.global_triggers.iter()
+                progress_percent = data
+                    .global_triggers
+                    .iter()
                     .rev()
                     .filter(|(_, _, c)| match c {
                         Command::GoToPart(p) => p == part,
                         // TODO: Think about how to support this for previous part / next part
                         _ => false,
-                    }).min_by_key(|(_, t1, _)| t1.0)
-                    .map(|(t0, t1,  _)| {
+                    })
+                    .min_by_key(|(_, t1, _)| t1.0)
+                    .map(|(t0, t1, _)| {
                         if *t1 == *t0 {
                             0.0
                         } else {
-                            (data.engine_state.time.0 as f32 - t0.0 as f32) / (t1.0 as f32 - t0.0 as f32)
+                            (data.engine_state.time.0 as f32 - t0.0 as f32)
+                                / (t1.0 as f32 - t0.0 as f32)
                         }
-                }).unwrap_or(0.0);
+                    })
+                    .unwrap_or(0.0);
             }
 
-            let size = button.draw_with_progress(canvas, match behavior {
-                BottomButtonBehavior::Part(part) => {
-                    data.engine_state.part == part
+            let size = button.draw_with_progress(
+                canvas,
+                match behavior {
+                    BottomButtonBehavior::Part(part) => data.engine_state.part == part,
+                    BottomButtonBehavior::SetSyncMode(mode) => data.engine_state.sync_mode == mode,
+                    _ => false,
                 },
-                BottomButtonBehavior::SetSyncMode(mode) => {
-                    data.engine_state.sync_mode == mode
-                }
-                _ => false
-            }, on_click, last_event, progress_percent);
+                on_click,
+                last_event,
+                progress_percent,
+            );
             x += size.width + 10.0;
 
-            if behavior == BottomButtonBehavior::Load ||
-                behavior == BottomButtonBehavior::SetSyncMode(SyncMode::Measure) {
+            if behavior == BottomButtonBehavior::Load
+                || behavior == BottomButtonBehavior::SetSyncMode(SyncMode::Measure)
+            {
                 x += 30.0;
             }
 
             canvas.restore();
         }
-
 
         Size::new(x, 40.0)
     }
@@ -1431,7 +1470,10 @@ struct LooperView {
     id: u32,
     waveform_view: WaveformView,
     buttons: Vec<
-        Vec<(Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size>, f32)>,
+        Vec<(
+            Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size>,
+            f32,
+        )>,
     >,
     state: ButtonState,
     active_button: ActiveButton,
@@ -1447,23 +1489,37 @@ impl LooperView {
             buttons: vec![
                 vec![
                     // top row
-                    (Self::new_state_button(LooperMode::Recording, "record", button_height), 15.0),
-                    (Self::new_state_button(LooperMode::Soloed, "solo", button_height), 15.0),
-                    (Self::new_command_button(
-                        "clear",
-                        Color::YELLOW,
-                        Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
-                        button_height,
-                    ), 15.0),
+                    (
+                        Self::new_state_button(LooperMode::Recording, "record", button_height),
+                        15.0,
+                    ),
+                    (
+                        Self::new_state_button(LooperMode::Soloed, "solo", button_height),
+                        15.0,
+                    ),
+                    (
+                        Self::new_command_button(
+                            "clear",
+                            Color::YELLOW,
+                            Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
+                            button_height,
+                        ),
+                        15.0,
+                    ),
                     (Self::new_part_button(Part::A, button_height), 0.5),
                     (Self::new_part_button(Part::B, button_height), 0.5),
                     (Self::new_part_button(Part::C, button_height), 0.5),
                     (Self::new_part_button(Part::D, button_height), 0.5),
-
                 ],
                 vec![
-                    (Self::new_state_button(LooperMode::Overdubbing, "overdub", button_height), 15.0),
-                    (Self::new_state_button(LooperMode::Muted, "mute", button_height), 15.0),
+                    (
+                        Self::new_state_button(LooperMode::Overdubbing, "overdub", button_height),
+                        15.0,
+                    ),
+                    (
+                        Self::new_state_button(LooperMode::Muted, "mute", button_height),
+                        15.0,
+                    ),
                 ],
             ],
             state: ButtonState::Default,
@@ -1495,10 +1551,12 @@ impl LooperView {
         })
     }
 
-    fn new_part_button(part: Part, h: f32) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
-        let mut button = ControlButton::new(part.name(),
-                                            Color::from_rgb(78, 78, 78),
-                                            Some(28.0), h);
+    fn new_part_button(
+        part: Part,
+        h: f32,
+    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+        let mut button =
+            ControlButton::new(part.name(), Color::from_rgb(78, 78, 78), Some(28.0), h);
 
         Box::new(move |canvas, data, controller, last_event| {
             button.draw(
@@ -1514,14 +1572,14 @@ impl LooperView {
 
                         controller.send_command(
                             Command::Looper(lc, LooperTarget::Id(data.id)),
-                            "Failed to send command to engine");
+                            "Failed to send command to engine",
+                        );
                     }
                 },
                 last_event,
             )
         })
     }
-
 
     fn new_state_button(
         mode: LooperMode,

@@ -11,13 +11,18 @@ use skia_safe::{Canvas, Size};
 
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
-use loopers_common::api::{Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, PartSet, Part, SyncMode};
-use loopers_common::gui_channel::{EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform, WAVEFORM_DOWNSAMPLE};
+use loopers_common::api::{
+    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, SyncMode,
+};
+use loopers_common::gui_channel::{
+    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform,
+    WAVEFORM_DOWNSAMPLE,
+};
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
+use sdl2::mouse::MouseButton;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::time::{Duration, Instant};
-use sdl2::mouse::MouseButton;
 
 const SHOW_BUTTONS: bool = true;
 
@@ -39,9 +44,9 @@ pub enum KeyEventType {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum KeyEventKey {
     Char(char),
-    Esc, Backspace,
+    Esc,
+    Backspace,
     Enter,
-
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -142,7 +147,8 @@ pub struct AppData {
     global_triggers: Vec<(
         FrameTime, // time created
         FrameTime, // trigger time
-        Command)>,
+        Command,
+    )>,
 }
 
 pub struct Gui {
@@ -292,7 +298,9 @@ impl Gui {
                     }
                 }
                 Ok(GuiCommand::AddGlobalTrigger(time, command)) => {
-                    self.state.global_triggers.push((self.state.engine_state.time, time, command));
+                    self.state
+                        .global_triggers
+                        .push((self.state.engine_state.time, time, command));
                 }
                 Ok(GuiCommand::AddLoopTrigger(id, time, command)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
@@ -310,9 +318,7 @@ impl Gui {
 
         // clear out old global triggers
         let time = self.state.engine_state.time;
-        self.state.global_triggers.retain(|(_, t, _)| {
-            *t > time
-        });
+        self.state.global_triggers.retain(|(_, t, _)| *t > time);
 
         // clear out old log messages
         self.state.messages.update();

@@ -1,4 +1,4 @@
-use crate::api::{FrameTime, get_sample_rate};
+use crate::api::{get_sample_rate, FrameTime};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]

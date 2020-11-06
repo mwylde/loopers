@@ -1,10 +1,10 @@
 use crate::{AppData, Controller, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
+use sdl2::mouse::MouseButton;
 use skia_safe::paint::Style;
 use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
 };
 use std::time::UNIX_EPOCH;
-use sdl2::mouse::MouseButton;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
@@ -155,7 +155,7 @@ impl ControlButton {
                 left: bounds.left,
                 top: bounds.bottom - progress_percent * bounds.height(),
                 right: bounds.right,
-                bottom: bounds.bottom
+                bottom: bounds.bottom,
             };
 
             let mut paint = Paint::default();

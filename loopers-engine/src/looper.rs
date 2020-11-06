@@ -7,9 +7,13 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::error::SaveLoadError;
-use loopers_common::api::{FrameTime, LooperCommand, LooperMode, SavedLooper, LooperSpeed, PartSet, Part};
+use loopers_common::api::{
+    FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, SavedLooper,
+};
 use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
-use loopers_common::gui_channel::{GuiCommand, GuiSender, Waveform, WAVEFORM_DOWNSAMPLE, LooperState};
+use loopers_common::gui_channel::{
+    GuiCommand, GuiSender, LooperState, Waveform, WAVEFORM_DOWNSAMPLE,
+};
 
 #[cfg(test)]
 mod tests {
@@ -904,23 +908,25 @@ impl LooperBackend {
             }
             ControlMessage::SetSpeed(speed) => {
                 self.speed = speed;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange
-                    (self.id,
-                     LooperState {
-                         mode: self.mode,
-                         speed: self.speed,
-                         parts: self.parts,
-                     }));
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id,
+                    LooperState {
+                        mode: self.mode,
+                        speed: self.speed,
+                        parts: self.parts,
+                    },
+                ));
             }
             ControlMessage::SetParts(parts) => {
                 self.parts = parts;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange
-                    (self.id,
-                     LooperState {
-                         mode: self.mode,
-                         speed: self.speed,
-                         parts: self.parts,
-                     }));
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id,
+                    LooperState {
+                        mode: self.mode,
+                        speed: self.speed,
+                        parts: self.parts,
+                    },
+                ));
             }
         }
 
@@ -1068,13 +1074,14 @@ impl LooperBackend {
 
         STATE_MACHINE.handle_transition(self, mode);
 
-        self.gui_sender
-            .send_update(GuiCommand::LooperStateChange(self.id,
+        self.gui_sender.send_update(GuiCommand::LooperStateChange(
+            self.id,
             LooperState {
                 mode,
                 speed: self.speed,
                 parts: self.parts,
-            }));
+            },
+        ));
     }
 
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
@@ -1219,11 +1226,16 @@ pub struct Looper {
 
 impl Looper {
     pub fn new(id: u32, parts: PartSet, gui_output: GuiSender) -> Looper {
-        Self::new_with_samples(id, parts, LooperSpeed::One,vec![], gui_output)
+        Self::new_with_samples(id, parts, LooperSpeed::One, vec![], gui_output)
     }
 
-    fn new_with_samples(id: u32, parts: PartSet, speed: LooperSpeed,
-                        samples: Vec<Sample>, mut gui_sender: GuiSender) -> Looper {
+    fn new_with_samples(
+        id: u32,
+        parts: PartSet,
+        speed: LooperSpeed,
+        samples: Vec<Sample>,
+        mut gui_sender: GuiSender,
+    ) -> Looper {
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
@@ -1234,7 +1246,7 @@ impl Looper {
         let state = LooperState {
             mode: LooperMode::Playing,
             speed,
-            parts
+            parts,
         };
 
         if samples.is_empty() {
@@ -1314,7 +1326,13 @@ impl Looper {
             samples.push(sample);
         }
 
-        Ok(Self::new_with_samples(state.id, state.parts, state.speed, samples, gui_output))
+        Ok(Self::new_with_samples(
+            state.id,
+            state.parts,
+            state.speed,
+            samples,
+            gui_output,
+        ))
     }
 
     pub fn channel(&self) -> Sender<ControlMessage> {
@@ -1448,8 +1466,13 @@ impl Looper {
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
     //
     // If the solo flag is set, we will only output if we are in solo mode.
-    pub fn process_output(&mut self, time: FrameTime, outputs: &mut [&mut [f64]],
-                          part: Part, solo: bool) {
+    pub fn process_output(
+        &mut self,
+        time: FrameTime,
+        outputs: &mut [&mut [f64]],
+        part: Part,
+        solo: bool,
+    ) {
         if time.0 < 0 || self.length_in_samples == 0 {
             return;
         }
@@ -1466,7 +1489,7 @@ impl Looper {
             if let Some((l, r)) = self.output_for_t(time) {
                 if (solo && self.mode == LooperMode::Soloed)
                     || (!solo
-                    && self.parts[part]
+                        && self.parts[part]
                         && (self.mode == LooperMode::Playing
                             || self.mode == LooperMode::Overdubbing))
                 {
