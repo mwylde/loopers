@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install libjack-dev libgl1-mesa-dev
+      run: sudo apt-get install libjack-dev libgl1-mesa-dev libsdl2-dev
     - name: Build
       run: cargo build -v
     - name: Run tests
