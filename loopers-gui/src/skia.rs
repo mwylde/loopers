@@ -12,8 +12,7 @@ use gl_rs as gl;
 use chrono::Local;
 use std::fs::File;
 use std::io::Write;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use sdl2::video::GLProfile;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::event::{Event, WindowEvent};
@@ -25,8 +24,6 @@ const INITIAL_HEIGHT: i32 = 600;
 lazy_static! {
     pub static ref BACKGROUND_COLOR: Color = Color::from_rgb(29, 30, 39);
 }
-
-const FPS: u64 = 60;
 
 fn create_surface(
     gr_context: &mut Context,
@@ -112,8 +109,6 @@ pub fn skia_main(mut gui: Gui) {
 
     let mut surface = create_surface(&mut gr_context, &pixel_format, fb_info, size, sf);
 
-    let inter_frame_time = Duration::from_micros(1_000_000 / FPS);
-
     let mut last_time = Instant::now();
 
     let mut frame_times = vec![0; 60];
@@ -125,6 +120,8 @@ pub fn skia_main(mut gui: Gui) {
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     'running: loop {
+        window.gl_swap_window();
+
         gui.update();
 
         for event in event_pump.poll_iter() {
@@ -261,12 +258,6 @@ pub fn skia_main(mut gui: Gui) {
             );
         }
         surface.canvas().flush();
-
-        let diff = Instant::now() - last_time;
-        if inter_frame_time > diff {
-            thread::sleep(inter_frame_time - diff);
-        }
-        window.gl_swap_window();
 
         let min_size = gui.min_size();
         if let Err(e) = window.set_minimum_size(
