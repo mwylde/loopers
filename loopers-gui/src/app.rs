@@ -1795,6 +1795,7 @@ struct DrawCache<T: Eq + Copy> {
     image: Option<(Image, Size)>,
     key: Option<T>,
     draw_fn: CacheUpdaterFn,
+    draw_count: usize,
 }
 
 impl<T: Eq + Copy> DrawCache<T> {
@@ -1803,6 +1804,7 @@ impl<T: Eq + Copy> DrawCache<T> {
             image: None,
             key: None,
             draw_fn,
+            draw_count: 0,
         }
     }
 
@@ -1825,6 +1827,9 @@ impl<T: Eq + Copy> DrawCache<T> {
         let (image, size) = if self.key.is_none()
             || self.key.unwrap() != key
             || self.image.is_none()
+            // this is a hack to get around textures being cleared from GPU memory after sleep
+            // there's probably a better way to detect this, but I'm not sure what it is
+            || self.draw_count > 300
             || self
                 .image
                 .as_ref()
@@ -1856,9 +1861,11 @@ impl<T: Eq + Copy> DrawCache<T> {
             let image = surface.image_snapshot();
             self.image = Some((image, draw_size));
             self.key = Some(key);
+            self.draw_count = 0;
 
             self.image.as_ref().unwrap()
         } else {
+            self.draw_count += 1;
             self.image.as_ref().unwrap()
         };
 
