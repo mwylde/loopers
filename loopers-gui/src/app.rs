@@ -22,6 +22,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -1289,8 +1290,44 @@ enum BottomButtonBehavior {
     Part(Part),
 }
 
+struct LoadWindow {
+    active: Arc<AtomicBool>,
+}
+
+impl LoadWindow {
+    fn activate(&mut self, mut controller: Controller) {
+        if !self.active.load(Ordering::Relaxed) {
+            let active = self.active.clone();
+            std::thread::spawn(move || {
+                let dir = dirs::home_dir()
+                    .map(|mut dir| {
+                        dir.push("looper-sessions/");
+                        dir.to_string_lossy().to_string()
+                    })
+                    .unwrap_or(PathBuf::new().to_string_lossy().to_string());
+
+                // TODO: do this in a separate thread so it doesn't block the channel
+                if let Some(file) = tinyfiledialogs::open_file_dialog(
+                    "Open",
+                    &dir,
+                    Some((&["*.loopers"][..], "loopers project files")),
+                ) {
+                    controller.send_command(
+                        Command::LoadSession(Arc::new(PathBuf::from(file))),
+                        "Failed to send load command to engine",
+                    );
+                }
+
+                active.store(false, Ordering::Relaxed);
+            });
+            self.active.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 struct BottomButtonView {
     buttons: Vec<(BottomButtonBehavior, ControlButton)>,
+    load_window: LoadWindow,
 }
 
 impl BottomButtonView {
@@ -1335,6 +1372,9 @@ impl BottomButtonView {
                     ControlButton::new("D", c, None, 22.0),
                 ),
             ],
+            load_window: LoadWindow {
+                active: Arc::new(AtomicBool::new(false)),
+            },
         }
     }
 
@@ -1346,6 +1386,7 @@ impl BottomButtonView {
         last_event: Option<GuiEvent>,
     ) -> Size {
         let mut x = 0.0;
+        let load_window = &mut self.load_window;
         for (behavior, button) in &mut self.buttons {
             canvas.save();
             canvas.translate((x, 0.0));
@@ -1367,24 +1408,7 @@ impl BottomButtonView {
                             }
                         }
                         BottomButtonBehavior::Load => {
-                            let dir = dirs::home_dir()
-                                .map(|mut dir| {
-                                    dir.push("looper-sessions/");
-                                    dir.to_string_lossy().to_string()
-                                })
-                                .unwrap_or(PathBuf::new().to_string_lossy().to_string());
-
-                            // TODO: do this in a separate thread so it doesn't block the channel
-                            if let Some(file) = tinyfiledialogs::open_file_dialog(
-                                "Open",
-                                &dir,
-                                Some((&["*.loopers"][..], "loopers project files")),
-                            ) {
-                                controller.send_command(
-                                    Command::LoadSession(Arc::new(PathBuf::from(file))),
-                                    "Failed to send load command to engine",
-                                );
-                            }
+                            load_window.activate(controller.clone());
                         }
                         BottomButtonBehavior::Part(part) => {
                             controller

@@ -112,6 +112,7 @@ impl Log {
     }
 }
 
+#[derive(Clone)]
 pub struct Controller {
     command_sender: Sender<Command>,
     gui_sender: GuiSender,
