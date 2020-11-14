@@ -131,6 +131,7 @@ impl LooperCommand {
             "Mute" => Some(Mute),
             "RecordOverdubPlay" => Some(RecordOverdubPlay),
             "Delete" => Some(Delete),
+            "Clear" => Some(Clear),
 
             "1/2x" => Some(SetSpeed(LooperSpeed::Half)),
             "1x" => Some(SetSpeed(LooperSpeed::One)),

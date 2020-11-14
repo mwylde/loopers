@@ -443,6 +443,8 @@ impl Engine {
 
         self.id_counter = self.loopers.iter().map(|l| l.id).max().unwrap_or(0) + 1;
 
+        self.reset();
+
         Ok(())
     }
 
@@ -556,10 +558,13 @@ impl Engine {
                     .loopers
                     .iter()
                     .filter(|l| !l.deleted)
+                    .filter(|l| l.parts[self.current_part])
                     .enumerate()
                     .find(|(_, l)| l.id == self.active)
                 {
-                    let count = self.loopers.iter().filter(|l| !l.deleted).count();
+                    let count = self.loopers.iter()
+                        .filter(|l| l.parts[self.current_part])
+                        .filter(|l| !l.deleted).count();
 
                     let next = if *command == SelectNextLooper {
                         (i + 1) % count
@@ -567,42 +572,61 @@ impl Engine {
                         (i as isize - 1).rem_euclid(count as isize) as usize
                     };
 
-                    if let Some(l) = self.loopers.iter().filter(|l| !l.deleted).skip(next).next() {
+                    if let Some(l) = self.loopers.iter()
+                        .filter(|l| l.parts[self.current_part])
+                        .filter(|l| !l.deleted)
+                        .skip(next).next() {
                         self.active = l.id;
                     }
                 } else {
-                    warn!(
-                        "Tried to select next looper, but active looper doesn't exist, selecting \
-                    first looper instead"
-                    );
-                    if let Some(l) = self.looper_by_index_mut(0) {
+                    if let Some(l) = self.loopers.iter()
+                        .filter(|l| !l.deleted)
+                        .filter(|l| l.parts[self.current_part])
+                        .next() {
                         self.active = l.id;
                     }
                 }
             }
             PreviousPart => {
                 trigger_or_run(self, command, triggered, |engine| {
-                    engine.current_part = match engine.current_part {
-                        Part::A => Part::D,
-                        Part::B => Part::A,
-                        Part::C => Part::B,
-                        Part::D => Part::C,
-                    };
+                    let original = engine.current_part;
+                    loop {
+                        engine.current_part = match engine.current_part {
+                            Part::A => Part::D,
+                            Part::B => Part::A,
+                            Part::C => Part::B,
+                            Part::D => Part::C,
+                        };
+                        if engine.loopers.iter().any(|l| !l.deleted && l.parts[engine.current_part]) ||
+                            engine.current_part == original {
+                            break;
+                        }
+                    }
+                    engine.select_first_in_part();
                 });
             }
             NextPart => {
                 trigger_or_run(self, command, triggered, |engine| {
-                    engine.current_part = match engine.current_part {
-                        Part::A => Part::B,
-                        Part::B => Part::C,
-                        Part::C => Part::D,
-                        Part::D => Part::A,
-                    };
+                    let original = engine.current_part;
+                    loop {
+                        engine.current_part = match engine.current_part {
+                            Part::A => Part::B,
+                            Part::B => Part::C,
+                            Part::C => Part::D,
+                            Part::D => Part::A,
+                        };
+                        if engine.loopers.iter().any(|l| !l.deleted && l.parts[engine.current_part]) ||
+                            engine.current_part == original {
+                            break;
+                        }
+                    }
+                    engine.select_first_in_part();
                 });
             }
             GoToPart(part) => {
                 trigger_or_run(self, command, triggered, |engine| {
                     engine.current_part = *part;
+                    engine.select_first_in_part();
                 });
             }
             SetSyncMode(sync_mode) => {
@@ -654,6 +678,18 @@ impl Engine {
                 }
             }
         }
+    }
+
+    // selects the first looper in the part, unless the current selection is already in the part
+    fn select_first_in_part(&mut self) {
+        if let Some(l) = self.loopers.iter()
+            .filter(|l| l.id == self.active && l.parts[self.current_part])
+            .next()
+            .or(self.loopers.iter()
+                .filter(|l| !l.deleted && l.parts[self.current_part]).next()) {
+            self.active = l.id;
+        }
+
     }
 
     // returns length
