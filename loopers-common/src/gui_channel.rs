@@ -36,6 +36,7 @@ pub struct LooperState {
     pub mode: LooperMode,
     pub speed: LooperSpeed,
     pub parts: PartSet,
+    pub offset: FrameTime,
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +51,7 @@ pub enum GuiCommand {
 
     AddNewSample(u32, FrameTime, [f32; 2], u64),
     AddOverdubSample(u32, FrameTime, [f32; 2]),
-    SetLoopLength(u32, u64),
+    SetLoopLengthAndOffset(u32, u64, FrameTime),
 
     AddLoopTrigger(u32, FrameTime, LooperCommand),
     AddGlobalTrigger(FrameTime, Command),

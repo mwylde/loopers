@@ -396,6 +396,8 @@ pub struct SavedLooper {
     #[serde(default)]
     pub parts: PartSet,
     pub samples: Vec<PathBuf>,
+    #[serde(default)]
+    pub offset_samples: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

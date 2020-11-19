@@ -59,6 +59,7 @@ pub enum GuiEvent {
 pub struct LooperData {
     id: u32,
     length: u64,
+    offset: FrameTime,
     last_time: FrameTime,
     mode: LooperMode,
     parts: PartSet,
@@ -226,6 +227,7 @@ impl Gui {
                         LooperData {
                             id,
                             length: 0,
+                            offset: FrameTime(0),
                             last_time: FrameTime(0),
                             mode: state.mode,
                             parts: state.parts,
@@ -241,6 +243,7 @@ impl Gui {
                         LooperData {
                             id,
                             length,
+                            offset: state,
                             last_time: FrameTime(length as i64 - 1),
                             mode: state.mode,
                             parts: state.parts,
@@ -293,9 +296,10 @@ impl Gui {
                         }
                     }
                 }
-                Ok(GuiCommand::SetLoopLength(id, len)) => {
+                Ok(GuiCommand::SetLoopLengthAndOffset(id, len, offset)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         l.length = len;
+                        l.offset = offset;
                     }
                 }
                 Ok(GuiCommand::AddGlobalTrigger(time, command)) => {
