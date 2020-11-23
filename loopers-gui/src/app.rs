@@ -2145,22 +2145,26 @@ impl WaveformView {
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
-                let start_time = if data.engine_state.time.0 < looper.length as i64 {
+                let time = data.engine_state.time.0 + looper.offset.0;
+
+                let start_time = if time < looper.length as i64 {
                     0
                 } else {
                     // The second smallest multiple of length < time
-                    ((data.engine_state.time.0 / looper.length as i64) - 1) * (looper.length as i64)
+                    ((time / looper.length as i64) - 1) * (looper.length as i64)
                 };
 
-                let mut x = -self.time_to_x(FrameTime(data.engine_state.time.0 - start_time));
+                let mut x = -self.time_to_x(FrameTime(time - start_time));
 
                 let mut first = true;
+
+                let zero_time = -self.time_to_x(FrameTime(time));
 
                 while x < w as f64 * 2.0 {
                     canvas.save();
                     canvas.translate(Vector::new(x as f32, 0.0));
 
-                    if start_time != 0 || !first {
+                    if (start_time != 0 || !first) && x > zero_time {
                         loop_icons.push(x);
                     }
 

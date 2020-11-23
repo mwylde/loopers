@@ -243,7 +243,7 @@ impl Gui {
                         LooperData {
                             id,
                             length,
-                            offset: state,
+                            offset: state.offset,
                             last_time: FrameTime(length as i64 - 1),
                             mode: state.mode,
                             parts: state.parts,
@@ -282,6 +282,7 @@ impl Gui {
                 }
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
+                        let time = time + l.offset;
                         if time.0 >= 0 && l.waveform[0].len() > 0 && l.length > 0 {
                             let i =
                                 ((time.0 as u64 % l.length) / WAVEFORM_DOWNSAMPLE as u64) as usize;

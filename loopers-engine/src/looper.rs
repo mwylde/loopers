@@ -466,7 +466,7 @@ mod tests {
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
 
-        assert_eq!(FrameTime(120), l.backend.as_ref().unwrap().offset_samples);
+        assert_eq!(FrameTime(120), l.backend.as_ref().unwrap().offset);
 
         for i in (0..CROSS_FADE_SAMPLES * 2).step_by(32) {
             l.process_input(
@@ -874,7 +874,7 @@ pub struct LooperBackend {
     pub parts: PartSet,
     pub deleted: bool,
 
-    offset_samples: FrameTime,
+    offset: FrameTime,
 
     enable_crossfading: bool,
 
@@ -1000,6 +1000,7 @@ impl LooperBackend {
                         mode: self.mode,
                         speed: self.speed,
                         parts: self.parts,
+                        offset: self.offset,
                     },
                 ));
             }
@@ -1011,6 +1012,7 @@ impl LooperBackend {
                         mode: self.mode,
                         speed: self.speed,
                         parts: self.parts,
+                        offset: self.offset,
                     },
                 ));
             }
@@ -1022,7 +1024,7 @@ impl LooperBackend {
 
     #[inline]
     fn time_in_loop(&self, t: FrameTime) -> usize {
-        (t + self.offset_samples).0.rem_euclid(self.length_in_samples() as i64) as usize
+        (t + self.offset).0.rem_euclid(self.length_in_samples() as i64) as usize
     }
 
     fn fill_output(&mut self) {
@@ -1078,12 +1080,12 @@ impl LooperBackend {
         // of wasted data
         self.out_time = self.in_time;
 
-        self.offset_samples = self.out_time - FrameTime(self.length_in_samples() as i64);
+        self.offset = self.out_time - FrameTime(self.length_in_samples() as i64);
 
         // send our final length to the gui
         self.gui_sender
             .send_update(GuiCommand::SetLoopLengthAndOffset(
-                self.id, self.length_in_samples(), self.offset_samples));
+                self.id, self.length_in_samples(), self.offset));
     }
 
     // state transition functions
@@ -1174,6 +1176,7 @@ impl LooperBackend {
                 mode,
                 speed: self.speed,
                 parts: self.parts,
+                offset: self.offset,
             },
         ));
     }
@@ -1181,11 +1184,12 @@ impl LooperBackend {
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
         if self.mode == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
+            let time_in_loop = self.time_in_loop(FrameTime(time_in_samples as i64));
             let s = self
                 .samples
                 .last_mut()
                 .expect("No samples for looper in overdub mode");
-            s.overdub(time_in_samples, inputs);
+            s.overdub(time_in_loop as u64, inputs);
 
             // TODO: this logic should probably be abstracted out into Sample so it can be reused
             //       between here and fill_output
@@ -1194,7 +1198,7 @@ impl LooperBackend {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
                         wv[c][i] += s.buffer[c]
-                            [(time_in_samples as usize + i) % s.length() as usize]
+                            [self.time_in_loop(FrameTime(time_in_samples as i64 + i as i64))]
                             as f64;
                     }
                 }
@@ -1279,7 +1283,7 @@ impl LooperBackend {
             parts: self.parts,
             speed: self.speed,
             samples: Vec::with_capacity(self.samples.len()),
-            offset_samples: self.offset_samples.0,
+            offset_samples: self.offset.0,
         };
 
         for (i, s) in self.samples.iter().enumerate() {
@@ -1321,13 +1325,14 @@ pub struct Looper {
 
 impl Looper {
     pub fn new(id: u32, parts: PartSet, gui_output: GuiSender) -> Looper {
-        Self::new_with_samples(id, parts, LooperSpeed::One, vec![], gui_output)
+        Self::new_with_samples(id, parts, LooperSpeed::One, FrameTime(0), vec![], gui_output)
     }
 
     fn new_with_samples(
         id: u32,
         parts: PartSet,
         speed: LooperSpeed,
+        offset: FrameTime,
         samples: Vec<Sample>,
         mut gui_sender: GuiSender,
     ) -> Looper {
@@ -1342,6 +1347,7 @@ impl Looper {
             mode: LooperMode::Playing,
             speed,
             parts,
+            offset,
         };
 
         if samples.is_empty() {
@@ -1362,7 +1368,7 @@ impl Looper {
             speed,
             parts,
             deleted: false,
-            offset_samples: FrameTime(0),
+            offset: FrameTime(0),
             enable_crossfading: true,
             out_time: FrameTime(0),
             in_time: FrameTime(0),
@@ -1426,6 +1432,7 @@ impl Looper {
             state.id,
             state.parts,
             state.speed,
+            FrameTime(state.offset_samples),
             samples,
             gui_output,
         ))
