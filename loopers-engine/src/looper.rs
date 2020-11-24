@@ -432,90 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn test_post_xfade_with_offset() {
-        install_test_logger();
-
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
-        // skip past the offset time in the output
-        let mut o_l = vec![0f64; 120];
-        let mut o_r = vec![0f64; 120];
-        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], Part::A, false);
-
-        l.transition_to(LooperMode::Recording);
-        process_until_done(&mut l);
-
-        let mut time = 120i64;
-
-        let mut input_left = vec![1f32; CROSS_FADE_SAMPLES * 2];
-        let mut input_right = vec![-1f32; CROSS_FADE_SAMPLES * 2];
-        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
-        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
-
-        l.process_input(time as u64, &[&input_left, &input_right]);
-        process_until_done(&mut l);
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
-        process_until_done(&mut l);
-        time += input_left.len() as i64;
-
-        for i in 0..CROSS_FADE_SAMPLES {
-            let q = i as f32 / CROSS_FADE_SAMPLES as f32;
-            input_left[i] = -q / (1f32 - q);
-            input_right[i] = q / (1f32 - q);
-        }
-
-        l.transition_to(LooperMode::Playing);
-        process_until_done(&mut l);
-
-        assert_eq!(FrameTime(120), l.backend.as_ref().unwrap().offset);
-
-        for i in (0..CROSS_FADE_SAMPLES * 2).step_by(32) {
-            l.process_input(
-                time as u64,
-                &[&input_left[i..i + 32], &input_right[i..i + 32]],
-            );
-            process_until_done(&mut l);
-
-            let mut o_l = vec![0f64; 32];
-            let mut o_r = vec![0f64; 32];
-            l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
-            process_until_done(&mut l);
-
-            time += 32;
-        }
-
-        let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
-        let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
-
-        l.process_input(time as u64, &[&input_left, &input_right]);
-        process_until_done(&mut l);
-
-        l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
-
-        verify_length(&l, CROSS_FADE_SAMPLES as u64 * 2);
-
-        for i in 0..o_l.len() {
-            if i < CROSS_FADE_SAMPLES {
-                assert!(
-                    (0f64 - o_l[i]).abs() < 0.000001,
-                    "left is {} at idx {}, expected 0",
-                    o_l[i],
-                    time + i as i64
-                );
-                assert!(
-                    (0f64 - o_r[i]).abs() < 0.000001,
-                    "right is {} at idx {}, expected 0",
-                    o_r[i],
-                    time + i as i64
-                );
-            } else {
-                assert_eq!(1f64, o_l[i], "mismatch at {}", time + i as i64);
-                assert_eq!(-1f64, o_r[i], "mismatch at {}", time + i as i64);
-            }
-        }
-    }
-
-
-    #[test]
     fn test_pre_xfade() {
         install_test_logger();
 
@@ -966,6 +882,7 @@ impl LooperBackend {
                 self.samples.clear();
                 self.in_time = FrameTime(0);
                 self.out_time = FrameTime(0);
+                self.offset = FrameTime(0);
                 self.gui_sender
                     .send_update(GuiCommand::ClearLooper(self.id));
             }
@@ -1134,6 +1051,7 @@ impl LooperBackend {
     fn prepare_for_recording(&mut self, _: LooperMode) {
         self.samples.clear();
         self.samples.push(Sample::new());
+        self.offset = FrameTime(0);
     }
 
     fn prepare_for_overdubbing(&mut self, _next_state: LooperMode) {
@@ -1368,7 +1286,7 @@ impl Looper {
             speed,
             parts,
             deleted: false,
-            offset: FrameTime(0),
+            offset,
             enable_crossfading: true,
             out_time: FrameTime(0),
             in_time: FrameTime(0),

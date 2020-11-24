@@ -1669,10 +1669,12 @@ impl LooperView {
     ) -> Size {
         assert_eq!(self.id, looper.id);
 
+        let time = data.engine_state.time + looper.offset;
+
         let ratio = if looper.length == 0 || looper.mode == LooperMode::Recording {
             0f32
         } else {
-            (data.engine_state.time.0.rem_euclid(looper.length as i64)) as f32
+            (time.0.rem_euclid(looper.length as i64)) as f32
                 / looper.length as f32
         };
 
@@ -2146,6 +2148,7 @@ impl WaveformView {
                 canvas.restore();
             } else {
                 let time = data.engine_state.time.0 + looper.offset.0;
+                let first_loop_iteration = data.engine_state.time.0 < looper.length as i64;
 
                 let start_time = if time < looper.length as i64 {
                     0
@@ -2158,13 +2161,20 @@ impl WaveformView {
 
                 let mut first = true;
 
-                let zero_time = -self.time_to_x(FrameTime(time));
+                canvas.save();
+                let clip_x = -self.time_to_x(data.engine_state.time) as f32;
+                if clip_x > 0.0 {
+                    canvas.clip_rect(Rect::new(clip_x,
+                                               0.0, w, h),
+                                     Some(ClipOp::Intersect),
+                                     Some(false));
+                }
 
                 while x < w as f64 * 2.0 {
                     canvas.save();
                     canvas.translate(Vector::new(x as f32, 0.0));
 
-                    if (start_time != 0 || !first) && x > zero_time {
+                    if (!first_loop_iteration || !first) && clip_x < x as f32  {
                         loop_icons.push(x);
                     }
 
@@ -2184,6 +2194,8 @@ impl WaveformView {
                     first = false;
                 }
             }
+
+            canvas.restore();
         }
 
         // draw bar and beat lines
