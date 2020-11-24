@@ -2114,13 +2114,13 @@ impl WaveformView {
 
         canvas.save();
 
+        let mut loop_icons = vec![];
+
         canvas.clip_rect(
             Rect::new(0.0, 0.0, w, h),
             Some(ClipOp::Intersect),
             Some(false),
         );
-
-        let mut loop_icons = vec![];
 
         // draw waveform
         if looper.length > 0 {
@@ -2193,10 +2193,17 @@ impl WaveformView {
                     x += full_w;
                     first = false;
                 }
+
+                canvas.restore();
             }
 
-            canvas.restore();
         }
+
+        canvas.clip_rect(
+            Rect::new(0.0, 0.0, w, h),
+            Some(ClipOp::Intersect),
+            Some(false),
+        );
 
         // draw bar and beat lines
         {
