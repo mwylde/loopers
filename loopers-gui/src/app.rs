@@ -1674,8 +1674,7 @@ impl LooperView {
         let ratio = if looper.length == 0 || looper.mode == LooperMode::Recording {
             0f32
         } else {
-            (time.0.rem_euclid(looper.length as i64)) as f32
-                / looper.length as f32
+            (time.0.rem_euclid(looper.length as i64)) as f32 / looper.length as f32
         };
 
         // Draw loop completion indicate
@@ -2164,17 +2163,18 @@ impl WaveformView {
                 canvas.save();
                 let clip_x = -self.time_to_x(data.engine_state.time) as f32;
                 if clip_x > 0.0 {
-                    canvas.clip_rect(Rect::new(clip_x,
-                                               0.0, w, h),
-                                     Some(ClipOp::Intersect),
-                                     Some(false));
+                    canvas.clip_rect(
+                        Rect::new(clip_x, 0.0, w, h),
+                        Some(ClipOp::Intersect),
+                        Some(false),
+                    );
                 }
 
                 while x < w as f64 * 2.0 {
                     canvas.save();
                     canvas.translate(Vector::new(x as f32, 0.0));
 
-                    if (!first_loop_iteration || !first) && clip_x < x as f32  {
+                    if (!first_loop_iteration || !first) && clip_x < x as f32 {
                         loop_icons.push(x);
                     }
 

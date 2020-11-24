@@ -941,7 +941,9 @@ impl LooperBackend {
 
     #[inline]
     fn time_in_loop(&self, t: FrameTime) -> usize {
-        (t + self.offset).0.rem_euclid(self.length_in_samples() as i64) as usize
+        (t + self.offset)
+            .0
+            .rem_euclid(self.length_in_samples() as i64) as usize
     }
 
     fn fill_output(&mut self) {
@@ -971,8 +973,8 @@ impl LooperBackend {
 
                     for i in 0..2 {
                         for t in 0..buf.size {
-                            buf.data[i][t] += b[i][self.time_in_loop(
-                                self.out_time + FrameTime(t as i64))] as f64;
+                            buf.data[i][t] +=
+                                b[i][self.time_in_loop(self.out_time + FrameTime(t as i64))] as f64;
                         }
                     }
                 }
@@ -1002,7 +1004,10 @@ impl LooperBackend {
         // send our final length to the gui
         self.gui_sender
             .send_update(GuiCommand::SetLoopLengthAndOffset(
-                self.id, self.length_in_samples(), self.offset));
+                self.id,
+                self.length_in_samples(),
+                self.offset,
+            ));
     }
 
     // state transition functions
@@ -1243,7 +1248,14 @@ pub struct Looper {
 
 impl Looper {
     pub fn new(id: u32, parts: PartSet, gui_output: GuiSender) -> Looper {
-        Self::new_with_samples(id, parts, LooperSpeed::One, FrameTime(0), vec![], gui_output)
+        Self::new_with_samples(
+            id,
+            parts,
+            LooperSpeed::One,
+            FrameTime(0),
+            vec![],
+            gui_output,
+        )
     }
 
     fn new_with_samples(
