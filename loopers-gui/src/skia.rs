@@ -139,7 +139,8 @@ pub fn skia_main(mut gui: Gui) {
                 Event::KeyDown {
                     keycode, keymod, ..
                 } => {
-                    if keycode == Some(Keycode::Question) && keymod.contains(Mod::LCTRLMOD) {
+                    // ctrl-? saves a debug frame
+                    if keycode == Some(Keycode::Slash) && keymod.contains(Mod::LCTRLMOD) && keymod.contains(Mod::LSHIFTMOD) {
                         capture_debug_frame = true;
                     } else {
                         match keycode {
@@ -200,7 +201,7 @@ pub fn skia_main(mut gui: Gui) {
 
         let size = window.drawable_size();
 
-        if debug && capture_debug_frame {
+        if capture_debug_frame {
             let mut recorder = PictureRecorder::new();
             let mut recording_canvas =
                 recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None, None);
