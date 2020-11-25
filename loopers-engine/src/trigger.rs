@@ -95,6 +95,7 @@ mod tests {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TriggerCondition {
+    Immediate,
     Measure,
     Beat,
 }
@@ -131,6 +132,9 @@ impl Trigger {
         start_time: FrameTime,
     ) -> FrameTime {
         match condition {
+            TriggerCondition::Immediate => {
+                FrameTime(0)
+            }
             TriggerCondition::Measure => {
                 if start_time.0 < 0 {
                     FrameTime(0)

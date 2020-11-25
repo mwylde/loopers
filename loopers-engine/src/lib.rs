@@ -22,8 +22,7 @@ use loopers_common::gui_channel::{
 };
 use loopers_common::music::*;
 use loopers_common::Host;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::VecDeque;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{ErrorKind, Read, Write};
@@ -62,7 +61,7 @@ pub struct Engine {
 
     metronome: Option<Metronome>,
 
-    triggers: BinaryHeap<Reverse<Trigger>>,
+    triggers: VecDeque<Trigger>,
 
     id_counter: u32,
 
@@ -177,7 +176,7 @@ impl Engine {
                 Sample::from_mono(&beat_emphasis),
             )),
 
-            triggers: BinaryHeap::with_capacity(128),
+            triggers: VecDeque::with_capacity(128),
 
             is_learning: false,
             last_midi: None,
@@ -218,12 +217,12 @@ impl Engine {
         engine
     }
 
-    fn add_trigger(triggers: &mut BinaryHeap<Reverse<Trigger>>, t: Trigger) {
+    fn add_trigger(triggers: &mut VecDeque<Trigger>, t: Trigger) {
         while triggers.len() >= triggers.capacity() {
-            triggers.pop();
+            triggers.pop_front();
         }
 
-        triggers.push(Reverse(t));
+        triggers.push_back(t);
     }
 
     fn reset(&mut self) {
@@ -286,6 +285,12 @@ impl Engine {
                 ms,
                 time,
             )),
+            (_, _, RecordOverdubPlay) => Some(Trigger::new(
+                TriggerCondition::Immediate,
+                Command::Looper(lc, target),
+                ms,
+                time,
+            )),
             _ => None,
         }
     }
@@ -307,7 +312,7 @@ impl Engine {
             lc: LooperCommand,
             target: LooperTarget,
             looper: &mut Looper,
-            triggers: &mut BinaryHeap<Reverse<Trigger>>,
+            triggers: &mut VecDeque<Trigger>,
             gui_sender: &mut GuiSender,
         ) {
             if triggered {
@@ -454,7 +459,7 @@ impl Engine {
         command: &Command,
         triggered: bool,
     ) {
-        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, f: F)
+        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, queued: bool, f: F)
         where
             F: FnOnce(&mut Engine),
         {
@@ -463,13 +468,11 @@ impl Engine {
                 return;
             }
 
-            let trigger_condition = match engine.sync_mode {
-                Free => {
-                    f(engine);
-                    return;
-                }
-                SyncMode::Beat => TriggerCondition::Beat,
-                SyncMode::Measure => TriggerCondition::Measure,
+            let trigger_condition = match (queued, engine.sync_mode) {
+                (true, _) => TriggerCondition::Immediate,
+                (false, SyncMode::Free) => TriggerCondition::Immediate,
+                (false, SyncMode::Beat) => TriggerCondition::Beat,
+                (false, SyncMode::Measure) => TriggerCondition::Measure,
             };
 
             let trigger = Trigger::new(
@@ -479,7 +482,7 @@ impl Engine {
                 FrameTime(engine.time),
             );
 
-            if trigger.triggered_at() < FrameTime(engine.time) {
+            if trigger.triggered_at() != FrameTime(0) && trigger.triggered_at() < FrameTime(engine.time) {
                 f(engine);
                 return;
             }
@@ -490,7 +493,6 @@ impl Engine {
                 trigger.command,
             ));
         };
-
         use Command::*;
         match command {
             Looper(lc, target) => {
@@ -554,51 +556,53 @@ impl Engine {
                 }
             }
             SelectNextLooper | SelectPreviousLooper => {
-                if let Some((i, _)) = self
-                    .loopers
-                    .iter()
-                    .filter(|l| !l.deleted)
-                    .filter(|l| l.parts[self.current_part])
-                    .enumerate()
-                    .find(|(_, l)| l.id == self.active)
-                {
-                    let count = self
+                trigger_or_run(self, command, triggered, true, |engine| {
+                    if let Some((i, _)) = engine
                         .loopers
                         .iter()
-                        .filter(|l| l.parts[self.current_part])
                         .filter(|l| !l.deleted)
-                        .count();
+                        .filter(|l| l.parts[engine.current_part])
+                        .enumerate()
+                        .find(|(_, l)| l.id == engine.active)
+                    {
+                        let count = engine
+                            .loopers
+                            .iter()
+                            .filter(|l| l.parts[engine.current_part])
+                            .filter(|l| !l.deleted)
+                            .count();
 
-                    let next = if *command == SelectNextLooper {
-                        (i + 1) % count
+                        let next = if *command == SelectNextLooper {
+                            (i + 1) % count
+                        } else {
+                            (i as isize - 1).rem_euclid(count as isize) as usize
+                        };
+
+                        if let Some(l) = engine
+                            .loopers
+                            .iter()
+                            .filter(|l| l.parts[engine.current_part])
+                            .filter(|l| !l.deleted)
+                            .skip(next)
+                            .next()
+                        {
+                            engine.active = l.id;
+                        }
                     } else {
-                        (i as isize - 1).rem_euclid(count as isize) as usize
-                    };
-
-                    if let Some(l) = self
-                        .loopers
-                        .iter()
-                        .filter(|l| l.parts[self.current_part])
-                        .filter(|l| !l.deleted)
-                        .skip(next)
-                        .next()
-                    {
-                        self.active = l.id;
+                        if let Some(l) = engine
+                            .loopers
+                            .iter()
+                            .filter(|l| !l.deleted)
+                            .filter(|l| l.parts[engine.current_part])
+                            .next()
+                        {
+                            engine.active = l.id;
+                        }
                     }
-                } else {
-                    if let Some(l) = self
-                        .loopers
-                        .iter()
-                        .filter(|l| !l.deleted)
-                        .filter(|l| l.parts[self.current_part])
-                        .next()
-                    {
-                        self.active = l.id;
-                    }
-                }
+                });
             }
             PreviousPart => {
-                trigger_or_run(self, command, triggered, |engine| {
+                trigger_or_run(self, command, triggered, false, |engine| {
                     let original = engine.current_part;
                     loop {
                         engine.current_part = match engine.current_part {
@@ -620,7 +624,7 @@ impl Engine {
                 });
             }
             NextPart => {
-                trigger_or_run(self, command, triggered, |engine| {
+                trigger_or_run(self, command, triggered, false, |engine| {
                     let original = engine.current_part;
                     loop {
                         engine.current_part = match engine.current_part {
@@ -642,7 +646,7 @@ impl Engine {
                 });
             }
             GoToPart(part) => {
-                trigger_or_run(self, command, triggered, |engine| {
+                trigger_or_run(self, command, triggered, false,|engine| {
                     engine.current_part = *part;
                     engine.select_first_in_part();
                 });
@@ -806,16 +810,18 @@ impl Engine {
         while time < next_time {
             if let Some(_) = self
                 .triggers
+                .iter()
+                .peekable()
                 .peek()
-                .filter(|t| t.0.triggered_at().0 < next_time as i64)
+                .filter(|t| t.triggered_at().0 < next_time as i64)
             {
-                // The unwrap is safe due to th preceding peek
-                let trigger = self.triggers.pop().unwrap();
+                // The unwrap is safe due to the preceding peek
+                let trigger = self.triggers.pop_front().unwrap();
 
-                let trigger_at = trigger.0.triggered_at();
+                let trigger_at = trigger.triggered_at();
                 // we'll process up to this time, then trigger the trigger
 
-                if trigger_at.0 < time as i64 {
+                if trigger_at != FrameTime(0) && trigger_at.0 < time as i64 {
                     // we failed to trigger, but don't know if it's safe to trigger late. so we'll
                     // just ignore it. there might be better solutions for specific triggers, but
                     // hopefully this is rare.
@@ -850,7 +856,7 @@ impl Engine {
                     idx = idx_range.end;
                 }
 
-                self.handle_command(host, &trigger.0.command, true);
+                self.handle_command(host, &trigger.command, true);
             } else {
                 // there are no more triggers for this period, so just process the rest and finish
                 self.perform_looper_io(
