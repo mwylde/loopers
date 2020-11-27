@@ -103,7 +103,7 @@ pub fn read_config() -> Result<Config, String> {
         if e.kind() != ErrorKind::NotFound {
             error!("Failed to read config file: {}", e);
         }
-        String::new()
+        "midi_mappings = []".to_string()
     });
 
     let mut config: Config = toml::from_str(&config_string)

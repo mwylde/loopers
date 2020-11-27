@@ -198,6 +198,7 @@ Play, but queued from Play -> Overdub._
 |-|-|-|-|
 | Start | _None_ | Immediate | Starts the engine |
 | Stop | _None_ | Immediate | Stops the engine, resetting the time |
+| StartStop | _None_| Immediate | Starts the engine if it is stopped, otherwise stops it |
 | Pause | _None_ | Immediate | Stops the engine but does not reset the time |
 | Reset | _None_ | Immediate | Resets the engine time |
 | SetTime | Time (in samples) | Immediate | Sets the time to the specified number of samples |
@@ -218,3 +219,38 @@ Play, but queued from Play -> Overdub._
 
 
 ### Settings
+
+Configuration is stored the standard system user config location
+(typically this will be ~/.config/loopers/). Current the configuration
+consists only of a set of mappings from midi commands to loopers
+commands. These should be placed in a file called `midi_mappings.tsv`
+in that config directory.
+
+Each non-empty line of this file should contain the following
+tab-separated columns:
+
+* Midi event
+* Midi value
+* Command name
+* Command arguments (multiple arguments should be tab-separated)
+
+An example for configuring for use with the [Behringer
+FCB1010](https://www.behringer.com/product.html?modelCode=P0089) (an
+excellent pedalboard):
+
+``` tsv
+22	127	RecordOverdubPlay	Selected
+22	0	RecordOverdubPlay	Selected
+
+23	127	SelectNextLooper
+23	0	SelectNextLooper
+
+24	127	NextPart
+24	0	NextPart
+
+25	127	Clear	Selected
+25	0	Clear	Selected
+
+26	127	StartStop
+26	0	StartStop
+```
