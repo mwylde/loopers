@@ -129,6 +129,7 @@ impl LooperCommand {
             "Overdub" => Some(Overdub),
             "Play" => Some(Play),
             "Mute" => Some(Mute),
+            "Solo" => Some(Solo),
             "RecordOverdubPlay" => Some(RecordOverdubPlay),
             "Delete" => Some(Delete),
             "Clear" => Some(Clear),
@@ -165,7 +166,7 @@ pub enum Command {
     NextPart,
     GoToPart(Part),
 
-    SetSyncMode(SyncMode),
+    SetQuantizationMode(QuantizationMode),
 
     SaveSession(Arc<PathBuf>),
     LoadSession(Arc<PathBuf>),
@@ -226,17 +227,17 @@ impl Command {
                 .map(|p| Command::GoToPart(p))
                 .ok_or("GoToPart expects a part name (one of A, B, C, or D)".to_string()),
 
-            "SetSyncMode" => args
+            "SetQuantizationMode" => args
                 .get(0)
                 .and_then(|s| match s.as_ref() {
-                    "Free" => Some(SyncMode::Free),
-                    "Beat" => Some(SyncMode::Beat),
-                    "Measure" => Some(SyncMode::Measure),
+                    "Free" => Some(QuantizationMode::Free),
+                    "Beat" => Some(QuantizationMode::Beat),
+                    "Measure" => Some(QuantizationMode::Measure),
                     _ => None,
                 })
-                .map(|s| Command::SetSyncMode(s))
+                .map(|s| Command::SetQuantizationMode(s))
                 .ok_or(
-                    "SetSyncMOde expects a sync mode (one of Free, Beat, or Measure)".to_string(),
+                    "SetQuantizationMode expects a sync mode (one of Free, Beat, or Measure)".to_string(),
                 ),
 
             "SetMetronomeLevel" => args
@@ -244,7 +245,7 @@ impl Command {
                 .and_then(|s| u8::from_str(s).ok())
                 .map(|v| Command::SetMetronomeLevel(v))
                 .ok_or(
-                    "SetTime expects a single numeric argument, the level between 0-100"
+                    "SetMetronomeLevel expects a single numeric argument, the level between 0-100"
                         .to_string(),
                 ),
 
@@ -377,14 +378,14 @@ fn looper_speed_default() -> LooperSpeed {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum SyncMode {
+pub enum QuantizationMode {
     Free,
     Beat,
     Measure,
 }
 
-fn sync_mode_default() -> SyncMode {
-    SyncMode::Measure
+fn sync_mode_default() -> QuantizationMode {
+    QuantizationMode::Measure
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -407,7 +408,7 @@ pub struct SavedSession {
     pub metronome_volume: u8,
     pub metric_structure: MetricStructure,
     #[serde(default = "sync_mode_default")]
-    pub sync_mode: SyncMode,
+    pub sync_mode: QuantizationMode,
     #[serde(default)]
     pub sample_rate: usize,
     pub loopers: Vec<SavedLooper>,

@@ -1,5 +1,5 @@
 use crate::api::{
-    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, SyncMode,
+    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, QuantizationMode,
 };
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
@@ -24,7 +24,7 @@ pub struct EngineStateSnapshot {
     pub active_looper: u32,
     pub looper_count: usize,
     pub part: Part,
-    pub sync_mode: SyncMode,
+    pub sync_mode: QuantizationMode,
     pub input_levels: [f32; 2],
     pub metronome_volume: f32,
 }

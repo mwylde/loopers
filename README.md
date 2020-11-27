@@ -63,11 +63,158 @@ At the bottom we find the engine controls
 
 ### Looper Modes
 
-At any given time each looper can be in one of several modes:
+At any given time each looper can be in one of several modes, each
+identified in the UI by a color:
 
-* **Record** `#FF00FF`
+<dl>
+<dt><img src="docs/play_color.png" alt="play color"> Play</dt>
+<dd>
+In play mode, the output from the looper is mixed in with all of the other
+loopers and sent to the global output. This is the default mode.
+</dd>
+
+<dt><img src="docs/record_color.png" alt="record color"> Record</dt>
+<dd>
+When recording is started, all existing samples for the looper are cleared.
+Then new audio is recorded to a sample until recording is finished, establishing
+the loop length.
+</dd>
+
+<dt><img src="docs/overdub_color.png" alt="overdub color"> Overdub</dt>
+<dd>
+In overdub mode, we add new input on top of the existing samples in the looper,
+without changing the loop length.
+</dd>
+
+</dl>
+
+
+In addition to those exclusive modes, a looper can have one or more of
+the following _modifiers_:
+
+
+<dl>
+<dt><img src="docs/play_color.png" alt="solo color"> Solo</dt>
+<dd>
+If solo is enabled, all other loopers will be silenced (aside from those that are
+also in solo mode).
+</dd>
+
+<dt><img src="docs/mute_color.png" alt="mute color"> Mute</dt>
+<dd>
+When mute is enabled the looper is silenced.
+</dd>
+</dl>
+
+The modes and modifiers can be controlled via the UI or by sending a
+midi command.
+
+### Quantization
+
+When using multiple loopers, it is generally desirable that they be
+synchronized together. In Loopers, this is accomplished by having a
+single time control which is used across all loopers. It is also key
+that loops have lengths which are exact multiples of each other (for
+example, you might have a bass loop that is 4 times as long as your
+rhythm loop). If the length is off by even a few milliseconds, it will
+quickly be noticeable after a few repeats.
+
+To help performers get loop lengths exactly in sync, Loopers provide a
+_quantization_ feature. This allows you to synchronize commands (for
+example, stopping recording and thus setting loop length) to certain
+metric events.
+
+It supports three quantization modes, set via buttons at the bottom of
+the UI:
+
+* **Free** this disables quantization, and causes all commands to take
+  effect immediately
+* **Beat** commands take effect on the next beat after they are
+  issued, as determined by the tempo
+* **Measure** commands take effect at the start of the next measure,
+  as determined by the tempo and time signature
+
+Some commands are affected by quantization, and some take effect
+immediately. See the [commands reference](#commands) for more.
+
+### Commands
+
+Every aspect of the system can be controlled via commands, both in the
+UI and via midi. For details on configuring midi controls, see
+[settings](#settings).
+
+There are two kinds of commands: looper commands, which are applied to
+one or more loopers, and engine commands which apply to the system as
+a whole. Commands can take parameters which control the behavior of the
+command.
+
+Looper commands all take a first parameter that determines
+which looper will be targeted:
+
+* **Selected**: targets only the selected looper, as controlled via
+  the UI or by one of the `Select*Looper` commands
+* **Id**: takes an _id_ parameter, and targets the looper with that
+  id
+* **Index**: takes an _index_ parameter and targets the looper at that
+  index in the currently visible part, starting from 0.
+* **All**: targets all loopers
+
+Other commands may also take parameters which control their
+behavior.
+
+Commands also differ in how they are affected by quantization:
+
+* **Immediate** commands take place as soon as they are received,
+  regardless of quantization settings or the state of the system
+* **Queued** commands will wait in a queue for other (possibly
+  quantized) commands to take effect before being executed. This
+  allows you to, for example, send the command to switch to the next
+  part (a quantized command), then send a SelectNextLooper command
+  (a queued command), which will wait for part switch before
+  executing.
+* **Quantized** commands will wait until the next quantization
+  boundary (e.g., the start of the next measure, see
+  [Quantization](#Quantization) for details) to execute.
+
+#### Looper commands
+
+| **Command** | **Parameters** | **Quantization** | **Description** |
+|-|-|-|-|
+| Record | Looper Targets | Quantized | Moves the selected loopers to the Record mode |
+| Overdub | Looper Targets | Quantized | Moves the selected loopers to the Overdub mode |
+| Play | Looper Targets | Quantized | Moves the selected loopers to the Play mode |
+| RecordOverdubPlay | Looper Targets | Quantized① | Cycles from Record -> Overdub -> Play -> Overdub |
+| Mute | Looper Targets | Immediate | Toggles the mute modifier on the selected loopers |
+| Solo | Looper Targets | Immediate | Toggles the solo modifier on the selected loopers |
+| Delete | Looper Targets | Immediate | Deletes the selected loopers |
+| Clear | Looper Targets | Quantized | Clears all samples from the selected loopers |
+
+① _RecordOverdubPlay is quantized from Record -> Overdub and Overdub ->
+Play, but queued from Play -> Overdub._
+
+#### Engine commands
+
+| **Command** | **Parameters** | **Quantization** | **Description** |
+|-|-|-|-|
+| Start | _None_ | Immediate | Starts the engine |
+| Stop | _None_ | Immediate | Stops the engine, resetting the time |
+| Pause | _None_ | Immediate | Stops the engine but does not reset the time |
+| Reset | _None_ | Immediate | Resets the engine time |
+| SetTime | Time (in samples) | Immediate | Sets the time to the specified number of samples |
+| AddLooper | _None_ | Immediate | Adds a looper to the end of the current part |
+| SelectLooperById | Looper Id | Immediate | Selects the looper with the given id |
+| SelectLooperByIndex | Index | Immediate | Selects the looper at the given index in the current part (starting from 0) |
+| SelectPreviousLooper | _None_ | Queued | Selects the previous looper in the current part, wrapping around from the first to the last |
+| SelectNextLooper | _None_ | Queued | Selects the next looper in the current part, wrapping around from the last to the first |
+| PreviousPart | _None_ | Quantized | Goes to the previous part, skipping those parts with no loopers |
+| NextPart | _None_ | Quantized | Goes to the next part, skipping those parts with no loopers |
+| GoToPart | One of `A`, `B`, `C`, or `D` | Quantized | Goes to the specified part |
+| SetQuantizationMode | One of `Free`, `Beat`, or `Measure` | Immediate | Sets the quantization mode for the engine |
+| SetMetronomeLevel | 0-100 | Immediate | Sets the metronome volume to the given percentage |
+| SetTempoBPM | bpm (float) | Immediate | Sets the engine's tempo to the given BPM value |
+| SetTimeSignature | upper, lower | Immediate | Sets the engine's time signature according to the parameters (e.g. 3, 4) |
+| SaveSession | Path | Immediate | Saves the current session to the given path |
+| LoadSession | Path | Immediate | Loads a session from the given path, replacing the existing one |
 
 
 ### Settings
-
-### Commands

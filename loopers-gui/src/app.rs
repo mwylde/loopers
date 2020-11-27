@@ -6,7 +6,7 @@ use crate::widgets::{
 };
 use loopers_common::api::{
     get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
-    Part, SyncMode, PARTS,
+    Part, QuantizationMode, PARTS,
 };
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
@@ -1286,7 +1286,7 @@ impl Button for StopButton {
 enum BottomButtonBehavior {
     Save,
     Load,
-    SetSyncMode(SyncMode),
+    SetSyncMode(QuantizationMode),
     Part(Part),
 }
 
@@ -1344,15 +1344,15 @@ impl BottomButtonView {
                     ControlButton::new("load", c, None, 22.0),
                 ),
                 (
-                    BottomButtonBehavior::SetSyncMode(SyncMode::Free),
+                    BottomButtonBehavior::SetSyncMode(QuantizationMode::Free),
                     ControlButton::new("free", c, None, 22.0),
                 ),
                 (
-                    BottomButtonBehavior::SetSyncMode(SyncMode::Beat),
+                    BottomButtonBehavior::SetSyncMode(QuantizationMode::Beat),
                     ControlButton::new("beat", c, None, 22.0),
                 ),
                 (
-                    BottomButtonBehavior::SetSyncMode(SyncMode::Measure),
+                    BottomButtonBehavior::SetSyncMode(QuantizationMode::Measure),
                     ControlButton::new("measure", c, None, 22.0),
                 ),
                 (
@@ -1416,7 +1416,7 @@ impl BottomButtonView {
                         }
                         BottomButtonBehavior::SetSyncMode(mode) => {
                             controller.send_command(
-                                Command::SetSyncMode(mode),
+                                Command::SetQuantizationMode(mode),
                                 "Failed to set sync mode",
                             );
                         }
@@ -1462,7 +1462,7 @@ impl BottomButtonView {
             x += size.width + 10.0;
 
             if behavior == BottomButtonBehavior::Load
-                || behavior == BottomButtonBehavior::SetSyncMode(SyncMode::Measure)
+                || behavior == BottomButtonBehavior::SetSyncMode(QuantizationMode::Measure)
             {
                 x += 30.0;
             }

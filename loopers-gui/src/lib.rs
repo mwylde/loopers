@@ -12,7 +12,7 @@ use skia_safe::{Canvas, Size};
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
 use loopers_common::api::{
-    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, SyncMode,
+    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, QuantizationMode,
 };
 use loopers_common::gui_channel::{
     EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform,
@@ -180,7 +180,7 @@ impl Gui {
                     active_looper: 0,
                     looper_count: 0,
                     part: Part::A,
-                    sync_mode: SyncMode::Measure,
+                    sync_mode: QuantizationMode::Measure,
                     input_levels: [0.0, 0.0],
                     metronome_volume: 1.0,
                 },

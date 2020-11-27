@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::error::SaveLoadError;
-use loopers_common::api::{SavedSession, SyncMode};
+use loopers_common::api::{SavedSession, QuantizationMode};
 use loopers_common::gui_channel::{GuiSender, LogMessage};
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ const LOOPER_SAVE_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct SaveSessionData {
     pub metric_structure: MetricStructure,
     pub metronome_volume: u8,
-    pub sync_mode: SyncMode,
+    pub sync_mode: QuantizationMode,
     pub path: Arc<PathBuf>,
     pub sample_rate: usize,
 }

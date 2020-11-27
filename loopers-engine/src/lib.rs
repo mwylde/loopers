@@ -11,10 +11,10 @@ use crate::sample::Sample;
 use crate::session::{SaveSessionData, SessionSaver};
 use crate::trigger::{Trigger, TriggerCondition};
 use crossbeam_channel::Receiver;
-use loopers_common::api::SyncMode::Free;
+use loopers_common::api::QuantizationMode::Free;
 use loopers_common::api::{
     get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
-    Part, PartSet, SavedSession, SyncMode,
+    Part, PartSet, SavedSession, QuantizationMode,
 };
 use loopers_common::config::{Config, MidiMapping};
 use loopers_common::gui_channel::{
@@ -57,7 +57,7 @@ pub struct Engine {
 
     current_part: Part,
 
-    sync_mode: SyncMode,
+    sync_mode: QuantizationMode,
 
     metronome: Option<Metronome>,
 
@@ -166,7 +166,7 @@ impl Engine {
             active: 0,
             current_part: Part::A,
 
-            sync_mode: SyncMode::Measure,
+            sync_mode: QuantizationMode::Measure,
 
             id_counter: 1,
 
@@ -262,7 +262,7 @@ impl Engine {
     // possibly convert a loop command into a trigger
     fn trigger_from_command(
         ms: MetricStructure,
-        sync_mode: SyncMode,
+        sync_mode: QuantizationMode,
         time: FrameTime,
         lc: LooperCommand,
         target: LooperTarget,
@@ -270,8 +270,8 @@ impl Engine {
     ) -> Option<Trigger> {
         let trigger_condition = match sync_mode {
             Free => return None,
-            SyncMode::Beat => TriggerCondition::Beat,
-            SyncMode::Measure => TriggerCondition::Measure,
+            QuantizationMode::Beat => TriggerCondition::Beat,
+            QuantizationMode::Measure => TriggerCondition::Measure,
         };
 
         use LooperCommand::*;
@@ -307,7 +307,7 @@ impl Engine {
         fn handle_or_trigger(
             triggered: bool,
             ms: MetricStructure,
-            sync_mode: SyncMode,
+            sync_mode: QuantizationMode,
             time: FrameTime,
             lc: LooperCommand,
             target: LooperTarget,
@@ -470,9 +470,9 @@ impl Engine {
 
             let trigger_condition = match (queued, engine.sync_mode) {
                 (true, _) => TriggerCondition::Immediate,
-                (false, SyncMode::Free) => TriggerCondition::Immediate,
-                (false, SyncMode::Beat) => TriggerCondition::Beat,
-                (false, SyncMode::Measure) => TriggerCondition::Measure,
+                (false, QuantizationMode::Free) => TriggerCondition::Immediate,
+                (false, QuantizationMode::Beat) => TriggerCondition::Beat,
+                (false, QuantizationMode::Measure) => TriggerCondition::Measure,
             };
 
             let trigger = Trigger::new(
@@ -651,7 +651,7 @@ impl Engine {
                     engine.select_first_in_part();
                 });
             }
-            SetSyncMode(sync_mode) => {
+            SetQuantizationMode(sync_mode) => {
                 self.sync_mode = *sync_mode;
             }
             SaveSession(path) => {
