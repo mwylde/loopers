@@ -155,7 +155,8 @@ fn main() {
 
     // Create client
     let (client, _status) =
-        jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER).unwrap();
+        jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
+            .expect("Jack server is not running");
 
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
