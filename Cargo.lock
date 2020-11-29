@@ -865,7 +865,6 @@ dependencies = [
  "futures",
  "hound",
  "jack",
- "lazy_static",
  "log",
  "loopers-common",
  "loopers-engine",

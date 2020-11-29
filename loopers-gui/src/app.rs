@@ -18,26 +18,14 @@ use skia_safe::path::Path;
 use skia_safe::Rect;
 use skia_safe::*;
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
-use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-lazy_static! {
-    static ref LOOP_ICON: Vec<u8> = load_data("resources/icons/loop.png");
-    static ref METRONOME_ICON: Vec<u8> = load_data("resources/icons/metronome.png");
-}
-
-fn load_data(path: &str) -> Vec<u8> {
-    let mut file = File::open(path).expect(&format!("could not open {}", path));
-    let mut data = vec![];
-    file.read_to_end(&mut data)
-        .expect(&format!("could not read {}", path));
-    data
-}
+const LOOP_ICON: &[u8] = include_bytes!("../../resources/icons/loop.png");
+const METRONOME_ICON: &[u8] = include_bytes!("../../resources/icons/metronome.png");
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {

@@ -23,7 +23,6 @@ crossbeam-channel = "0.4"
 rand = "0.6"
 hound = "3.4.0"
 chrono = "0.4.11"
-lazy_static = "1.4.0"
 dirs = "2"
 
 loopers-common = { path = "../loopers-common" }

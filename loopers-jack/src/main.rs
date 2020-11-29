@@ -21,6 +21,10 @@ use loopers_gui::Gui;
 use std::collections::HashMap;
 use std::io;
 
+// metronome sounds; included in the binary for now to ease usage of cargo install
+const SINE_NORMAL: &[u8] = include_bytes!("../../resources/sine_normal.wav");
+const SINE_EMPHASIS: &[u8] = include_bytes!("../../resources/sine_emphasis.wav");
+
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
         .chain(io::stdout())
@@ -99,9 +103,10 @@ impl<'a> Host<'a> for JackHost<'a> {
 }
 
 fn main() {
-    let matches = App::new("loopers")
-        .version("0.0.1")
+    let matches = App::new("loopers-jack")
+        .version("0.1.0")
         .author("Micah Wylde <micah@micahw.com>")
+        .about("Loopers is a graphical live looper, designed for ease of use and rock-solid stability")
         .arg(Arg::with_name("restore")
             .long("restore")
             .help("Automatically restores the last saved session"))
@@ -134,14 +139,14 @@ fn main() {
     };
 
     // read wav files
-    let reader = hound::WavReader::open("resources/sine_normal.wav").unwrap();
+    let reader = hound::WavReader::new(SINE_NORMAL).unwrap();
     let beat_normal: Vec<f32> = reader
         .into_samples()
         .into_iter()
         .map(|x| x.unwrap())
         .collect();
 
-    let reader = hound::WavReader::open("resources/sine_emphasis.wav").unwrap();
+    let reader = hound::WavReader::new(SINE_EMPHASIS).unwrap();
     let beat_empahsis: Vec<f32> = reader
         .into_samples()
         .into_iter()

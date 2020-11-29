@@ -46,7 +46,7 @@ Now you're ready to install loopers itself. First get a rust toolchain
 installed (https://rustup.rs), then:
 
 ``` bash
-$ sudo cargo install loopers
+$ sudo cargo install loopers-jack
 ```
 
 Then start it with the command
