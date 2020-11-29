@@ -821,7 +821,7 @@ struct MetronomeButton {
 impl MetronomeButton {
     fn new() -> Self {
         let icon_data = Data::new_copy(&METRONOME_ICON);
-        let icon = Image::from_encoded(icon_data, None).expect("could not decode metronome icon");
+        let icon = Image::from_encoded(icon_data).expect("could not decode metronome icon");
 
         Self {
             button_state: ButtonState::Default,
@@ -1051,8 +1051,10 @@ impl PeakMeterView {
         }
 
         let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
+
+
         let mut surface = Surface::new_render_target(
-            canvas.gpu_context().as_mut().unwrap(),
+            &mut canvas.recording_context().unwrap(),
             Budgeted::Yes,
             &image_info,
             None,
@@ -1864,7 +1866,7 @@ impl<T: Eq + Copy> DrawCache<T> {
         {
             let image_info = ImageInfo::new_n32(size, AlphaType::Premul, None);
             let mut surface = Surface::new_render_target(
-                canvas.gpu_context().as_mut().unwrap(),
+                &mut canvas.recording_context().unwrap(),
                 Budgeted::Yes,
                 &image_info,
                 None,
@@ -1968,7 +1970,7 @@ impl WaveformView {
     fn new() -> Self {
         let loop_icon_data = Data::new_copy(&LOOP_ICON);
         let loop_icon =
-            Image::from_encoded(loop_icon_data, None).expect("could not decode loop icon");
+            Image::from_encoded(loop_icon_data).expect("could not decode loop icon");
 
         Self {
             waveform: DrawCache::new(Self::draw_waveform),

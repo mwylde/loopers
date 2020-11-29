@@ -432,6 +432,7 @@ impl Engine {
 
         for l in &self.loopers {
             self.session_saver.remove_looper(l.id);
+            self.gui_sender.send_update(GuiCommand::RemoveLooper(l.id));
         }
         self.loopers.clear();
 

@@ -204,7 +204,7 @@ pub fn skia_main(mut gui: Gui) {
         if capture_debug_frame {
             let mut recorder = PictureRecorder::new();
             let mut recording_canvas =
-                recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None, None);
+                recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None);
 
             canvas.clear(BACKGROUND_COLOR.clone());
 

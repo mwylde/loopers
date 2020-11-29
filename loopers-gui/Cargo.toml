@@ -11,7 +11,7 @@ hound = "3.4.0"
 bytes = "0.5"
 dirs = "1.0"
 
-skia-safe = {version = "0.30", features = ["gl"]}
+skia-safe = {version = "0.36", features = ["gl"]}
 
 sdl2 = "0.34"
 
