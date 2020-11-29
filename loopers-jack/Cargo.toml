@@ -2,6 +2,13 @@
 name = "loopers-jack"
 version = "0.1.0"
 authors = ["Micah Wylde <micah@micahw.com>"]
+description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
+homepage = "https://github.com/mwylde/loopers"
+repository = "https://github.com/mwylde/loopers"
+categories = ["audio", "looping", "music", "dsp"]
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

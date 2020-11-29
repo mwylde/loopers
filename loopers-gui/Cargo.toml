@@ -1,8 +1,12 @@
 [package]
 name = "loopers-gui"
 version = "0.1.0"
-authors = ["Micah Wylde <micah@micahw.com>"]
 edition = "2018"
+authors = ["Micah Wylde <micah@micahw.com>"]
+description = "Gui for loopers project. See loopers-jack for for the main project."
+homepage = "https://github.com/mwylde/loopers"
+repository = "https://github.com/mwylde/loopers"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 log = "0.4.8"

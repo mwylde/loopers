@@ -68,9 +68,7 @@ inputs/outputs/effects with any number of tools (I recommend
 Loopers has just had its initial release, 0.1. The software is usable
 and should be quite stable, but likely still has some bugs. It's also
 missing some key features like undo/redo, time shifting, and a GUI
-midi configurator. It also currently runs only on Linux with Jack,
-although it is structured to be easily ported to other platforms and
-audio systems.
+midi configurator and currently runs only on Linux with Jack.
 
 ## Documentation
 
