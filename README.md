@@ -12,7 +12,7 @@ Currently it runs only on Linux as a standalone
 interface with other Jack clients like effect racks, software
 instruments, and DAWs.
 
-**INSERT GIF**
+![video of loopers](docs/demo.gif)
 
 The system is modeled as a series of hardware loop units (like the
 Boss Loop Station) which are synchronized with a single time
@@ -198,7 +198,8 @@ Play, but queued from Play -> Overdub._
 |-|-|-|-|
 | Start | _None_ | Immediate | Starts the engine |
 | Stop | _None_ | Immediate | Stops the engine, resetting the time |
-| StartStop | _None_| Immediate | Starts the engine if it is stopped, otherwise stops it |
+| StartStop | _None_ | Immediate | Starts the engine if it is stopped, otherwise stops it |
+| PlayPause | _None_ | Immediate | Pauses the engine if it is active, otherwise restarts it |
 | Pause | _None_ | Immediate | Stops the engine but does not reset the time |
 | Reset | _None_ | Immediate | Resets the engine time |
 | SetTime | Time (in samples) | Immediate | Sets the time to the specified number of samples |
@@ -251,6 +252,6 @@ excellent pedalboard):
 25	127	Clear	Selected
 25	0	Clear	Selected
 
-26	127	StartStop
-26	0	StartStop
+26	127	PlayPause
+26	0	PlayPause
 ```
