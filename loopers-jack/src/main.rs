@@ -102,8 +102,12 @@ fn main() {
     let matches = App::new("loopers")
         .version("0.0.1")
         .author("Micah Wylde <micah@micahw.com>")
-        .arg(Arg::with_name("restore").long("restore"))
-        .arg(Arg::with_name("gui").long("gui"))
+        .arg(Arg::with_name("restore")
+            .long("restore")
+            .help("Automatically restores the last saved session"))
+        .arg(Arg::with_name("no-gui")
+            .long("no-gui")
+            .help("Launches in headless mode (without the gui)"))
         .arg(Arg::with_name("debug").long("debug"))
         .get_matches();
 
@@ -119,7 +123,7 @@ fn main() {
 
     let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
 
-    let (new_gui, gui_sender) = if matches.is_present("gui") {
+    let (new_gui, gui_sender) = if !matches.is_present("no-gui") {
         let (sender, receiver) = GuiSender::new();
         (
             Some(Gui::new(receiver, gui_to_engine_sender, sender.clone())),

@@ -34,6 +34,43 @@ size, and loop lengths are limited only by available memory.
 
 ## Getting started
 
+To build loopers, you will need jack and sdl2.
+
+For Ubuntu/Debian these can be installed with:
+
+``` bash
+$ sudo apt install jackd2 libjack-jackd2-dev libgl1-mesa-dev libsdl2-dev
+```
+
+Now you're ready to install loopers itself. First get a rust toolchain
+installed (https://rustup.rs), then:
+
+``` bash
+$ sudo cargo install loopers
+```
+
+Then start it with the command
+
+``` bash
+$ loopers-jack
+```
+
+(If you get an error about Jack not running, you will need to start
+the Jack server first. See the [Jack
+documentation](https://jackaudio.org/) for details).
+
+This will create a Jack client, which can be hooked up to your
+inputs/outputs/effects with any number of tools (I recommend
+[Claudia](https://kx.studio/Applications:Claudia) from KXStudio).
+
+## Current state
+
+Loopers has just had its initial release, 0.1. The software is usable
+and should be quite stable, but likely still has some bugs. It's also
+missing some key features like undo/redo, time shifting, and a GUI
+midi configurator. It also currently runs only on Linux with Jack,
+although it is structured to be easily ported to other platforms and
+audio systems.
 
 ## Documentation
 
