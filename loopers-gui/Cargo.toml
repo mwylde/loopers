@@ -29,4 +29,6 @@ gl-rs = { package = "gl", version = "0.14.0" }
 crossbeam-queue = "0.2"
 crossbeam-channel = "0.4"
 
-loopers-common = { path = "../loopers-common" }
+[dependencies.loopers-common]
+path = "../loopers-common"
+version = "0.1.0"

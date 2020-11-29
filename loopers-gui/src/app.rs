@@ -24,8 +24,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const LOOP_ICON: &[u8] = include_bytes!("../../resources/icons/loop.png");
-const METRONOME_ICON: &[u8] = include_bytes!("../../resources/icons/metronome.png");
+const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
+const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png");
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {

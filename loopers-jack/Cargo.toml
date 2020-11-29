@@ -5,13 +5,11 @@ authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
 homepage = "https://github.com/mwylde/loopers"
 repository = "https://github.com/mwylde/loopers"
-categories = ["audio", "looping", "music", "dsp"]
+keywords = ["audio", "looping", "music", "dsp"]
+categories = ["multimedia::audio"]
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
-
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 jack = "0.6"
@@ -32,9 +30,17 @@ hound = "3.4.0"
 chrono = "0.4.11"
 dirs = "2"
 
-loopers-common = { path = "../loopers-common" }
-loopers-engine = { path = "../loopers-engine" }
-loopers-gui = { path = "../loopers-gui" }
+[dependencies.loopers-common]
+path = "../loopers-common"
+version = "0.1.0"
+
+[dependencies.loopers-engine]
+path = "../loopers-engine"
+version = "0.1.0"
+
+[dependencies.loopers-gui]
+path = "../loopers-gui"
+version = "0.1.0"
 
 [features]
 fail-on-warnings = []

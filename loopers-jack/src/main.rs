@@ -22,8 +22,8 @@ use std::collections::HashMap;
 use std::io;
 
 // metronome sounds; included in the binary for now to ease usage of cargo install
-const SINE_NORMAL: &[u8] = include_bytes!("../../resources/sine_normal.wav");
-const SINE_EMPHASIS: &[u8] = include_bytes!("../../resources/sine_emphasis.wav");
+const SINE_NORMAL: &[u8] = include_bytes!("../resources/sine_normal.wav");
+const SINE_EMPHASIS: &[u8] = include_bytes!("../resources/sine_emphasis.wav");
 
 fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     let stdout_config = fern::Dispatch::new()
