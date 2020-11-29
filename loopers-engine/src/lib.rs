@@ -517,6 +517,14 @@ impl Engine {
                     }
                 };
             }
+            PlayPause => {
+                self.state = match self.state {
+                    EngineState::Stopped => EngineState::Active,
+                    EngineState::Active => {
+                        EngineState::Stopped
+                    }
+                }
+            }
             Reset => {
                 self.reset();
             }

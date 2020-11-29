@@ -151,6 +151,7 @@ pub enum Command {
     Pause,
 
     StartStop,
+    PlayPause,
 
     Reset,
     SetTime(FrameTime),
@@ -184,6 +185,7 @@ impl Command {
             "Stop" => Ok(Command::Stop),
             "Pause" => Ok(Command::Pause),
             "StartStop" => Ok(Command::StartStop),
+            "PlayPause" => Ok(Command::PlayPause),
             "Reset" => Ok(Command::Reset),
 
             "SetTime" => args

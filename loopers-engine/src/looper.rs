@@ -999,8 +999,6 @@ impl LooperBackend {
         // of wasted data
         self.out_time = self.in_time;
 
-        self.offset = self.out_time - FrameTime(self.length_in_samples() as i64);
-
         // send our final length to the gui
         self.gui_sender
             .send_update(GuiCommand::SetLoopLengthAndOffset(
@@ -1056,7 +1054,6 @@ impl LooperBackend {
     fn prepare_for_recording(&mut self, _: LooperMode) {
         self.samples.clear();
         self.samples.push(Sample::new());
-        self.offset = FrameTime(0);
     }
 
     fn prepare_for_overdubbing(&mut self, _next_state: LooperMode) {
@@ -1135,6 +1132,12 @@ impl LooperBackend {
             );
         } else if self.mode == LooperMode::Recording {
             // in record mode, we extend the current buffer with the new samples
+
+            // if these are the first samples, set the offset to the current time
+            if self.length_in_samples() == 0 {
+                self.offset = FrameTime(time_in_samples as i64);
+            }
+
             let s = self
                 .samples
                 .last_mut()
