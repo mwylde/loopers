@@ -1822,46 +1822,38 @@ impl<T: Eq + Copy> DrawCache<T> {
         }
     }
 
-    fn draw(
+    fn draw_with_cache(
         &mut self,
         key: T,
         data: &AppData,
         looper: &LooperData,
         w: f32,
         h: f32,
-        use_cache: bool,
         canvas: &mut Canvas,
-    ) -> Size {
-        if !use_cache {
-            return (self.draw_fn)(data, looper, w, h, 1.0, canvas);
-        }
-
+    ) -> Option<Size> {
         let size = ((w * IMAGE_SCALE) as i32, (h * IMAGE_SCALE) as i32);
 
-        let (image, size) = if self.key.is_none()
-            || self.key.unwrap() != key
+        let (image, size) = if self.key? != key
             || self.image.is_none()
             // this is a hack to get around textures being cleared from GPU memory after sleep
             // there's probably a better way to detect this, but I'm not sure what it is
             || self.draw_count > 300
             || self
-                .image
-                .as_ref()
-                .map(|(i, _)| (i.width(), i.height()))
-                .unwrap()
-                != size
+            .image
+            .as_ref()
+            .map(|(i, _)| (i.width(), i.height()))?
+            != size
         {
             let image_info = ImageInfo::new_n32(size, AlphaType::Premul, None);
             let mut surface = Surface::new_render_target(
-                &mut canvas.recording_context().unwrap(),
+                &mut canvas.recording_context()?,
                 Budgeted::Yes,
                 &image_info,
                 None,
                 SurfaceOrigin::TopLeft,
                 None,
                 None,
-            )
-            .unwrap();
+            )?;
 
             let draw_size = (self.draw_fn)(
                 data,
@@ -1877,10 +1869,10 @@ impl<T: Eq + Copy> DrawCache<T> {
             self.key = Some(key);
             self.draw_count = 0;
 
-            self.image.as_ref().unwrap()
+            self.image.as_ref()?
         } else {
             self.draw_count += 1;
-            self.image.as_ref().unwrap()
+            self.image.as_ref()?
         };
 
         canvas.save();
@@ -1892,7 +1884,26 @@ impl<T: Eq + Copy> DrawCache<T> {
         canvas.draw_image(image, (0.0, 0.0), Some(&paint));
         canvas.restore();
 
-        *size
+        Some(*size)
+    }
+
+    fn draw(
+        &mut self,
+        key: T,
+        data: &AppData,
+        looper: &LooperData,
+        w: f32,
+        h: f32,
+        use_cache: bool,
+        canvas: &mut Canvas,
+    ) -> Size {
+        if use_cache {
+            if let Some(size) = self.draw_with_cache(key, data, looper, w, h, canvas) {
+                return size;
+            }
+        }
+
+        return (self.draw_fn)(data, looper, w, h, 1.0, canvas);
     }
 }
 
