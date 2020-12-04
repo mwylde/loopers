@@ -106,13 +106,19 @@ fn main() {
     let matches = App::new("loopers-jack")
         .version("0.1.0")
         .author("Micah Wylde <micah@micahw.com>")
-        .about("Loopers is a graphical live looper, designed for ease of use and rock-solid stability")
-        .arg(Arg::with_name("restore")
-            .long("restore")
-            .help("Automatically restores the last saved session"))
-        .arg(Arg::with_name("no-gui")
-            .long("no-gui")
-            .help("Launches in headless mode (without the gui)"))
+        .about(
+            "Loopers is a graphical live looper, designed for ease of use and rock-solid stability",
+        )
+        .arg(
+            Arg::with_name("restore")
+                .long("restore")
+                .help("Automatically restores the last saved session"),
+        )
+        .arg(
+            Arg::with_name("no-gui")
+                .long("no-gui")
+                .help("Launches in headless mode (without the gui)"),
+        )
         .arg(Arg::with_name("debug").long("debug"))
         .get_matches();
 
@@ -154,9 +160,8 @@ fn main() {
         .collect();
 
     // Create client
-    let (client, _status) =
-        jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
-            .expect("Jack server is not running");
+    let (client, _status) = jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
+        .expect("Jack server is not running");
 
     // Register ports. They will be used in a callback that will be
     // called when new data is available.

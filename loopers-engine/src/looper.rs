@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(1, looper.backend.as_ref().unwrap().samples.len());
 
         let data = [vec![1.0f32, 1.0], vec![-1.0, -1.0]];
-        looper.process_input(0, &[&data[0], &data[1]]);
+        looper.process_input(0, &[&data[0], &data[1]], Part::A);
         process_until_done(&mut looper);
         looper.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut looper);
@@ -146,7 +146,7 @@ mod tests {
             input_right[i] = -(i as f32);
         }
 
-        l.process_input(0, &[&input_left, &input_right]);
+        l.process_input(0, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         let mut o_l = vec![1f64; TRANSFER_BUF_SIZE];
@@ -154,7 +154,11 @@ mod tests {
 
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
-        l.process_input(input_left.len() as u64, &[&input_left, &input_right]);
+        l.process_input(
+            input_left.len() as u64,
+            &[&input_left, &input_right],
+            Part::A,
+        );
         process_until_done(&mut l);
 
         l.process_output(
@@ -190,7 +194,7 @@ mod tests {
 
         let mut t = 0 as i64;
 
-        l.process_input(t as u64, &[&input_left, &input_right]);
+        l.process_input(t as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         let mut o_l = vec![0f64; TRANSFER_BUF_SIZE];
@@ -214,7 +218,7 @@ mod tests {
         l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
-        l.process_input(t as u64, &[&input_left, &input_right]);
+        l.process_input(t as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         t += TRANSFER_BUF_SIZE as i64;
@@ -230,7 +234,7 @@ mod tests {
         l.process_output(FrameTime(t), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
-        l.process_input(t as u64, &[&input_left, &input_right]);
+        l.process_input(t as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         for (i, (l, r)) in o_l.iter().zip(&o_r).enumerate() {
@@ -263,7 +267,7 @@ mod tests {
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
 
-        l.process_input(0, &[&input_left, &input_right]);
+        l.process_input(0, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         time += buf_size as i64;
@@ -279,7 +283,11 @@ mod tests {
 
         input_left = vec![2f32; buf_size];
         input_right = vec![-2f32; buf_size];
-        l.process_input(time as u64, &[&input_left[0..100], &input_right[0..100]]);
+        l.process_input(
+            time as u64,
+            &[&input_left[0..100], &input_right[0..100]],
+            Part::A,
+        );
         process_until_done(&mut l);
 
         time += 100;
@@ -302,6 +310,7 @@ mod tests {
         l.process_input(
             time as u64,
             &[&input_left[100..buf_size], &input_right[100..buf_size]],
+            Part::A,
         );
         process_until_done(&mut l);
 
@@ -370,7 +379,7 @@ mod tests {
         let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
         let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
-        l.process_input(time as u64, &[&input_left, &input_right]);
+        l.process_input(time as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
@@ -389,6 +398,7 @@ mod tests {
             l.process_input(
                 time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
+                Part::A,
             );
             process_until_done(&mut l);
 
@@ -403,7 +413,7 @@ mod tests {
         let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
         let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
-        l.process_input(time as u64, &[&input_left, &input_right]);
+        l.process_input(time as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
@@ -446,6 +456,7 @@ mod tests {
             l.process_input(
                 time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
+                Part::A,
             );
             process_until_done(&mut l);
 
@@ -477,6 +488,7 @@ mod tests {
             l.process_input(
                 time as u64,
                 &[&input_left[i..i + 32], &input_right[i..i + 32]],
+                Part::A,
             );
             process_until_done(&mut l);
 
@@ -497,7 +509,7 @@ mod tests {
         let mut o_l = vec![0f64; CROSS_FADE_SAMPLES * 2];
         let mut o_r = vec![0f64; CROSS_FADE_SAMPLES * 2];
 
-        l.process_input(time as u64, &[&input_left, &input_right]);
+        l.process_input(time as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
@@ -507,7 +519,7 @@ mod tests {
         process_until_done(&mut l);
 
         // Go around again (we don't have the crossfaded samples until the second time around)
-        l.process_input(time as u64, &[&input_left, &input_right]);
+        l.process_input(time as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
         l.process_output(FrameTime(time), &mut [&mut o_l, &mut o_r], Part::A, false);
         process_until_done(&mut l);
@@ -561,12 +573,12 @@ mod tests {
 
         l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
-        l.process_input(0, &[&input_left, &input_right]);
+        l.process_input(0, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
 
         l.transition_to(LooperMode::Overdubbing);
         process_until_done(&mut l);
-        l.process_input(0, &[&input_left2, &input_right2]);
+        l.process_input(0, &[&input_left2, &input_right2], Part::A);
         process_until_done(&mut l);
 
         let (tx, rx) = bounded(1);
@@ -883,6 +895,7 @@ impl LooperBackend {
                 self.in_time = FrameTime(0);
                 self.out_time = FrameTime(0);
                 self.offset = FrameTime(0);
+                self.xfade_samples_left = 0;
                 self.gui_sender
                     .send_update(GuiCommand::ClearLooper(self.id));
             }
@@ -1105,10 +1118,12 @@ impl LooperBackend {
         if self.mode == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
             let time_in_loop = self.time_in_loop(FrameTime(time_in_samples as i64));
+
             let s = self
                 .samples
                 .last_mut()
                 .expect("No samples for looper in overdub mode");
+
             s.overdub(time_in_loop as u64, inputs);
 
             // TODO: this logic should probably be abstracted out into Sample so it can be reused
@@ -1560,7 +1575,7 @@ impl Looper {
     // In process_input, we modify our internal buffers based on the input. In Record mode, we
     // append the data in the input buffers to our current sample. In Overdub mode, we sum the data
     // with whatever is currently in our buffer at the point of time_in_samples.
-    pub fn process_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
+    pub fn process_input(&mut self, time_in_samples: u64, inputs: &[&[f32]], part: Part) {
         assert_eq!(2, inputs.len());
 
         debug!("inputting time {}", time_in_samples);
@@ -1589,9 +1604,12 @@ impl Looper {
             buf.time = FrameTime(time as i64);
             buf.size = l.len();
 
-            for i in 0..l.len() {
-                buf.data[0][i] = l[i];
-                buf.data[1][i] = r[i];
+            if self.parts[part] {
+                // if this is not the current part, send 0s
+                for i in 0..l.len() {
+                    buf.data[0][i] = l[i];
+                    buf.data[1][i] = r[i];
+                }
             }
 
             if let Err(_) = self.out_queue.push(buf) {

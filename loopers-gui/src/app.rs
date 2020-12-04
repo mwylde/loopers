@@ -1040,7 +1040,6 @@ impl PeakMeterView {
 
         let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
 
-
         let mut surface = Surface::new_render_target(
             &mut canvas.recording_context().unwrap(),
             Budgeted::Yes,
@@ -1957,8 +1956,7 @@ struct WaveformView {
 impl WaveformView {
     fn new() -> Self {
         let loop_icon_data = Data::new_copy(&LOOP_ICON);
-        let loop_icon =
-            Image::from_encoded(loop_icon_data).expect("could not decode loop icon");
+        let loop_icon = Image::from_encoded(loop_icon_data).expect("could not decode loop icon");
 
         Self {
             waveform: DrawCache::new(Self::draw_waveform),
@@ -2186,7 +2184,6 @@ impl WaveformView {
 
                 canvas.restore();
             }
-
         }
 
         canvas.clip_rect(

@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::error::SaveLoadError;
-use loopers_common::api::{SavedSession, QuantizationMode};
+use loopers_common::api::{QuantizationMode, SavedSession};
 use loopers_common::gui_channel::{GuiSender, LogMessage};
 use std::sync::Arc;
 

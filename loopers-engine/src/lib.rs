@@ -14,7 +14,7 @@ use crossbeam_channel::Receiver;
 use loopers_common::api::QuantizationMode::Free;
 use loopers_common::api::{
     get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
-    Part, PartSet, SavedSession, QuantizationMode,
+    Part, PartSet, QuantizationMode, SavedSession,
 };
 use loopers_common::config::{Config, MidiMapping};
 use loopers_common::gui_channel::{
@@ -460,8 +460,13 @@ impl Engine {
         command: &Command,
         triggered: bool,
     ) {
-        fn trigger_or_run<F>(engine: &mut Engine, command: &Command, triggered: bool, queued: bool, f: F)
-        where
+        fn trigger_or_run<F>(
+            engine: &mut Engine,
+            command: &Command,
+            triggered: bool,
+            queued: bool,
+            f: F,
+        ) where
             F: FnOnce(&mut Engine),
         {
             if engine.state == EngineState::Stopped || triggered {
@@ -483,7 +488,9 @@ impl Engine {
                 FrameTime(engine.time),
             );
 
-            if trigger.triggered_at() != FrameTime(0) && trigger.triggered_at() < FrameTime(engine.time) {
+            if trigger.triggered_at() != FrameTime(0)
+                && trigger.triggered_at() < FrameTime(engine.time)
+            {
                 f(engine);
                 return;
             }
@@ -521,9 +528,7 @@ impl Engine {
             PlayPause => {
                 self.state = match self.state {
                     EngineState::Stopped => EngineState::Active,
-                    EngineState::Active => {
-                        EngineState::Stopped
-                    }
+                    EngineState::Active => EngineState::Stopped,
                 }
             }
             Reset => {
@@ -655,7 +660,7 @@ impl Engine {
                 });
             }
             GoToPart(part) => {
-                trigger_or_run(self, command, triggered, false,|engine| {
+                trigger_or_run(self, command, triggered, false, |engine| {
                     engine.current_part = *part;
                     engine.select_first_in_part();
                 });
@@ -791,6 +796,7 @@ impl Engine {
                             &in_bufs[0][idx_range.clone()],
                             &in_bufs[1][idx_range.clone()],
                         ],
+                        self.current_part,
                     );
                 }
             }

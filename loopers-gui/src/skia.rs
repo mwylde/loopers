@@ -140,7 +140,10 @@ pub fn skia_main(mut gui: Gui) {
                     keycode, keymod, ..
                 } => {
                     // ctrl-? saves a debug frame
-                    if keycode == Some(Keycode::Slash) && keymod.contains(Mod::LCTRLMOD) && keymod.contains(Mod::LSHIFTMOD) {
+                    if keycode == Some(Keycode::Slash)
+                        && keymod.contains(Mod::LCTRLMOD)
+                        && keymod.contains(Mod::LSHIFTMOD)
+                    {
                         capture_debug_frame = true;
                     } else {
                         match keycode {

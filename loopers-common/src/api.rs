@@ -239,7 +239,8 @@ impl Command {
                 })
                 .map(|s| Command::SetQuantizationMode(s))
                 .ok_or(
-                    "SetQuantizationMode expects a sync mode (one of Free, Beat, or Measure)".to_string(),
+                    "SetQuantizationMode expects a sync mode (one of Free, Beat, or Measure)"
+                        .to_string(),
                 ),
 
             "SetMetronomeLevel" => args
