@@ -1658,7 +1658,7 @@ impl LooperView {
     ) -> Size {
         assert_eq!(self.id, looper.id);
 
-        let time = data.engine_state.time + looper.offset;
+        let time = data.engine_state.time - looper.offset;
 
         let ratio = if looper.length == 0 || looper.mode == LooperMode::Recording {
             0f32
@@ -2145,7 +2145,7 @@ impl WaveformView {
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
-                let time = data.engine_state.time.0 + looper.offset.0;
+                let time = data.engine_state.time.0 - looper.offset.0;
                 let first_loop_iteration = data.engine_state.time.0 < looper.length as i64;
 
                 let start_time = if time < looper.length as i64 {

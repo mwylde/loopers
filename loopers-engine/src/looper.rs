@@ -365,6 +365,57 @@ mod tests {
     }
 
     #[test]
+    fn test_offset() {
+        install_test_logger();
+
+        let offset = 4u64;
+
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        l.backend.as_mut().unwrap().enable_crossfading = false;
+
+        l.set_time(FrameTime(offset as i64));
+
+        l.transition_to(LooperMode::Recording);
+        process_until_done(&mut l);
+
+        let mut input_left = vec![0f32; TRANSFER_BUF_SIZE];
+        let mut input_right = vec![0f32; TRANSFER_BUF_SIZE];
+        for i in 0..TRANSFER_BUF_SIZE {
+            input_left[i] = i as f32;
+            input_right[i] = -(i as f32);
+        }
+
+        l.process_input(offset, &[&input_left, &input_right], Part::A);
+        process_until_done(&mut l);
+
+        let mut o_l = vec![1f64; TRANSFER_BUF_SIZE];
+        let mut o_r = vec![-1f64; TRANSFER_BUF_SIZE];
+
+        l.transition_to(LooperMode::Playing);
+        process_until_done(&mut l);
+        l.process_input(
+            offset + input_left.len() as u64,
+            &[&input_left, &input_right],
+            Part::A,
+        );
+        process_until_done(&mut l);
+
+        l.process_output(
+            FrameTime(offset as i64 + input_left.len() as i64),
+            &mut [&mut o_l, &mut o_r],
+            Part::A,
+            false,
+        );
+        process_until_done(&mut l);
+
+        for i in 0..TRANSFER_BUF_SIZE {
+            assert_eq!(o_l[i], (i + 1) as f64);
+            assert_eq!(o_r[i], -((i + 1) as f64));
+        }
+    }
+
+
+    #[test]
     fn test_post_xfade() {
         install_test_logger();
 
@@ -954,7 +1005,7 @@ impl LooperBackend {
 
     #[inline]
     fn time_in_loop(&self, t: FrameTime) -> usize {
-        (t + self.offset)
+        (t - self.offset)
             .0
             .rem_euclid(self.length_in_samples() as i64) as usize
     }
