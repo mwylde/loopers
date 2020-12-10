@@ -78,6 +78,7 @@ pub fn skia_main(mut gui: Gui) {
         .window("loopers", INITIAL_WIDTH as u32, INITIAL_HEIGHT as u32)
         .opengl()
         .resizable()
+        .allow_highdpi()
         .build()
         .unwrap();
 
@@ -124,12 +125,12 @@ pub fn skia_main(mut gui: Gui) {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Window { win_event, .. } => match win_event {
-                    WindowEvent::Resized(w, h) => {
+                    WindowEvent::Resized(_, _) => {
                         surface = create_surface(
                             &mut gr_context,
                             &pixel_format,
                             fb_info,
-                            (w as u32, h as u32),
+                            window.drawable_size(),
                             sf,
                         );
                     }
@@ -174,14 +175,17 @@ pub fn skia_main(mut gui: Gui) {
                     }
                 }
                 Event::MouseMotion { x, y, .. } => {
-                    last_event = Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, y)));
+                    last_event = Some(GuiEvent::MouseEvent(
+                        MouseEventType::Moved,
+                        ((x as f32 * sf) as i32, (y as f32 * sf) as i32),
+                    ));
                 }
                 Event::MouseButtonDown {
                     x, y, mouse_btn, ..
                 } => {
                     last_event = Some(GuiEvent::MouseEvent(
                         MouseEventType::MouseDown(mouse_btn),
-                        (x, y),
+                        ((x as f32 * sf) as i32, (y as f32 * sf) as i32),
                     ));
                 }
                 Event::MouseButtonUp {
@@ -189,7 +193,7 @@ pub fn skia_main(mut gui: Gui) {
                 } => {
                     last_event = Some(GuiEvent::MouseEvent(
                         MouseEventType::MouseUp(mouse_btn),
-                        (x, y),
+                        ((x as f32 * sf) as i32, (y as f32 * sf) as i32),
                     ));
                 }
                 Event::Quit { .. } => {
@@ -213,8 +217,8 @@ pub fn skia_main(mut gui: Gui) {
 
             gui.draw(
                 &mut recording_canvas,
-                size.0 as f32,
-                size.1 as f32,
+                window.size().0 as f32,
+                window.size().1 as f32,
                 last_event,
             );
 
@@ -231,7 +235,12 @@ pub fn skia_main(mut gui: Gui) {
             capture_debug_frame = false;
         }
 
-        gui.draw(&mut canvas, size.0 as f32, size.1 as f32, last_event);
+        gui.draw(
+            &mut canvas,
+            window.size().0 as f32,
+            window.size().1 as f32,
+            last_event,
+        );
 
         last_event = None;
 
@@ -252,8 +261,8 @@ pub fn skia_main(mut gui: Gui) {
             canvas.draw_text_blob(
                 &text,
                 Point::new(
-                    size.0 as f32 - text.bounds().width() + 10.0,
-                    size.1 as f32 - 10.0,
+                    window.size().0 as f32 - text.bounds().width() + 10.0,
+                    window.size().1 as f32 - 10.0,
                 ),
                 &paint,
             );
@@ -271,7 +280,7 @@ pub fn skia_main(mut gui: Gui) {
                 &mut gr_context,
                 &pixel_format,
                 fb_info,
-                (window.size().0, window.size().1),
+                window.drawable_size(),
                 sf,
             );
         }
