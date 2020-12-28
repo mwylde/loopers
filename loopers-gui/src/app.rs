@@ -1708,6 +1708,21 @@ impl LooperView {
             last_event,
         );
 
+        {
+            // draw id text
+            let mut paint = Paint::default();
+            if data.engine_state.active_looper == looper.id {
+                paint.set_color(Color::WHITE);
+            } else {
+                paint.set_color(Color::from_rgb(230, 230, 230));
+            }
+            paint.set_anti_alias(true);
+
+            let font = Font::new(Typeface::default(), 12.0);
+            let x = if looper.id > 9 { -8.0 } else { -4.0 };
+            canvas.draw_str(&format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
+        }
+
         // draw speed
         // TODO: re-enable once speeds are actually implemented in the engine
         //draw_speed_text(looper, canvas);
