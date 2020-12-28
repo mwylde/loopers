@@ -2145,7 +2145,12 @@ impl WaveformView {
                 canvas.draw_path(&path, &paint);
                 canvas.restore();
             } else {
-                let time = data.engine_state.time.0 - looper.offset.0;
+                let mut time = data.engine_state.time.0 - looper.offset.0;
+
+                if time < 0 {
+                    time = time.rem_euclid(looper.length as i64);
+                }
+
                 let first_loop_iteration = data.engine_state.time.0 < looper.length as i64;
 
                 let start_time = if time < looper.length as i64 {

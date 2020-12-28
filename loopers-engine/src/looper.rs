@@ -414,7 +414,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_post_xfade() {
         install_test_logger();
