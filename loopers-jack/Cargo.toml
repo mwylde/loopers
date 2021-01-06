@@ -1,6 +1,6 @@
 [package]
 name = "loopers-jack"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
 homepage = "https://github.com/mwylde/loopers"

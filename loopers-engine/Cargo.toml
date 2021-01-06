@@ -1,6 +1,6 @@
 [package]
 name = "loopers-engine"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Core engine for loopers project. See loopers-jack for for the main project."
