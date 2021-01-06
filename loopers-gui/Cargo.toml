@@ -31,4 +31,4 @@ crossbeam-channel = "0.4"
 
 [dependencies.loopers-common]
 path = "../loopers-common"
-version = "0.1.0"
+version = "0.1.1"
