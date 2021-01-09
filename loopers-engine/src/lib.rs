@@ -781,11 +781,11 @@ impl Engine {
                     }
 
                     // copy the output to the our main output
-                    self.output_left
+                    self.output_left[idx_range.clone()]
                         .iter_mut()
                         .zip(&self.tmp_left[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
-                    self.output_right
+                    self.output_right[idx_range.clone()]
                         .iter_mut()
                         .zip(&self.tmp_left[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
