@@ -1,8 +1,8 @@
 use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData};
 
 use crate::widgets::{
-    draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, TextEditState,
-    TextEditable,
+    draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, PotWidget,
+    TextEditState, TextEditable,
 };
 use loopers_common::api::{
     get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
@@ -135,7 +135,7 @@ const LOOPER_HEIGHT: f32 = 80.0;
 const BOTTOM_MARGIN: f32 = 140.0;
 const WAVEFORM_OFFSET_X: f32 = 100.0;
 const LOOPER_CIRCLE_INDICATOR_WIDTH: f32 = 50.0;
-const WAVEFORM_RIGHT_MARGIN: f32 = 55.0;
+const WAVEFORM_RIGHT_MARGIN: f32 = 105.0;
 const SAMPLES_PER_PIXEL: f32 = 720.0;
 
 fn waveform_zero_offset() -> f32 {
@@ -193,6 +193,10 @@ impl AddButton {
 impl Button for AddButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 
@@ -269,6 +273,10 @@ impl DeleteButton {
 impl Button for DeleteButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 pub struct MainPage {
@@ -594,6 +602,10 @@ impl Button for TempoView {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 impl TextEditable for TempoView {
@@ -770,6 +782,10 @@ impl Button for MetronomeView {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 impl TextEditable for MetronomeView {
@@ -874,6 +890,10 @@ impl MetronomeButton {
 impl Button for MetronomeButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
     }
 }
 
@@ -1212,6 +1232,10 @@ impl Button for PlayPauseButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 struct StopButton {
@@ -1268,6 +1292,10 @@ impl StopButton {
 impl Button for StopButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
     }
 }
 
@@ -1502,6 +1530,7 @@ struct LooperView {
     state: ButtonState,
     active_button: ActiveButton,
     delete_button: DeleteButton,
+    pan: PotWidget,
 }
 
 impl LooperView {
@@ -1549,6 +1578,7 @@ impl LooperView {
             state: ButtonState::Default,
             active_button: ActiveButton::new(),
             delete_button: DeleteButton::new(),
+            pan: PotWidget::new(35.0, Color::WHITE),
         }
     }
 
@@ -1691,9 +1721,25 @@ impl LooperView {
         self.waveform_view
             .draw(canvas, data, looper, waveform_width, LOOPER_HEIGHT);
 
+        // draw pan and level controls
+        canvas.save();
+        canvas.translate((waveform_width + 15.0, 10.0));
+        self.pan.draw(
+            canvas,
+            looper.pan,
+            |pan| {
+                controller.send_command(
+                    Command::Looper(LooperCommand::SetPan(pan), LooperTarget::Id(looper.id)),
+                    "Failed to set pan",
+                );
+            },
+            last_event,
+        );
+        canvas.restore();
+
         // draw active button
         canvas.save();
-        canvas.translate((waveform_width + 25.0, 20.0));
+        canvas.translate((waveform_width + 75.0, 20.0));
         self.active_button.draw(
             canvas,
             data.engine_state.active_looper == looper.id,
@@ -1749,7 +1795,7 @@ impl LooperView {
             // draw
             let mut y = 20.0;
             for row in &mut self.buttons {
-                let mut x = WAVEFORM_OFFSET_X + waveform_zero_offset() + 20.0;
+                let mut x = WAVEFORM_OFFSET_X + waveform_zero_offset() + 10.0;
                 let mut button_height = 0f32;
 
                 for (button, margin_right) in row {
@@ -1806,6 +1852,10 @@ fn draw_speed_text(looper: &LooperData, canvas: &mut Canvas) {
 impl Button for LooperView {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 
@@ -1970,6 +2020,10 @@ impl ActiveButton {
 impl Button for ActiveButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 

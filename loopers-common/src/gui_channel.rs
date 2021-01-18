@@ -31,10 +31,11 @@ pub struct EngineStateSnapshot {
 
 pub type Waveform = [Vec<f32>; 2];
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct LooperState {
     pub mode: LooperMode,
     pub speed: LooperSpeed,
+    pub pan: f32,
     pub parts: PartSet,
     pub offset: FrameTime,
 }

@@ -1,9 +1,11 @@
 use crate::{AppData, Controller, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
+use loopers_common::clamp;
 use sdl2::mouse::MouseButton;
 use skia_safe::paint::Style;
 use skia_safe::{
     Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
 };
+use std::f32::consts::PI;
 use std::time::UNIX_EPOCH;
 
 pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
@@ -34,6 +36,7 @@ pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, 
 
 pub trait Button {
     fn set_state(&mut self, state: ButtonState);
+    fn get_state(&self) -> ButtonState;
 
     fn handle_event<F: FnOnce(MouseButton)>(
         &mut self,
@@ -56,7 +59,9 @@ pub trait Button {
                                 self.set_state(ButtonState::Pressed);
                             }
                             MouseEventType::MouseUp(button) => {
-                                on_click(button);
+                                if self.get_state() == ButtonState::Pressed {
+                                    on_click(button);
+                                }
                                 self.set_state(ButtonState::Hover);
                             }
                             MouseEventType::Moved => {
@@ -182,6 +187,10 @@ impl ControlButton {
 impl Button for ControlButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 
@@ -355,6 +364,95 @@ pub trait TextEditable {
 
         if commit {
             self.commit(sender);
+        }
+    }
+}
+
+pub struct PotWidget {
+    size: f32,
+    color: Color,
+    last_mouse_value: Option<f32>,
+}
+
+impl PotWidget {
+    pub fn new(size: f32, color: Color) -> Self {
+        Self {
+            size,
+            color,
+            last_mouse_value: None,
+        }
+    }
+
+    // level is [-1, 1], with 0 centered
+    pub fn draw<F: FnOnce(f32)>(
+        &mut self,
+        canvas: &mut Canvas,
+        level: f32,
+        new_level: F,
+        last_event: Option<GuiEvent>,
+    ) {
+        let mut paint = Paint::default();
+        paint.set_color(self.color);
+        paint.set_anti_alias(true);
+        paint.set_stroke_width(2.0);
+        paint.set_style(Style::Stroke);
+
+        let offset_angle = 20.0;
+
+        let mut path = Path::new();
+        path.arc_to(
+            Rect::from_wh(self.size, self.size),
+            180.0 - offset_angle,
+            180.0 + offset_angle * 2.0,
+            true,
+        );
+        canvas.draw_path(&path, &paint);
+
+        let mut path = Path::new();
+        let r = self.size / 2.0;
+        let c = r;
+
+        let offset_angle_rad = offset_angle * PI / 180.0;
+        let angle = level * (PI / 2.0 + offset_angle_rad) - PI / 2.0;
+
+        path.move_to((c, c));
+        path.line_to((c + (r + 3.0) * angle.cos(), c + (r + 3.0) * angle.sin()));
+
+        let mut bg_paint = Paint::default();
+        bg_paint.set_anti_alias(true);
+        bg_paint.set_stroke_width(7.0);
+        bg_paint.set_style(Style::Stroke);
+        bg_paint.set_color(crate::skia::BACKGROUND_COLOR.clone());
+
+        canvas.draw_path(&path, &bg_paint);
+        canvas.draw_path(&path, &paint);
+
+        let bounds = Rect::from_size((self.size, self.size));
+
+        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) =
+            last_event
+        {
+            let point = canvas
+                .total_matrix()
+                .invert()
+                .unwrap()
+                .map_point((x as f32, y as f32));
+
+            if bounds.contains(point) {
+                self.last_mouse_value = Some(y as f32);
+            }
+        }
+
+        if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (_, y))) = last_event {
+            if let Some(p_y) = self.last_mouse_value {
+                let lv = clamp(level + (p_y - y as f32) / 100.0, -1.0, 1.0);
+                new_level(lv);
+                self.last_mouse_value = Some(y as f32);
+            }
+        }
+
+        if let Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(_), _)) = last_event {
+            self.last_mouse_value = None;
         }
     }
 }

@@ -336,7 +336,6 @@ impl Engine {
         match target {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
-                    selected = Some(l.id);
                     handle_or_trigger(
                         triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
                     );
@@ -776,7 +775,7 @@ impl Engine {
                             .zip(&self.tmp_left[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
                         r.iter_mut()
-                            .zip(&self.tmp_left[idx_range.clone()])
+                            .zip(&self.tmp_right[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
                     }
 
@@ -787,7 +786,7 @@ impl Engine {
                         .for_each(|(a, b)| *a += *b);
                     self.output_right[idx_range.clone()]
                         .iter_mut()
-                        .zip(&self.tmp_left[idx_range.clone()])
+                        .zip(&self.tmp_right[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
 
                     looper.process_input(

@@ -64,6 +64,7 @@ pub struct LooperData {
     mode: LooperMode,
     parts: PartSet,
     speed: LooperSpeed,
+    pan: f32,
     waveform: Waveform,
     trigger: Option<(FrameTime, LooperCommand)>,
 }
@@ -232,6 +233,7 @@ impl Gui {
                             mode: state.mode,
                             parts: state.parts,
                             speed: state.speed,
+                            pan: state.pan,
                             waveform: [vec![], vec![]],
                             trigger: None,
                         },
@@ -248,6 +250,7 @@ impl Gui {
                             mode: state.mode,
                             parts: state.parts,
                             speed: state.speed,
+                            pan: state.pan,
                             waveform: *waveform,
                             trigger: None,
                         },
@@ -267,6 +270,7 @@ impl Gui {
                         l.mode = state.mode;
                         l.parts = state.parts;
                         l.speed = state.speed;
+                        l.pan = state.pan;
                     } else {
                         warn!("Got looper state change for unknown looper {}", id);
                     }
