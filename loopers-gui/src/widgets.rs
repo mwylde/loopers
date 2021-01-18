@@ -36,6 +36,7 @@ pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, 
 
 pub trait Button {
     fn set_state(&mut self, state: ButtonState);
+    fn get_state(&self) -> ButtonState;
 
     fn handle_event<F: FnOnce(MouseButton)>(
         &mut self,
@@ -58,7 +59,9 @@ pub trait Button {
                                 self.set_state(ButtonState::Pressed);
                             }
                             MouseEventType::MouseUp(button) => {
-                                on_click(button);
+                                if self.get_state() == ButtonState::Pressed {
+                                    on_click(button);
+                                }
                                 self.set_state(ButtonState::Hover);
                             }
                             MouseEventType::Moved => {
@@ -184,6 +187,10 @@ impl ControlButton {
 impl Button for ControlButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 

@@ -1,5 +1,7 @@
 use crate::api::{get_sample_rate, FrameTime};
+use crate::clamp;
 use serde::{Deserialize, Serialize};
+use std::f32::consts::PI;
 
 #[cfg(test)]
 mod tests {
@@ -176,5 +178,40 @@ impl MetricStructure {
             time_signature,
             tempo: Tempo::from_bpm(bpm),
         })
+    }
+}
+
+pub enum PanLaw {
+    Linear,
+    ConstantPower,
+    Neg4_5,
+    // Do no panning, used for testing
+    Transparent,
+}
+
+impl PanLaw {
+    fn angle_to_rads(theta: f32) -> f32 {
+        let theta = clamp(theta, -1.0, 1.0);
+        ((theta as f32 + 1.0) / 2.0) * PI / 2.0
+    }
+
+    pub fn left(&self, theta: f32) -> f32 {
+        let theta = Self::angle_to_rads(theta);
+        match self {
+            PanLaw::Linear => (PI / 2.0 - theta).powf(2.0 / PI),
+            PanLaw::ConstantPower => theta.cos(),
+            PanLaw::Neg4_5 => ((PI / 2.0 - theta) * 2.0 / PI * theta.cos()).sqrt(),
+            PanLaw::Transparent => 1.0,
+        }
+    }
+
+    pub fn right(&self, theta: f32) -> f32 {
+        let theta = Self::angle_to_rads(theta);
+        match self {
+            PanLaw::Linear => theta.powf(2.0 / PI),
+            PanLaw::ConstantPower => theta.sin(),
+            PanLaw::Neg4_5 => (theta * 2.0 / PI * theta.sin()).sqrt(),
+            PanLaw::Transparent => 1.0,
+        }
     }
 }

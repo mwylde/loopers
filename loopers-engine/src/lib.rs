@@ -336,7 +336,6 @@ impl Engine {
         match target {
             LooperTarget::Id(id) => {
                 if let Some(l) = self.loopers.iter_mut().find(|l| l.id == id) {
-                    selected = Some(l.id);
                     handle_or_trigger(
                         triggered, ms, sync_mode, time, lc, target, l, triggers, gui_sender,
                     );

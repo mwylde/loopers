@@ -194,6 +194,10 @@ impl Button for AddButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
+    }
 }
 
 struct DeleteButton {
@@ -269,6 +273,10 @@ impl DeleteButton {
 impl Button for DeleteButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 pub struct MainPage {
@@ -594,6 +602,10 @@ impl Button for TempoView {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 impl TextEditable for TempoView {
@@ -770,6 +782,10 @@ impl Button for MetronomeView {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 impl TextEditable for MetronomeView {
@@ -874,6 +890,10 @@ impl MetronomeButton {
 impl Button for MetronomeButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
     }
 }
 
@@ -1212,6 +1232,10 @@ impl Button for PlayPauseButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
+    }
 }
 
 struct StopButton {
@@ -1268,6 +1292,10 @@ impl StopButton {
 impl Button for StopButton {
     fn set_state(&mut self, state: ButtonState) {
         self.button_state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.button_state
     }
 }
 
@@ -1825,6 +1853,10 @@ impl Button for LooperView {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
     }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
+    }
 }
 
 const IMAGE_SCALE: f32 = 4.0;
@@ -1988,6 +2020,10 @@ impl ActiveButton {
 impl Button for ActiveButton {
     fn set_state(&mut self, state: ButtonState) {
         self.state = state;
+    }
+
+    fn get_state(&self) -> ButtonState {
+        self.state
     }
 }
 

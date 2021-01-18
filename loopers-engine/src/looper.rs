@@ -14,7 +14,7 @@ use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 use loopers_common::gui_channel::{
     GuiCommand, GuiSender, LooperState, Waveform, WAVEFORM_DOWNSAMPLE,
 };
-use std::f64::consts::PI;
+use loopers_common::music::PanLaw;
 
 #[cfg(test)]
 mod tests {
@@ -60,6 +60,13 @@ mod tests {
         );
     }
 
+    fn looper_for_test() -> Looper {
+        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        l.pan_law = PanLaw::Transparent;
+        l.backend.as_mut().unwrap().enable_crossfading = false;
+        l
+    }
+
     #[test]
     fn test_transfer_buf() {
         let mut t = TransferBuf {
@@ -90,7 +97,7 @@ mod tests {
     fn test_new() {
         install_test_logger();
 
-        let looper = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let looper = looper_for_test();
         verify_mode(&looper, LooperMode::Playing);
         assert_eq!(1, looper.id);
         assert_eq!(0, looper.length_in_samples());
@@ -100,7 +107,7 @@ mod tests {
     fn test_transitions() {
         install_test_logger();
 
-        let mut looper = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut looper = looper_for_test();
 
         verify_mode(&looper, LooperMode::Playing);
 
@@ -134,7 +141,7 @@ mod tests {
     fn test_io() {
         install_test_logger();
 
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut l = looper_for_test();
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.transition_to(LooperMode::Recording);
@@ -180,7 +187,7 @@ mod tests {
     fn test_overdub() {
         install_test_logger();
 
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut l = looper_for_test();
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.transition_to(LooperMode::Recording);
@@ -254,8 +261,7 @@ mod tests {
 
         let buf_size = 128;
 
-        let mut l = Looper::new(2, PartSet::new(), GuiSender::disconnected());
-        l.backend.as_mut().unwrap().enable_crossfading = false;
+        let mut l = looper_for_test();
         l.transition_to(LooperMode::Recording);
 
         let mut input_left = vec![1f32; buf_size];
@@ -371,7 +377,7 @@ mod tests {
 
         let offset = 4u64;
 
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut l = looper_for_test();
         l.backend.as_mut().unwrap().enable_crossfading = false;
 
         l.set_time(FrameTime(offset as i64));
@@ -419,7 +425,8 @@ mod tests {
     fn test_post_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut l = looper_for_test();
+        l.backend.as_mut().unwrap().enable_crossfading = true;
         l.transition_to(LooperMode::Recording);
         process_until_done(&mut l);
 
@@ -496,7 +503,7 @@ mod tests {
     fn test_pre_xfade() {
         install_test_logger();
 
-        let mut l = Looper::new(1, PartSet::new(), GuiSender::disconnected());
+        let mut l = looper_for_test();
 
         let mut input_left = vec![17f32; CROSS_FADE_SAMPLES];
         let mut input_right = vec![-17f32; CROSS_FADE_SAMPLES];
@@ -1325,6 +1332,8 @@ pub struct Looper {
     pub parts: PartSet,
     pub pan: f32,
 
+    pub pan_law: PanLaw,
+
     pub backend: Option<LooperBackend>,
     length_in_samples: u64,
     msg_counter: u64,
@@ -1416,6 +1425,7 @@ impl Looper {
             mode: LooperMode::Playing,
             parts,
             pan,
+            pan_law: PanLaw::Neg4_5,
             deleted: false,
             length_in_samples: length,
             msg_counter: 0,
@@ -1619,9 +1629,10 @@ impl Looper {
         let mut waiting = 1000;
         let backoff = crossbeam_utils::Backoff::new();
 
-        let theta = ((self.pan as f64 + 1.0) / 2.0) * PI / 2.0;
-        let pan_l = ((PI / 2.0 - theta) * 2.0 / PI * theta.cos()).sqrt();
-        let pan_r = (theta * 2.0 / PI * theta.sin()).sqrt();
+        // this only really needs to be updated when the pan changes, so we don't need to do this
+        // for every buffer
+        let pan_l = self.pan_law.left(self.pan);
+        let pan_r = self.pan_law.right(self.pan);
 
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
@@ -1631,8 +1642,8 @@ impl Looper {
                         && (self.mode == LooperMode::Playing
                             || self.mode == LooperMode::Overdubbing))
                 {
-                    outputs[0][out_idx] += l * pan_l;
-                    outputs[1][out_idx] += r * pan_r;
+                    outputs[0][out_idx] += l * pan_l as f64;
+                    outputs[1][out_idx] += r * pan_r as f64;
                 }
             } else if waiting > 0 && self.mode != LooperMode::Recording {
                 backoff.spin();
