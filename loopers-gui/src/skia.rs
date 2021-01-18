@@ -187,6 +187,7 @@ pub fn skia_main(mut gui: Gui) {
                         MouseEventType::MouseDown(mouse_btn),
                         ((x as f32 * sf) as i32, (y as f32 * sf) as i32),
                     ));
+                    sdl_context.mouse().capture(true);
                 }
                 Event::MouseButtonUp {
                     x, y, mouse_btn, ..
@@ -195,6 +196,7 @@ pub fn skia_main(mut gui: Gui) {
                         MouseEventType::MouseUp(mouse_btn),
                         ((x as f32 * sf) as i32, (y as f32 * sf) as i32),
                     ));
+                    sdl_context.mouse().capture(false);
                 }
                 Event::Quit { .. } => {
                     break 'running;

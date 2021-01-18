@@ -98,7 +98,7 @@ pub enum LooperTarget {
     Selected,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum LooperCommand {
     // Basic commands
     Record,
@@ -109,6 +109,8 @@ pub enum LooperCommand {
     Clear,
 
     SetSpeed(LooperSpeed),
+
+    SetPan(f32),
 
     // Composite commands
     RecordOverdubPlay,
@@ -137,6 +139,7 @@ impl LooperCommand {
             "1/2x" => Some(SetSpeed(LooperSpeed::Half)),
             "1x" => Some(SetSpeed(LooperSpeed::One)),
             "2x" => Some(SetSpeed(LooperSpeed::Double)),
+
             _ => None,
         }
     }
@@ -397,6 +400,8 @@ pub struct SavedLooper {
     pub mode: LooperMode,
     #[serde(default = "looper_speed_default")]
     pub speed: LooperSpeed,
+    #[serde(default)]
+    pub pan: f32,
     #[serde(default)]
     pub parts: PartSet,
     pub samples: Vec<PathBuf>,

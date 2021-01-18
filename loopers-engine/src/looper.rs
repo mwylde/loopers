@@ -723,6 +723,7 @@ pub enum ControlMessage {
     Deleted,
     Clear,
     SetSpeed(LooperSpeed),
+    SetPan(f32),
     SetParts(PartSet),
 }
 
@@ -849,6 +850,7 @@ pub struct LooperBackend {
     pub samples: Vec<Sample>,
     pub mode: LooperMode,
     pub speed: LooperSpeed,
+    pub pan: f32,
     pub parts: PartSet,
     pub deleted: bool,
 
@@ -979,6 +981,20 @@ impl LooperBackend {
                     LooperState {
                         mode: self.mode,
                         speed: self.speed,
+                        pan: self.pan,
+                        parts: self.parts,
+                        offset: self.offset,
+                    },
+                ));
+            }
+            ControlMessage::SetPan(pan) => {
+                self.pan = pan;
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id,
+                    LooperState {
+                        mode: self.mode,
+                        speed: self.speed,
+                        pan: self.pan,
                         parts: self.parts,
                         offset: self.offset,
                     },
@@ -991,6 +1007,7 @@ impl LooperBackend {
                     LooperState {
                         mode: self.mode,
                         speed: self.speed,
+                        pan: self.pan,
                         parts: self.parts,
                         offset: self.offset,
                     },
@@ -1158,6 +1175,7 @@ impl LooperBackend {
             LooperState {
                 mode,
                 speed: self.speed,
+                pan: self.pan,
                 parts: self.parts,
                 offset: self.offset,
             },
@@ -1273,6 +1291,7 @@ impl LooperBackend {
             mode: self.mode,
             parts: self.parts,
             speed: self.speed,
+            pan: self.pan,
             samples: Vec::with_capacity(self.samples.len()),
             offset_samples: self.offset.0,
         };
@@ -1320,6 +1339,7 @@ impl Looper {
             id,
             parts,
             LooperSpeed::One,
+            0.0,
             FrameTime(0),
             vec![],
             gui_output,
@@ -1330,6 +1350,7 @@ impl Looper {
         id: u32,
         parts: PartSet,
         speed: LooperSpeed,
+        pan: f32,
         offset: FrameTime,
         samples: Vec<Sample>,
         mut gui_sender: GuiSender,
@@ -1344,6 +1365,7 @@ impl Looper {
         let state = LooperState {
             mode: LooperMode::Playing,
             speed,
+            pan,
             parts,
             offset,
         };
@@ -1364,6 +1386,7 @@ impl Looper {
             samples,
             mode: LooperMode::Playing,
             speed,
+            pan,
             parts,
             deleted: false,
             offset,
@@ -1430,6 +1453,7 @@ impl Looper {
             state.id,
             state.parts,
             state.speed,
+            state.pan,
             FrameTime(state.offset_samples),
             samples,
             gui_output,
@@ -1502,6 +1526,10 @@ impl Looper {
 
             SetSpeed(speed) => {
                 self.send_to_backend(ControlMessage::SetSpeed(speed));
+            }
+
+            SetPan(pan) => {
+                self.send_to_backend(ControlMessage::SetPan(pan));
             }
 
             AddToPart(part) => {
