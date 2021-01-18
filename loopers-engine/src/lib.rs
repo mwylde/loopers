@@ -776,7 +776,7 @@ impl Engine {
                             .zip(&self.tmp_left[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
                         r.iter_mut()
-                            .zip(&self.tmp_left[idx_range.clone()])
+                            .zip(&self.tmp_right[idx_range.clone()])
                             .for_each(|(a, b)| *a = *b as f32);
                     }
 
@@ -787,7 +787,7 @@ impl Engine {
                         .for_each(|(a, b)| *a += *b);
                     self.output_right[idx_range.clone()]
                         .iter_mut()
-                        .zip(&self.tmp_left[idx_range.clone()])
+                        .zip(&self.tmp_right[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
 
                     looper.process_input(

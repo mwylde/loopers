@@ -14,6 +14,7 @@ use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 use loopers_common::gui_channel::{
     GuiCommand, GuiSender, LooperState, Waveform, WAVEFORM_DOWNSAMPLE,
 };
+use std::f64::consts::PI;
 
 #[cfg(test)]
 mod tests {
@@ -1322,6 +1323,7 @@ pub struct Looper {
     pub mode: LooperMode,
     pub deleted: bool,
     pub parts: PartSet,
+    pub pan: f32,
 
     pub backend: Option<LooperBackend>,
     length_in_samples: u64,
@@ -1413,6 +1415,7 @@ impl Looper {
             backend: Some(backend),
             mode: LooperMode::Playing,
             parts,
+            pan,
             deleted: false,
             length_in_samples: length,
             msg_counter: 0,
@@ -1529,6 +1532,7 @@ impl Looper {
             }
 
             SetPan(pan) => {
+                self.pan = pan;
                 self.send_to_backend(ControlMessage::SetPan(pan));
             }
 
@@ -1614,6 +1618,11 @@ impl Looper {
         let mut missing = 0;
         let mut waiting = 1000;
         let backoff = crossbeam_utils::Backoff::new();
+
+        let theta = ((self.pan as f64 + 1.0) / 2.0) * PI / 2.0;
+        let pan_l = ((PI / 2.0 - theta) * 2.0 / PI * theta.cos()).sqrt();
+        let pan_r = (theta * 2.0 / PI * theta.sin()).sqrt();
+
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
                 if (solo && self.mode == LooperMode::Soloed)
@@ -1622,8 +1631,8 @@ impl Looper {
                         && (self.mode == LooperMode::Playing
                             || self.mode == LooperMode::Overdubbing))
                 {
-                    outputs[0][out_idx] += l;
-                    outputs[1][out_idx] += r;
+                    outputs[0][out_idx] += l * pan_l;
+                    outputs[1][out_idx] += r * pan_r;
                 }
             } else if waiting > 0 && self.mode != LooperMode::Recording {
                 backoff.spin();
