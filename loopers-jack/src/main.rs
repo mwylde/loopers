@@ -242,9 +242,7 @@ fn main() {
 
             let midi_events: Vec<MidiEvent> = midi_in
                 .iter(ps)
-                .map(|e| MidiEvent {
-                    bytes: e.bytes.to_vec(),
-                })
+                .filter_map(|e| MidiEvent::from_bytes(e.bytes))
                 .collect();
 
             engine.process(

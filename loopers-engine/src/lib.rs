@@ -244,12 +244,12 @@ impl Engine {
     fn commands_from_midi<'a, H: Host<'a>>(&mut self, host: &mut H, events: &[MidiEvent]) {
         for e in events {
             debug!("midi {:?}", e);
-            if e.bytes.len() >= 3 {
+            if let MidiEvent::ControllerChange { channel, controller, value } = e {
                 let command = self
                     .config
                     .midi_mappings
                     .iter()
-                    .find(|m| e.bytes[1] == m.channel as u8 && e.bytes[2] == m.data as u8)
+                    .find(|m| channel == m.channel as u8 && e.bytes[2] == m.data as u8)
                     .map(|m| m.command.clone());
 
                 if let Some(c) = command {

@@ -18,9 +18,10 @@ mod tests {
         let mut file = NamedTempFile::new().unwrap();
         {
             let file = file.as_file_mut();
-            writeln!(file, "22\t127\tRecordOverdubPlay\t0").unwrap();
-            writeln!(file, "23\t5\tMute\t3").unwrap();
-            writeln!(file, "24\t6\tStart").unwrap();
+            writeln!(file, "*\t22\t127\tRecordOverdubPlay\t0").unwrap();
+            writeln!(file, "*\t1\t23\t5\tMute\t3").unwrap();
+            writeln!(file, "1\t24\t6\tStart").unwrap();
+            writeln!(file, "1\t24\t10-50\tSetPan").unwrap();
             file.flush().unwrap();
         }
 
@@ -68,10 +69,17 @@ impl Config {
     }
 }
 
+pub enum DataValue {
+    Any,
+    Range(u8, u8),
+    Value(u8),
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MidiMapping {
-    pub channel: u8,
-    pub data: u8,
+    pub channel: Option<u8>,
+    pub controller: u8,
+    pub data: DataValue,
     pub command: Command,
 }
 

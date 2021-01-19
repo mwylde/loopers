@@ -124,7 +124,7 @@ pub enum LooperCommand {
 }
 
 impl LooperCommand {
-    pub fn from_str(command: &str) -> Option<LooperCommand> {
+    pub fn from_str(command: &str, args: &[&str]) -> Option<LooperCommand> {
         use LooperCommand::*;
         match command {
             "Record" => Some(Record),
@@ -135,6 +135,16 @@ impl LooperCommand {
             "RecordOverdubPlay" => Some(RecordOverdubPlay),
             "Delete" => Some(Delete),
             "Clear" => Some(Clear),
+
+            "SetPan" => {
+                args.get(0)
+                    .and_then(|s| u8::from_str(s).ok())
+                    .map(|id| Command::SelectLooperByIndex(id))
+                    .ok_or(
+                        "SelectLooperByIndex expects a single numeric argument, the looper index"
+                            .to_string(),
+                    ),
+            },
 
             "1/2x" => Some(SetSpeed(LooperSpeed::Half)),
             "1x" => Some(SetSpeed(LooperSpeed::One)),
