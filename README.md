@@ -223,6 +223,7 @@ Commands also differ in how they are affected by quantization:
 | Solo | Looper Targets | Immediate | Toggles the solo modifier on the selected loopers |
 | Delete | Looper Targets | Immediate | Deletes the selected loopers |
 | Clear | Looper Targets | Quantized | Clears all samples from the selected loopers |
+| SetPan | Looper Targets, a pan value from -1 (fully left) to 1 (fully right) | Immediate | Sets the pan for the looper | 
 
 ① _RecordOverdubPlay is quantized from Record -> Overdub and Overdub ->
 Play, but queued from Play -> Overdub._
@@ -257,36 +258,48 @@ Play, but queued from Play -> Overdub._
 ### Settings
 
 Configuration is stored the standard system user config location
-(typically this will be ~/.config/loopers/). Current the configuration
-consists only of a set of mappings from midi commands to loopers
+(typically this will be ~/.config/loopers/). Currently the configuration
+consists of a set of mappings from midi messages to loopers
 commands. These should be placed in a file called `midi_mappings.tsv`
-in that config directory.
+in that config directory, which will be automatically created after loopers
+is run for the first time.
 
 Each non-empty line of this file should contain the following
 tab-separated columns:
 
-* Midi event
-* Midi value
-* Command name
-* Command arguments (multiple arguments should be tab-separated)
+1. Midi channel (either `*` for any channel or a channel number)
+2. Midi controller number
+3. Midi data (can be `*` for any data, a single value like `50`,
+   or a range like `0-100`)
+4. Command name (see tables above)
+5. Command arguments (multiple arguments should be tab-separated; the special 
+   value `$data` can be used in the place of certain numerical arguments to 
+   use the data value of the midi event, for example for use with an expression 
+   pedal)
+   
+The midi values (channel, controller, data) can be thought of as _filters_ for incoming midi events; for each event
+all matching commands will fire.
 
 An example for configuring for use with the [Behringer
 FCB1010](https://www.behringer.com/product.html?modelCode=P0089) (an
 excellent pedalboard):
 
 ``` tsv
-22	127	RecordOverdubPlay	Selected
-22	0	RecordOverdubPlay	Selected
+Channel	Controller	Data	Command	Arg1	Arg2	Arg3
+*	22	127	RecordOverdubPlay	Selected
+*	22	0	RecordOverdubPlay	Selected
 
-23	127	SelectNextLooper
-23	0	SelectNextLooper
+*	23	127	SelectNextLooper
+*	23	0	SelectNextLooper
 
-24	127	NextPart
-24	0	NextPart
+*	24	127	NextPart
+*	24	0	NextPart
 
-25	127	Clear	Selected
-25	0	Clear	Selected
+*	25	127	Clear	Selected
+*	25	0	Clear	Selected
 
-26	127	PlayPause
-26	0	PlayPause
+*	26	127	PlayPause
+*	26	0	PlayPause
+
+*	27	0-127	SetPan	Selected	$data
 ```

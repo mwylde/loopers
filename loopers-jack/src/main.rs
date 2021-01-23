@@ -14,8 +14,8 @@ use clap::{App, Arg};
 use crossbeam_channel::bounded;
 use jack::{AudioOut, Client, Port, ProcessScope};
 use loopers_common::gui_channel::GuiSender;
+use loopers_common::midi::MidiEvent;
 use loopers_common::Host;
-use loopers_engine::midi::MidiEvent;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::collections::HashMap;
@@ -242,9 +242,7 @@ fn main() {
 
             let midi_events: Vec<MidiEvent> = midi_in
                 .iter(ps)
-                .map(|e| MidiEvent {
-                    bytes: e.bytes.to_vec(),
-                })
+                .filter_map(|e| MidiEvent::from_bytes(e.bytes))
                 .collect();
 
             engine.process(

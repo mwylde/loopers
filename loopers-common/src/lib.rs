@@ -5,6 +5,7 @@ extern crate derive_more;
 pub mod api;
 pub mod config;
 pub mod gui_channel;
+pub mod midi;
 pub mod music;
 
 pub fn clamp<T: PartialOrd + Copy>(v: T, min: T, max: T) -> T {
