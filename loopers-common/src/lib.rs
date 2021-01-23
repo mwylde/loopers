@@ -6,6 +6,7 @@ pub mod api;
 pub mod config;
 pub mod gui_channel;
 pub mod music;
+pub mod midi;
 
 pub fn clamp<T: PartialOrd + Copy>(v: T, min: T, max: T) -> T {
     assert!(min <= max);

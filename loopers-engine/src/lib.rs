@@ -3,38 +3,37 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use crate::error::SaveLoadError;
-use crate::looper::Looper;
-use crate::metronome::Metronome;
-use crate::midi::MidiEvent;
-use crate::sample::Sample;
-use crate::session::{SaveSessionData, SessionSaver};
-use crate::trigger::{Trigger, TriggerCondition};
-use crossbeam_channel::Receiver;
-use loopers_common::api::QuantizationMode::Free;
-use loopers_common::api::{
-    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
-    Part, PartSet, QuantizationMode, SavedSession,
-};
-use loopers_common::config::{Config, MidiMapping};
-use loopers_common::gui_channel::{
-    EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
-};
-use loopers_common::music::*;
-use loopers_common::Host;
+use std::{fs, io};
 use std::collections::VecDeque;
 use std::f32::NEG_INFINITY;
-use std::fs::{create_dir_all, read_to_string, File};
+use std::fs::{create_dir_all, File, read_to_string};
 use std::io::{ErrorKind, Read, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fs, io};
+
+use crossbeam_channel::Receiver;
+
+use loopers_common::api::{Command, CommandData, FrameTime, get_sample_rate, LooperCommand, LooperMode, LooperTarget, Part, PartSet, QuantizationMode, SavedSession, set_sample_rate};
+use loopers_common::api::QuantizationMode::Free;
+use loopers_common::config::{Config, MidiMapping};
+use loopers_common::gui_channel::{
+    EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
+};
+use loopers_common::Host;
+use loopers_common::midi::MidiEvent;
+use loopers_common::music::*;
+
+use crate::error::SaveLoadError;
+use crate::looper::Looper;
+use crate::metronome::Metronome;
+use crate::sample::Sample;
+use crate::session::{SaveSessionData, SessionSaver};
+use crate::trigger::{Trigger, TriggerCondition};
 
 mod error;
 pub mod looper;
 pub mod metronome;
-pub mod midi;
 pub mod sample;
 pub mod session;
 mod trigger;
@@ -65,9 +64,6 @@ pub struct Engine {
 
     id_counter: u32,
 
-    is_learning: bool,
-    last_midi: Option<Vec<u8>>,
-
     session_saver: SessionSaver,
 
     tmp_left: Vec<f64>,
@@ -95,22 +91,11 @@ pub fn last_session_path() -> io::Result<PathBuf> {
 }
 
 pub fn read_config() -> Result<Config, String> {
-    // read config
-    let mut config_path = dirs::config_dir().unwrap_or(PathBuf::new());
-    config_path.push("loopers/config.toml");
-
-    let config_string = fs::read_to_string(config_path).unwrap_or_else(|e| {
-        if e.kind() != ErrorKind::NotFound {
-            error!("Failed to read config file: {}", e);
-        }
-        "midi_mappings = []".to_string()
-    });
-
-    let mut config: Config = toml::from_str(&config_string)
-        .map_err(|e| format!("Failed to parse config file: {}", e))?;
-
     let mut mapping_path = dirs::config_dir().unwrap_or(PathBuf::new());
     mapping_path.push("loopers/midi_mappings.tsv");
+
+    let mut config = Config::new();
+
     if let Ok(file) = File::open(&mapping_path) {
         match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
             Ok(mms) => config.midi_mappings.extend(mms),
@@ -119,8 +104,6 @@ pub fn read_config() -> Result<Config, String> {
             }
         }
     }
-
-    info!("Config: {:#?}", config);
 
     Ok(config)
 }
@@ -177,9 +160,6 @@ impl Engine {
             )),
 
             triggers: VecDeque::with_capacity(128),
-
-            is_learning: false,
-            last_midi: None,
 
             session_saver: SessionSaver::new(gui_sender),
 
@@ -244,15 +224,9 @@ impl Engine {
     fn commands_from_midi<'a, H: Host<'a>>(&mut self, host: &mut H, events: &[MidiEvent]) {
         for e in events {
             debug!("midi {:?}", e);
-            if let MidiEvent::ControllerChange { channel, controller, value } = e {
-                let command = self
-                    .config
-                    .midi_mappings
-                    .iter()
-                    .find(|m| channel == m.channel as u8 && e.bytes[2] == m.data as u8)
-                    .map(|m| m.command.clone());
-
-                if let Some(c) = command {
+            for i in 0..self.config.midi_mappings.len() {
+                let mm = &self.config.midi_mappings[i];
+                if let Some(c) = mm.command_for_event(e) {
                     self.handle_command(host, &c, false);
                 }
             }
@@ -918,15 +892,7 @@ impl Engine {
         midi_events: &[MidiEvent],
     ) {
         // Convert midi events to commands
-        if !self.is_learning {
-            self.commands_from_midi(host, midi_events);
-            self.last_midi = None;
-        } else {
-            let new_last = midi_events.last().map(|m| m.bytes.to_vec());
-            if new_last.is_some() {
-                self.last_midi = new_last;
-            }
-        }
+        self.commands_from_midi(host, midi_events);
 
         // Handle commands from the gui
         loop {
