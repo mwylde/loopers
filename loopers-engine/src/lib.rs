@@ -6,20 +6,20 @@ extern crate log;
 use std::collections::VecDeque;
 use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
+use std::io;
 use std::io::{Read, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{io};
 
 use crossbeam_channel::Receiver;
 
 use loopers_common::api::QuantizationMode::Free;
 use loopers_common::api::{
-    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode,
-    LooperTarget, Part, PartSet, QuantizationMode, SavedSession,
+    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
+    Part, PartSet, QuantizationMode, SavedSession,
 };
-use loopers_common::config::{Config, MidiMapping};
+use loopers_common::config::{Config, MidiMapping, FILE_HEADER};
 use loopers_common::gui_channel::{
     EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
 };
@@ -99,13 +99,20 @@ pub fn read_config() -> Result<Config, String> {
 
     let mut config = Config::new();
 
-    if let Ok(file) = File::open(&mapping_path) {
-        match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
+    match File::open(&mapping_path) {
+        Ok(file) => match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
             Ok(mms) => config.midi_mappings.extend(mms),
             Err(e) => {
                 return Err(format!("Failed to load midi mappings: {:?}", e));
             }
+        },
+        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
+            // try to create an empty config file if it doesn't exist
+            if let Ok(ref mut file) = File::create(&mapping_path) {
+                writeln!(file, "{}", FILE_HEADER).unwrap();
+            }
         }
+        Err(_) => {}
     }
 
     Ok(config)

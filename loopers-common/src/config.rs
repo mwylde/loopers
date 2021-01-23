@@ -9,7 +9,7 @@ use std::str::FromStr;
 mod tests {
     use crate::api::LooperCommand::{RecordOverdubPlay, SetPan};
     use crate::api::{Command, CommandData, LooperTarget};
-    use crate::config::{DataValue, MidiMapping};
+    use crate::config::{DataValue, MidiMapping, FILE_HEADER};
     use std::fs::File;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -24,10 +24,11 @@ mod tests {
         let mut file = NamedTempFile::new().unwrap();
         {
             let file = file.as_file_mut();
+            writeln!(file, "{}", FILE_HEADER).unwrap();
             writeln!(file, "*\t22\t127\tRecordOverdubPlay\t0").unwrap();
             writeln!(file, "*\t23\t*\tSetMetronomeLevel\t50").unwrap();
             writeln!(file, "1\t24\t6\tStart").unwrap();
-            writeln!(file, "1\t24\t10-50\tSetPan\tSelected\t$data").unwrap();
+            writeln!(file, "1\t24\t0-127\tSetPan\tSelected\t$data").unwrap();
             file.flush().unwrap();
         }
 
@@ -63,13 +64,15 @@ mod tests {
 
         assert_eq!(Some(1), mapping[3].channel);
         assert_eq!(24, mapping[3].controller);
-        assert_eq!(DataValue::Range(10, 50), mapping[3].data);
+        assert_eq!(DataValue::Range(0, 127), mapping[3].data);
         assert_eq!(
             Command::Looper(SetPan(1.0), LooperTarget::Selected),
             (mapping[3].command)(CommandData { data: 127 })
         );
     }
 }
+
+pub static FILE_HEADER: &str = "Channel\tController\tData\tCommand\tArg1\tArg2\tArg3";
 
 pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
@@ -104,7 +107,7 @@ impl DataValue {
 
         let split: Vec<u8> = s.split("-").filter_map(|s| u8::from_str(s).ok()).collect();
 
-        if split.len() == 2 && split[0] < 127 && split[1] < 127 && split[0] < split[1] {
+        if split.len() == 2 && split[0] <= 127 && split[1] <= 127 && split[0] < split[1] {
             return Some(DataValue::Range(split[0], split[1]));
         }
 
@@ -132,7 +135,7 @@ impl MidiMapping {
         let mut rdr = csv::ReaderBuilder::new()
             .delimiter(b'\t')
             .flexible(true)
-            .has_headers(false)
+            .has_headers(true)
             .from_reader(file);
 
         let mut mappings = vec![];
