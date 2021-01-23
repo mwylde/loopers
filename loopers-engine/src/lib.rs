@@ -3,26 +3,29 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use std::{fs, io};
 use std::collections::VecDeque;
 use std::f32::NEG_INFINITY;
-use std::fs::{create_dir_all, File, read_to_string};
-use std::io::{ErrorKind, Read, Write};
+use std::fs::{create_dir_all, read_to_string, File};
+use std::io::{Read, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{io};
 
 use crossbeam_channel::Receiver;
 
-use loopers_common::api::{Command, CommandData, FrameTime, get_sample_rate, LooperCommand, LooperMode, LooperTarget, Part, PartSet, QuantizationMode, SavedSession, set_sample_rate};
 use loopers_common::api::QuantizationMode::Free;
+use loopers_common::api::{
+    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode,
+    LooperTarget, Part, PartSet, QuantizationMode, SavedSession,
+};
 use loopers_common::config::{Config, MidiMapping};
 use loopers_common::gui_channel::{
     EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
 };
-use loopers_common::Host;
 use loopers_common::midi::MidiEvent;
 use loopers_common::music::*;
+use loopers_common::Host;
 
 use crate::error::SaveLoadError;
 use crate::looper::Looper;

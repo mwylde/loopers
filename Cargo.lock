@@ -802,6 +802,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "derive_more",
+ "fern",
  "log",
  "serde",
  "tempfile",

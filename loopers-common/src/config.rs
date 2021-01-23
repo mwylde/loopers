@@ -1,66 +1,73 @@
 use crate::api::{Command, CommandData};
+use crate::midi::MidiEvent;
 use csv::StringRecord;
 use std::fs::File;
 use std::io;
 use std::str::FromStr;
-use crate::midi::MidiEvent;
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{Command, LooperCommand, LooperTarget, CommandData};
-    use crate::config::{MidiMapping, DataValue};
+    use crate::api::LooperCommand::{RecordOverdubPlay, SetPan};
+    use crate::api::{Command, CommandData, LooperTarget};
+    use crate::config::{DataValue, MidiMapping};
     use std::fs::File;
     use std::io::Write;
     use tempfile::NamedTempFile;
-    use crate::api::LooperCommand::RecordOverdubPlay;
 
     #[test]
     fn test_load_midi_mapping() {
+        let _ = fern::Dispatch::new()
+            .level(log::LevelFilter::Debug)
+            .chain(fern::Output::call(|record| println!("{}", record.args())))
+            .apply();
+
         let mut file = NamedTempFile::new().unwrap();
         {
             let file = file.as_file_mut();
             writeln!(file, "*\t22\t127\tRecordOverdubPlay\t0").unwrap();
-            writeln!(file, "*\t1\t23\t5\tMute\t3").unwrap();
+            writeln!(file, "*\t23\t*\tSetMetronomeLevel\t50").unwrap();
             writeln!(file, "1\t24\t6\tStart").unwrap();
-            writeln!(file, "1\t24\t10-50\tSetPan\tSelected\tdata").unwrap();
+            writeln!(file, "1\t24\t10-50\tSetPan\tSelected\t$data").unwrap();
             file.flush().unwrap();
         }
 
         let mapping = MidiMapping::from_file(
             &file.path().to_string_lossy(),
             &File::open(&file.path()).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(None, mapping[0].channel);
         assert_eq!(22, mapping[0].controller);
         assert_eq!(DataValue::Value(127), mapping[0].data);
-        assert_eq!(Command::Looper(RecordOverdubPlay, LooperTarget::Index(0)),
-                   (mapping[0].command)(CommandData {data:  127 }));
-        //
-        // assert_eq!(
-        //     vec![
-        //         MidiMapping {
-        //             channel: None,
-        //             controller: 22,
-        //             data: DataValue::Value(127),
-        //             command: Command::Looper(
-        //                 LooperCommand::RecordOverdubPlay,
-        //                 LooperTarget::Index(0)
-        //             ),
-        //         },
-        //         MidiMapping {
-        //             channel: 23,
-        //             data: 5,
-        //             command: Command::Looper(LooperCommand::Mute, LooperTarget::Index(3)),
-        //         },
-        //         MidiMapping {
-        //             channel: 24,
-        //             data: 6,
-        //             command: Command::Start,
-        //         },
-        //     ],
-        //     mapping.unwrap()
-        // );
+        assert_eq!(
+            Command::Looper(RecordOverdubPlay, LooperTarget::Index(0)),
+            (mapping[0].command)(CommandData { data: 127 })
+        );
+
+        assert_eq!(None, mapping[1].channel);
+        assert_eq!(23, mapping[1].controller);
+        assert_eq!(DataValue::Any, mapping[1].data);
+        assert_eq!(
+            Command::SetMetronomeLevel(50),
+            (mapping[1].command)(CommandData { data: 39 })
+        );
+
+        assert_eq!(Some(1), mapping[2].channel);
+        assert_eq!(24, mapping[2].controller);
+        assert_eq!(DataValue::Value(6), mapping[2].data);
+        assert_eq!(
+            Command::Start,
+            (mapping[2].command)(CommandData { data: 39 })
+        );
+
+        assert_eq!(Some(1), mapping[3].channel);
+        assert_eq!(24, mapping[3].controller);
+        assert_eq!(DataValue::Range(10, 50), mapping[3].data);
+        assert_eq!(
+            Command::Looper(SetPan(1.0), LooperTarget::Selected),
+            (mapping[3].command)(CommandData { data: 127 })
+        );
     }
 }
 
@@ -95,12 +102,10 @@ impl DataValue {
             }
         }
 
-        let split: Vec<u8> = s.split("-")
-            .filter_map(|s| u8::from_str(s).ok())
-            .collect();
+        let split: Vec<u8> = s.split("-").filter_map(|s| u8::from_str(s).ok()).collect();
 
         if split.len() == 2 && split[0] < 127 && split[1] < 127 && split[0] < split[1] {
-            return Some(DataValue::Range(split[0], split[1]))
+            return Some(DataValue::Range(split[0], split[1]));
         }
 
         None
@@ -164,19 +169,22 @@ impl MidiMapping {
     }
 
     fn from_record(record: &StringRecord) -> Result<MidiMapping, String> {
-        let channel = record
-            .get(0)
-            .ok_or("No channel field".to_string())?;
+        let channel = record.get(0).ok_or("No channel field".to_string())?;
 
         let channel = match channel {
             "*" => None,
-            c => Some(u8::from_str(c)
-                .map_err(|_| "Channel must be * or a number".to_string())
-                .and_then(|c| if c >= 1 && c <= 16 { Ok(c) } else {
-                    Err("Channel must be between 1 and 16".to_string())
-                })?)
+            c => Some(
+                u8::from_str(c)
+                    .map_err(|_| "Channel must be * or a number".to_string())
+                    .and_then(|c| {
+                        if c >= 1 && c <= 16 {
+                            Ok(c)
+                        } else {
+                            Err("Channel must be between 1 and 16".to_string())
+                        }
+                    })?,
+            ),
         };
-
 
         let controller = record
             .get(1)
@@ -189,11 +197,10 @@ impl MidiMapping {
             .map(DataValue::parse)?
             .ok_or("Invalid data format (expected either *, a range like 15-20, or a single value like 127")?;
 
-
-        let args: Vec<&str> = record.iter().skip(3).collect();
+        let args: Vec<&str> = record.iter().skip(4).collect();
 
         let command = record
-            .get(2)
+            .get(3)
             .ok_or("No command field".to_string())
             .and_then(|c| Command::from_str(c, &args))?;
 
@@ -207,13 +214,16 @@ impl MidiMapping {
 
     pub fn command_for_event(&self, event: &MidiEvent) -> Option<Command> {
         match event {
-            MidiEvent::ControllerChange { channel, controller, data } => {
-                if (self.channel.is_none() || self.channel.unwrap() == *channel) &&
-                    (self.controller == *controller) &&
-                    (self.data.matches(*data)) {
-                    return Some((self.command)(CommandData {
-                        data: *data
-                    }));
+            MidiEvent::ControllerChange {
+                channel,
+                controller,
+                data,
+            } => {
+                if (self.channel.is_none() || self.channel.unwrap() == *channel)
+                    && (self.controller == *controller)
+                    && (self.data.matches(*data))
+                {
+                    return Some((self.command)(CommandData { data: *data }));
                 }
             }
         }

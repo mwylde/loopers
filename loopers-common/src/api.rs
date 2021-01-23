@@ -14,34 +14,30 @@ mod tests {
 
     #[test]
     fn test_from_str() {
-        assert_eq!(Command::Start, Command::from_str("Start", &[][..])
-            .unwrap()(CommandData{ data: 0 }));
+        assert_eq!(
+            Command::Start,
+            Command::from_str("Start", &[][..]).unwrap()(CommandData { data: 0 })
+        );
 
-        // assert_eq!(
-        //     Ok(Command::SetTime(FrameTime(100))),
-        //     Command::from_str("SetTime", &["100"][..])
-        // );
-        //
-        // assert_eq!(
-        //     Ok(Command::Looper(LooperCommand::Record, LooperTarget::All)),
-        //     Command::from_str("Record", &["All"][..])
-        // );
-        //
-        // assert_eq!(
-        //     Ok(Command::Looper(
-        //         LooperCommand::Overdub,
-        //         LooperTarget::Selected
-        //     )),
-        //     Command::from_str("Overdub", &["Selected"][..])
-        // );
-        //
-        // assert_eq!(
-        //     Ok(Command::Looper(
-        //         LooperCommand::Mute,
-        //         LooperTarget::Index(13)
-        //     )),
-        //     Command::from_str("Mute", &["13"][..])
-        // );
+        assert_eq!(
+            Command::SetTime(FrameTime(100)),
+            Command::from_str("SetTime", &["100"][..]).unwrap()(CommandData { data: 0 })
+        );
+
+        assert_eq!(
+            Command::Looper(LooperCommand::Record, LooperTarget::All),
+            Command::from_str("Record", &["All"][..]).unwrap()(CommandData { data: 0 })
+        );
+
+        assert_eq!(
+            Command::Looper(LooperCommand::Overdub, LooperTarget::Selected),
+            Command::from_str("Overdub", &["Selected"][..]).unwrap()(CommandData { data: 0 })
+        );
+
+        assert_eq!(
+            Command::Looper(LooperCommand::Mute, LooperTarget::Index(13)),
+            Command::from_str("Mute", &["13"][..]).unwrap()(CommandData { data: 0 })
+        );
     }
 }
 
@@ -93,7 +89,7 @@ impl FrameTime {
 
 #[derive(Debug, PartialEq)]
 pub struct CommandData {
-    pub data: u8
+    pub data: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -130,9 +126,12 @@ pub enum LooperCommand {
 }
 
 impl LooperCommand {
-    pub fn from_str(command: &str, args: &[&str]) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
-        use LooperCommand::*;
+    pub fn from_str(
+        command: &str,
+        args: &[&str],
+    ) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
         use Command::Looper;
+        use LooperCommand::*;
 
         let target_type = args.get(0).ok_or(format!("{} expects a target", command))?;
 
@@ -158,13 +157,15 @@ impl LooperCommand {
             "Clear" => Box::new(move |_| Looper(Clear, target)),
 
             "SetPan" => {
-                let v = args.get(1)
-                    .ok_or("SetPan expects a target and a pan value between -1 and 1".to_string())?;
+                let v = args.get(1).ok_or(
+                    "SetPan expects a target and a pan value between -1 and 1".to_string(),
+                )?;
 
                 let arg = if *v == "$data" {
                     None
                 } else {
-                    let f = f32::from_str(v).map_err(|_| format!("Invalid value for SetPan: '{}'", v))?;
+                    let f = f32::from_str(v)
+                        .map_err(|_| format!("Invalid value for SetPan: '{}'", v))?;
                     if f < -1.0 || f > 1.0 {
                         return Err("Value for SetPan must be between -1 and 1".to_string());
                     }
@@ -172,9 +173,12 @@ impl LooperCommand {
                 };
 
                 Box::new(move |d| {
-                    Looper(SetPan(arg.unwrap_or(d.data as f32 / 127.0 * 2.0 - 1.0)), target)
+                    Looper(
+                        SetPan(arg.unwrap_or(d.data as f32 / 127.0 * 2.0 - 1.0)),
+                        target,
+                    )
                 })
-            },
+            }
 
             "1/2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Half), target)),
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),
@@ -222,7 +226,10 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn from_str(command: &str, args: &[&str]) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
+    pub fn from_str(
+        command: &str,
+        args: &[&str],
+    ) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
         Ok(match command {
             "Start" => Box::new(|_| Command::Start),
             "Stop" => Box::new(|_| Command::Stop),
@@ -238,7 +245,7 @@ impl Command {
                     .map(|t| FrameTime(t))
                     .ok_or("SetTime expects a single numeric argument, time".to_string())?;
                 Box::new(move |_| Command::SetTime(arg))
-            },
+            }
 
             "AddLooper" => Box::new(|_| Command::AddLooper),
             "SelectLooperById" => {
@@ -246,22 +253,21 @@ impl Command {
                     .get(0)
                     .and_then(|s| u32::from_str(s).ok())
                     .ok_or(
-                        "SelectLooperById expects a single numeric argument, the looper id".to_string(),
-                    )?.to_owned();
+                        "SelectLooperById expects a single numeric argument, the looper id"
+                            .to_string(),
+                    )?
+                    .to_owned();
 
                 Box::new(move |_| Command::SelectLooperById(arg))
-            },
+            }
 
             "SelectLooperByIndex" => {
-                let arg = args
-                    .get(0)
-                    .and_then(|s| u8::from_str(s).ok())
-                    .ok_or(
-                        "SelectLooperByIndex expects a single numeric argument, the looper index"
-                            .to_string(),
-                    )?;
+                let arg = args.get(0).and_then(|s| u8::from_str(s).ok()).ok_or(
+                    "SelectLooperByIndex expects a single numeric argument, the looper index"
+                        .to_string(),
+                )?;
                 Box::new(move |_| Command::SelectLooperByIndex(arg))
-            },
+            }
 
             "SelectPreviousLooper" => Box::new(|_| Command::SelectPreviousLooper),
             "SelectNextLooper" => Box::new(|_| Command::SelectNextLooper),
@@ -281,7 +287,7 @@ impl Command {
                     .ok_or("GoToPart expects a part name (one of A, B, C, or D)".to_string())?;
 
                 Box::new(move |_| Command::GoToPart(arg))
-            },
+            }
 
             "SetQuantizationMode" => {
                 let arg = args
@@ -297,18 +303,15 @@ impl Command {
                             .to_string(),
                     )?;
                 Box::new(move |_| Command::SetQuantizationMode(arg))
-            },
+            }
 
             "SetMetronomeLevel" => {
-                let arg = args
-                    .get(0)
-                    .and_then(|s| u8::from_str(s).ok())
-                    .ok_or(
-                        "SetMetronomeLevel expects a single numeric argument, the level between 0-100"
-                            .to_string(),
-                    )?;
+                let arg = args.get(0).and_then(|s| u8::from_str(s).ok()).ok_or(
+                    "SetMetronomeLevel expects a single numeric argument, the level between 0-100"
+                        .to_string(),
+                )?;
                 Box::new(move |_| Command::SetMetronomeLevel(arg))
-            },
+            }
 
             _ => {
                 return LooperCommand::from_str(command, args);
