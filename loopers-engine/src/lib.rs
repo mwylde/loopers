@@ -73,6 +73,8 @@ pub struct Engine {
     tmp_right: Vec<f64>,
     output_left: Vec<f64>,
     output_right: Vec<f64>,
+
+    looper_peaks: [[f32; 2]; 64],
 }
 
 #[allow(dead_code)]
@@ -178,6 +180,8 @@ impl Engine {
 
             output_left: vec![0f64; 2048],
             output_right: vec![0f64; 2048],
+
+            looper_peaks: [[0.0; 2]; 64],
         };
 
         set_sample_rate(sample_rate);
@@ -741,6 +745,7 @@ impl Engine {
         solo: bool,
     ) {
         if time.0 >= 0 {
+            let mut looper_index = 0;
             for looper in self.loopers.iter_mut() {
                 if !looper.deleted {
                     self.tmp_left.iter_mut().for_each(|i| *i = 0.0);
@@ -772,6 +777,22 @@ impl Engine {
                         .iter_mut()
                         .zip(&self.tmp_right[idx_range.clone()])
                         .for_each(|(a, b)| *a += *b);
+
+                    // update our peaks
+                    let mut peaks = [0f32; 2];
+                    for (i, vs) in [&self.tmp_left, &self.tmp_right].iter().enumerate() {
+                        for v in *vs {
+                            let v_abs = v.abs() as f32;
+                            if v_abs > peaks[i] {
+                                peaks[i] = v_abs;
+                            }
+                        }
+                    }
+
+                    if let Some(p) = self.looper_peaks.get_mut(looper_index) {
+                        *p = peaks;
+                    }
+                    looper_index += 1;
 
                     looper.process_input(
                         time.0 as u64,
@@ -869,8 +890,8 @@ impl Engine {
         }
     }
 
-    fn compute_peaks(in_bufs: &[&[f32]]) -> [f32; 2] {
-        let mut peaks = [0f32; 2];
+    fn compute_peaks(in_bufs: &[&[f32]]) -> [u8; 2] {
+        let mut peaks = [0u8; 2];
         for c in 0..2 {
             let mut peak = 0f32;
             for v in in_bufs[c] {
@@ -880,10 +901,34 @@ impl Engine {
                 }
             }
 
-            peaks[c] = 20.0 * peak.log10();
+            peaks[c] = Self::iec_scale(peak);
         }
 
         peaks
+    }
+
+    fn iec_scale(amp: f32) -> u8 {
+        let db = 20.0 * amp.log10();
+
+        let d = if db < -70.0 {
+            0.0
+        } else if db < -60.0 {
+            db + 70.0 * 0.25
+        } else if db < -50.0 {
+            db + 60.0 * 0.5 + 5.0
+        } else if db < -40.0 {
+            db + 50.0 * 0.75 + 7.5
+        } else if db < -30.0 {
+            db + 40.0 * 1.5 + 15.0
+        } else if db < -20.0 {
+            db + 30.0 * 2.0 + 30.0
+        } else if db < 0.0 {
+            db + 20.0 * 2.5 + 50.0
+        } else {
+            100.0
+        };
+
+        d as u8
     }
 
     // Step 1: Convert midi events to commands
@@ -975,6 +1020,12 @@ impl Engine {
             out_r[i] = self.output_right[i] as f32;
         }
 
+        let mut peaks = [[0u8; 2]; 64];
+        for (i, ps) in self.looper_peaks.iter().enumerate() {
+            peaks[i][0] = Self::iec_scale(ps[0]);
+            peaks[i][1] = Self::iec_scale(ps[1]);
+        }
+
         // Update GUI
         self.gui_sender
             .send_update(GuiCommand::StateSnapshot(EngineStateSnapshot {
@@ -986,6 +1037,7 @@ impl Engine {
                 part: self.current_part,
                 sync_mode: self.sync_mode,
                 input_levels: Self::compute_peaks(&in_bufs),
+                looper_levels: peaks,
                 metronome_volume: self
                     .metronome
                     .as_ref()

@@ -20,7 +20,7 @@ use loopers_common::gui_channel::{
 };
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use sdl2::mouse::MouseButton;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::io::Write;
 use std::time::{Duration, Instant};
 
@@ -65,6 +65,7 @@ pub struct LooperData {
     parts: PartSet,
     speed: LooperSpeed,
     pan: f32,
+    levels: [u8; 2],
     waveform: Waveform,
     trigger: Option<(FrameTime, LooperCommand)>,
 }
@@ -144,7 +145,7 @@ impl Controller {
 #[derive(Clone)]
 pub struct AppData {
     engine_state: EngineStateSnapshot,
-    loopers: HashMap<u32, LooperData>,
+    loopers: BTreeMap<u32, LooperData>,
     show_buttons: bool,
     messages: Log,
     global_triggers: Vec<(
@@ -182,10 +183,11 @@ impl Gui {
                     looper_count: 0,
                     part: Part::A,
                     sync_mode: QuantizationMode::Measure,
-                    input_levels: [0.0, 0.0],
+                    input_levels: [0, 0],
+                    looper_levels: [[0; 2]; 64],
                     metronome_volume: 1.0,
                 },
-                loopers: HashMap::new(),
+                loopers: BTreeMap::new(),
                 show_buttons: SHOW_BUTTONS,
                 messages: Log::new(),
                 global_triggers: Vec::new(),
@@ -213,6 +215,12 @@ impl Gui {
                     self.state.engine_state = state;
                     self.initialized = true;
 
+                    for (i, (_, l)) in self.state.loopers.iter_mut().enumerate() {
+                        if let Some(level) = self.state.engine_state.looper_levels.get(i) {
+                            l.levels = *level;
+                        }
+                    }
+
                     // clear past triggers
                     for l in self.state.loopers.values_mut() {
                         if let Some((time, _)) = l.trigger {
@@ -235,6 +243,7 @@ impl Gui {
                             speed: state.speed,
                             pan: state.pan,
                             waveform: [vec![], vec![]],
+                            levels: [0; 2],
                             trigger: None,
                         },
                     );
@@ -252,6 +261,7 @@ impl Gui {
                             speed: state.speed,
                             pan: state.pan,
                             waveform: *waveform,
+                            levels: [0; 2],
                             trigger: None,
                         },
                     );
