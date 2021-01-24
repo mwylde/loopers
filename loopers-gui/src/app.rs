@@ -489,7 +489,7 @@ impl BottomBarView {
             metronome_view: MetronomeView::new(),
             metronome_button: MetronomeButton::new(),
             time_view: TimeView::new(),
-            peak_view: PeakMeterView::new(Duration::from_millis(80)),
+            peak_view: PeakMeterView::new(30),
         }
     }
 
@@ -1005,10 +1005,10 @@ pub struct PeakMeterView {
 }
 
 impl PeakMeterView {
-    fn new(update_time: Duration) -> Self {
+    fn new(lines: usize) -> Self {
         Self {
-            update_time,
-            lines: 30,
+            update_time: Duration::from_millis(80),
+            lines,
             peaks: [(0, None), (0, None)],
             levels: [0, 0],
             image: None,
@@ -1557,7 +1557,7 @@ impl LooperView {
             active_button: ActiveButton::new(),
             delete_button: DeleteButton::new(),
             pan: PotWidget::new(35.0, Color::WHITE),
-            peak: PeakMeterView::new(Duration::from_millis(160)),
+            peak: PeakMeterView::new(50),
         }
     }
 
@@ -1715,7 +1715,7 @@ impl LooperView {
             last_event,
         );
         canvas.translate((0.0, 40.0));
-        self.peak.draw(canvas, looper.levels, 60.0, 30.0);
+        self.peak.draw(canvas, looper.levels, 70.0, 30.0);
 
         canvas.restore();
 
