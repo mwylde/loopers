@@ -112,7 +112,11 @@ pub enum LooperCommand {
 
     SetSpeed(LooperSpeed),
 
+    // [-1.0, 1.0]
     SetPan(f32),
+
+    // [0.0, 1.0]
+    SetLevel(f32),
 
     // Composite commands
     RecordOverdubPlay,
@@ -178,7 +182,32 @@ impl LooperCommand {
                         target,
                     )
                 })
+            },
+
+            "SetLevel" => {
+                let v = args.get(1).ok_or(
+                    "SetLevel expects a target and a level value between 0 and 1".to_string(),
+                )?;
+
+                let arg = if *v == "$data" {
+                    None
+                } else {
+                    let f = f32::from_str(v)
+                        .map_err(|_| format!("Invalid value for SetLevel: '{}'", v))?;
+                    if f < 0.0 || f > 1.0 {
+                        return Err("Value for SetLevel must be between 0 and 1".to_string());
+                    }
+                    Some(f)
+                };
+
+                Box::new(move |d| {
+                    Looper(
+                        SetLevel(arg.unwrap_or(d.data as f32 / 127.0)),
+                        target,
+                    )
+                })
             }
+
 
             "1/2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Half), target)),
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),
@@ -436,6 +465,10 @@ fn sync_mode_default() -> QuantizationMode {
     QuantizationMode::Measure
 }
 
+fn level_default() -> f32 {
+    1.0
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SavedLooper {
     pub id: u32,
@@ -444,6 +477,8 @@ pub struct SavedLooper {
     pub speed: LooperSpeed,
     #[serde(default)]
     pub pan: f32,
+    #[serde(default = "level_default")]
+    pub level: f32,
     #[serde(default)]
     pub parts: PartSet,
     pub samples: Vec<PathBuf>,

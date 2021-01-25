@@ -1,4 +1,4 @@
-use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData};
+use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData, MouseEventType};
 
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, PotWidget,
@@ -23,6 +23,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use loopers_common::clamp;
 
 const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
 const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png");
@@ -521,7 +522,8 @@ impl BottomBarView {
         canvas.translate((size.width.round() + 20.0, 0.0));
 
         self.peak_view
-            .draw(canvas, data.engine_state.input_levels, 160.0, h);
+            .draw(canvas, data.engine_state.input_levels, None, 160.0, h,
+                  |_| {}, last_event);
 
         canvas.restore();
     }
@@ -1002,6 +1004,7 @@ pub struct PeakMeterView {
     peaks: [(usize, Option<ClockTimeAnimation>); 2],
     levels: [usize; 2],
     image: Option<(Image, Instant)>,
+    last_mouse_value: Option<f32>,
 }
 
 impl PeakMeterView {
@@ -1012,6 +1015,7 @@ impl PeakMeterView {
             peaks: [(0, None), (0, None)],
             levels: [0, 0],
             image: None,
+            last_mouse_value: None,
         }
     }
 
@@ -1073,7 +1077,8 @@ impl PeakMeterView {
         self.image = Some((surface.image_snapshot(), Instant::now()));
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, levels: [u8; 2], w: f32, h: f32) -> Size {
+    fn draw<F: FnOnce(f32)>(&mut self, canvas: &mut Canvas, levels: [u8; 2], set_level: Option<f32>,
+                            w: f32, h: f32, new_level: F, last_event: Option<GuiEvent>) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke_width(1.5);
@@ -1129,6 +1134,49 @@ impl PeakMeterView {
             path.line_to((x, y + h / 2.0 - 7.0));
             canvas.draw_path(&path, &paint);
         }
+
+        // if we have a level control, draw that over the vis
+        if let Some(level) = set_level {
+            let level = clamp(level, 0.0, 1.0);
+            let mut paint = Paint::default();
+            paint.set_color(Color::WHITE);
+            paint.set_alpha_f(0.9);
+            paint.set_anti_alias(true);
+            paint.set_stroke_width(2.0);
+            paint.set_style(Style::Stroke);
+
+            let mut path = Path::new();
+            path.move_to((w * level, -5.0));
+            path.line_to((w * level, h));
+            canvas.draw_path(&path, &paint);
+
+            // handle clicks
+            let bounds = Rect::from_size((w, h));
+            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) = last_event
+            {
+                let point = canvas
+                    .total_matrix()
+                    .invert()
+                    .unwrap()
+                    .map_point((x as f32, y as f32));
+
+                if bounds.contains(point) {
+                    new_level(point.x / w);
+                    self.last_mouse_value = Some(x as f32);
+                }
+            } else if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, _))) = last_event {
+                if let Some(p_x) = self.last_mouse_value {
+                    let lv = clamp(level + (x as f32 - p_x) / w, 0.0, 1.0);
+                    new_level(lv);
+                    self.last_mouse_value = Some(x as f32);
+                }
+            }
+
+            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(_), _)) = last_event {
+                self.last_mouse_value = None;
+            }
+        }
+
 
         Size::new(w, h)
     }
@@ -1715,7 +1763,11 @@ impl LooperView {
             last_event,
         );
         canvas.translate((0.0, 40.0));
-        self.peak.draw(canvas, looper.levels, 70.0, 30.0);
+        self.peak.draw(canvas, looper.levels, Some(looper.level), 70.0, 30.0,
+                       |level| controller.send_command(
+                           Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
+                           "Failed to set level"
+                       ), last_event);
 
         canvas.restore();
 

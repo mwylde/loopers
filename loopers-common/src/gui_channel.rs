@@ -37,6 +37,7 @@ pub struct LooperState {
     pub mode: LooperMode,
     pub speed: LooperSpeed,
     pub pan: f32,
+    pub level: f32,
     pub parts: PartSet,
     pub offset: FrameTime,
 }
