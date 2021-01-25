@@ -732,6 +732,7 @@ pub enum ControlMessage {
     Clear,
     SetSpeed(LooperSpeed),
     SetPan(f32),
+    SetLevel(f32),
     SetParts(PartSet),
 }
 
@@ -859,6 +860,7 @@ pub struct LooperBackend {
     pub mode: LooperMode,
     pub speed: LooperSpeed,
     pub pan: f32,
+    pub level: f32,
     pub parts: PartSet,
     pub deleted: bool,
 
@@ -909,6 +911,17 @@ impl LooperBackend {
                 Ok(msg) => self.handle_msg(msg),
                 Err(_) => break,
             };
+        }
+    }
+
+    fn current_state(&self) -> LooperState {
+        LooperState {
+            mode: self.mode,
+            speed: self.speed,
+            pan: self.pan,
+            level: self.level,
+            parts: self.parts,
+            offset: self.offset,
         }
     }
 
@@ -986,39 +999,26 @@ impl LooperBackend {
                 self.speed = speed;
                 self.gui_sender.send_update(GuiCommand::LooperStateChange(
                     self.id,
-                    LooperState {
-                        mode: self.mode,
-                        speed: self.speed,
-                        pan: self.pan,
-                        parts: self.parts,
-                        offset: self.offset,
-                    },
+                    self.current_state(),
                 ));
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
                 self.gui_sender.send_update(GuiCommand::LooperStateChange(
                     self.id,
-                    LooperState {
-                        mode: self.mode,
-                        speed: self.speed,
-                        pan: self.pan,
-                        parts: self.parts,
-                        offset: self.offset,
-                    },
+                    self.current_state(),
+                ));
+            }
+            ControlMessage::SetLevel(level) => {
+                self.level = level;
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id, self.current_state()
                 ));
             }
             ControlMessage::SetParts(parts) => {
                 self.parts = parts;
                 self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    LooperState {
-                        mode: self.mode,
-                        speed: self.speed,
-                        pan: self.pan,
-                        parts: self.parts,
-                        offset: self.offset,
-                    },
+                    self.id, self.current_state()
                 ));
             }
         }
@@ -1184,6 +1184,7 @@ impl LooperBackend {
                 mode,
                 speed: self.speed,
                 pan: self.pan,
+                level: self.level,
                 parts: self.parts,
                 offset: self.offset,
             },
@@ -1300,6 +1301,7 @@ impl LooperBackend {
             parts: self.parts,
             speed: self.speed,
             pan: self.pan,
+            level: self.level,
             samples: Vec::with_capacity(self.samples.len()),
             offset_samples: self.offset.0,
         };
@@ -1331,6 +1333,7 @@ pub struct Looper {
     pub deleted: bool,
     pub parts: PartSet,
     pub pan: f32,
+    pub level: f32,
 
     pub pan_law: PanLaw,
 
@@ -1351,6 +1354,7 @@ impl Looper {
             parts,
             LooperSpeed::One,
             0.0,
+            1.0,
             FrameTime(0),
             vec![],
             gui_output,
@@ -1362,6 +1366,7 @@ impl Looper {
         parts: PartSet,
         speed: LooperSpeed,
         pan: f32,
+        level: f32,
         offset: FrameTime,
         samples: Vec<Sample>,
         mut gui_sender: GuiSender,
@@ -1377,6 +1382,7 @@ impl Looper {
             mode: LooperMode::Playing,
             speed,
             pan,
+            level,
             parts,
             offset,
         };
@@ -1398,6 +1404,7 @@ impl Looper {
             mode: LooperMode::Playing,
             speed,
             pan,
+            level,
             parts,
             deleted: false,
             offset,
@@ -1425,6 +1432,7 @@ impl Looper {
             mode: LooperMode::Playing,
             parts,
             pan,
+            level,
             pan_law: PanLaw::Neg4_5,
             deleted: false,
             length_in_samples: length,
@@ -1467,6 +1475,7 @@ impl Looper {
             state.parts,
             state.speed,
             state.pan,
+            state.level,
             FrameTime(state.offset_samples),
             samples,
             gui_output,
@@ -1544,6 +1553,11 @@ impl Looper {
             SetPan(pan) => {
                 self.pan = pan;
                 self.send_to_backend(ControlMessage::SetPan(pan));
+            }
+
+            SetLevel(level) => {
+                self.level = level;
+                self.send_to_backend(ControlMessage::SetLevel(level));
             }
 
             AddToPart(part) => {
@@ -1642,8 +1656,8 @@ impl Looper {
                         && (self.mode == LooperMode::Playing
                             || self.mode == LooperMode::Overdubbing))
                 {
-                    outputs[0][out_idx] += l * pan_l as f64;
-                    outputs[1][out_idx] += r * pan_r as f64;
+                    outputs[0][out_idx] += l * pan_l as f64 * self.level as f64;
+                    outputs[1][out_idx] += r * pan_r as f64 * self.level as f64;
                 }
             } else if waiting > 0 && self.mode != LooperMode::Recording {
                 backoff.spin();

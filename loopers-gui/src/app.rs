@@ -1,4 +1,4 @@
-use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData};
+use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData, MouseEventType};
 
 use crate::widgets::{
     draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, PotWidget,
@@ -23,6 +23,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use loopers_common::clamp;
 
 const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
 const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png");
@@ -489,7 +490,7 @@ impl BottomBarView {
             metronome_view: MetronomeView::new(),
             metronome_button: MetronomeButton::new(),
             time_view: TimeView::new(),
-            peak_view: PeakMeterView::new(),
+            peak_view: PeakMeterView::new(30),
         }
     }
 
@@ -520,7 +521,9 @@ impl BottomBarView {
         let size = self.time_view.draw(h, data, canvas, controller, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
-        self.peak_view.draw(canvas, data, 160.0, h);
+        self.peak_view
+            .draw(canvas, data.engine_state.input_levels, None, 160.0, h,
+                  |_| {}, last_event);
 
         canvas.restore();
     }
@@ -1001,39 +1004,19 @@ pub struct PeakMeterView {
     peaks: [(usize, Option<ClockTimeAnimation>); 2],
     levels: [usize; 2],
     image: Option<(Image, Instant)>,
+    last_mouse_value: Option<f32>,
 }
 
 impl PeakMeterView {
-    fn new() -> Self {
+    fn new(lines: usize) -> Self {
         Self {
             update_time: Duration::from_millis(80),
-            lines: 30,
+            lines,
             peaks: [(0, None), (0, None)],
             levels: [0, 0],
             image: None,
+            last_mouse_value: None,
         }
-    }
-
-    fn iec_scale(db: f32) -> f32 {
-        let d = if db < -70.0 {
-            0.0
-        } else if db < -60.0 {
-            db + 70.0 * 0.25
-        } else if db < -50.0 {
-            db + 60.0 * 0.5 + 5.0
-        } else if db < -40.0 {
-            db + 50.0 * 0.75 + 7.5
-        } else if db < -30.0 {
-            db + 40.0 * 1.5 + 15.0
-        } else if db < -20.0 {
-            db + 30.0 * 2.0 + 30.0
-        } else if db < 0.0 {
-            db + 20.0 * 2.5 + 50.0
-        } else {
-            100.0
-        };
-
-        d / 100.0
     }
 
     fn color(lines: usize, i: usize) -> Color {
@@ -1094,7 +1077,8 @@ impl PeakMeterView {
         self.image = Some((surface.image_snapshot(), Instant::now()));
     }
 
-    fn draw(&mut self, canvas: &mut Canvas, data: &AppData, w: f32, h: f32) -> Size {
+    fn draw<F: FnOnce(f32)>(&mut self, canvas: &mut Canvas, levels: [u8; 2], set_level: Option<f32>,
+                            w: f32, h: f32, new_level: F, last_event: Option<GuiEvent>) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke_width(1.5);
@@ -1102,14 +1086,12 @@ impl PeakMeterView {
 
         let cur_time = Instant::now();
 
-        for ((now, (peak, animation)), ref mut level) in data
-            .engine_state
-            .input_levels
+        for ((now, (peak, animation)), ref mut level) in levels
             .iter()
             .zip(self.peaks.iter_mut())
             .zip(self.levels.iter_mut())
         {
-            let v = (Self::iec_scale(*now) * self.lines as f32) as usize;
+            let v = (*now as f32 / 100.0 * self.lines as f32) as usize;
 
             // update our peaks (which are persisted for 1.2 seconds)
             if v > *peak {
@@ -1152,6 +1134,49 @@ impl PeakMeterView {
             path.line_to((x, y + h / 2.0 - 7.0));
             canvas.draw_path(&path, &paint);
         }
+
+        // if we have a level control, draw that over the vis
+        if let Some(level) = set_level {
+            let level = clamp(level, 0.0, 1.0);
+            let mut paint = Paint::default();
+            paint.set_color(Color::WHITE);
+            paint.set_alpha_f(0.9);
+            paint.set_anti_alias(true);
+            paint.set_stroke_width(2.0);
+            paint.set_style(Style::Stroke);
+
+            let mut path = Path::new();
+            path.move_to((w * level, -5.0));
+            path.line_to((w * level, h));
+            canvas.draw_path(&path, &paint);
+
+            // handle clicks
+            let bounds = Rect::from_size((w, h));
+            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) = last_event
+            {
+                let point = canvas
+                    .total_matrix()
+                    .invert()
+                    .unwrap()
+                    .map_point((x as f32, y as f32));
+
+                if bounds.contains(point) {
+                    new_level(point.x / w);
+                    self.last_mouse_value = Some(x as f32);
+                }
+            } else if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, _))) = last_event {
+                if let Some(p_x) = self.last_mouse_value {
+                    let lv = clamp(level + (x as f32 - p_x) / w, 0.0, 1.0);
+                    new_level(lv);
+                    self.last_mouse_value = Some(x as f32);
+                }
+            }
+
+            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(_), _)) = last_event {
+                self.last_mouse_value = None;
+            }
+        }
+
 
         Size::new(w, h)
     }
@@ -1531,6 +1556,7 @@ struct LooperView {
     active_button: ActiveButton,
     delete_button: DeleteButton,
     pan: PotWidget,
+    peak: PeakMeterView,
 }
 
 impl LooperView {
@@ -1579,6 +1605,7 @@ impl LooperView {
             active_button: ActiveButton::new(),
             delete_button: DeleteButton::new(),
             pan: PotWidget::new(35.0, Color::WHITE),
+            peak: PeakMeterView::new(50),
         }
     }
 
@@ -1735,6 +1762,13 @@ impl LooperView {
             },
             last_event,
         );
+        canvas.translate((0.0, 40.0));
+        self.peak.draw(canvas, looper.levels, Some(looper.level), 70.0, 30.0,
+                       |level| controller.send_command(
+                           Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
+                           "Failed to set level"
+                       ), last_event);
+
         canvas.restore();
 
         // draw active button
