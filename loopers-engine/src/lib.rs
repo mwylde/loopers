@@ -264,6 +264,10 @@ impl Engine {
 
         use LooperCommand::*;
         match (looper.length_in_samples() == 0, looper.mode, lc) {
+            // SetLevel and SetPan should apply immediately
+            (_, _, SetLevel(_)) => None,
+            (_, _, SetPan(_)) => None,
+
             (_, _, Record)
             | (_, LooperMode::Recording, _)
             | (true, _, RecordOverdubPlay)
