@@ -13,8 +13,10 @@ extern crate log;
 use clap::{App, Arg};
 use crossbeam_channel::bounded;
 use jack::{AudioOut, Client, Port, ProcessScope};
+use loopers_common::api::FrameTime;
 use loopers_common::gui_channel::GuiSender;
 use loopers_common::midi::MidiEvent;
+use loopers_common::music::MetricStructure;
 use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
@@ -99,6 +101,43 @@ impl<'a> Host<'a> for JackHost<'a> {
         let ps = self.ps?;
         let [l, r] = self.looper_ports.get_mut(&id)?;
         Some([l.as_mut_slice(ps), r.as_mut_slice(ps)])
+    }
+
+    fn start_transport(&mut self) -> Result<(), String> {
+        self.client
+            .transport()
+            .start()
+            .map_err(|err| format!("Failed to start jack transport: {:?}", err))
+    }
+
+    fn stop_transport(&mut self) -> Result<(), String> {
+        self.client
+            .transport()
+            .stop()
+            .map_err(|err| format!("Failed to stop jack transport: {:?}", err))
+    }
+
+    fn set_position(&mut self, time: FrameTime, ms: MetricStructure) -> Result<(), String> {
+        let transport = self.client.transport();
+        let jack::TransportStatePosition { mut pos, state: _ } = transport
+            .query()
+            .map_err(|err| format!("Failed to query transport position: {}", err))?;
+
+        pos.set_frame(time.0 as u32);
+
+        let mut bbt = pos.bbt().unwrap_or(jack::TransportBBT::default());
+
+        bbt.with_bpm(ms.tempo.bpm() as f64).with_timesig(
+            ms.time_signature.upper as f32,
+            ms.time_signature.lower as f32,
+        );
+
+        pos.set_bbt(Some(bbt))
+            .map_err(|err| format!("Invalid metric structure: {}", err))?;
+
+        transport
+            .reposition(&pos)
+            .map_err(|err| format!("Failed to reposition transport: {}", err))
     }
 }
 
@@ -207,56 +246,55 @@ fn main() {
         client.sample_rate(),
     );
 
-    let process_callback =
-        move |_client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-            let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
-            let out_l = out_a.as_mut_slice(ps);
-            let out_r = out_b.as_mut_slice(ps);
-            for b in &mut *out_l {
-                *b = 0f32;
-            }
-            for b in &mut *out_r {
-                *b = 0f32;
-            }
+    let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+        let in_bufs = [in_a.as_slice(ps), in_b.as_slice(ps)];
+        let out_l = out_a.as_mut_slice(ps);
+        let out_r = out_b.as_mut_slice(ps);
+        for b in &mut *out_l {
+            *b = 0f32;
+        }
+        for b in &mut *out_r {
+            *b = 0f32;
+        }
 
-            for l in looper_ports.values_mut() {
-                for c in l {
-                    for v in c.as_mut_slice(ps) {
-                        *v = 0f32;
-                    }
+        for l in looper_ports.values_mut() {
+            for c in l {
+                for v in c.as_mut_slice(ps) {
+                    *v = 0f32;
                 }
             }
+        }
 
-            let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
-            for buf in &mut met_bufs {
-                for b in &mut **buf {
-                    *b = 0f32
-                }
+        let mut met_bufs = [met_out_a.as_mut_slice(ps), met_out_b.as_mut_slice(ps)];
+        for buf in &mut met_bufs {
+            for b in &mut **buf {
+                *b = 0f32
             }
+        }
 
-            let mut host = JackHost {
-                client: &_client,
-                looper_ports: &mut looper_ports,
-                ps: Some(ps),
-            };
-
-            let midi_events: Vec<MidiEvent> = midi_in
-                .iter(ps)
-                .filter_map(|e| MidiEvent::from_bytes(e.bytes))
-                .collect();
-
-            engine.process(
-                &mut host,
-                in_bufs,
-                out_l,
-                out_r,
-                met_bufs,
-                ps.n_frames() as u64,
-                &midi_events,
-            );
-
-            jack::Control::Continue
+        let mut host = JackHost {
+            client: &client,
+            looper_ports: &mut looper_ports,
+            ps: Some(ps),
         };
+
+        let midi_events: Vec<MidiEvent> = midi_in
+            .iter(ps)
+            .filter_map(|e| MidiEvent::from_bytes(e.bytes))
+            .collect();
+
+        engine.process(
+            &mut host,
+            in_bufs,
+            out_l,
+            out_r,
+            met_bufs,
+            ps.n_frames() as u64,
+            &midi_events,
+        );
+
+        jack::Control::Continue
+    };
     let process = jack::ClosureProcessHandler::new(process_callback);
 
     // Activate the client, which starts the processing.

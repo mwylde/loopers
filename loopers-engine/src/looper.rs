@@ -997,29 +997,23 @@ impl LooperBackend {
             }
             ControlMessage::SetSpeed(speed) => {
                 self.speed = speed;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    self.current_state(),
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    self.current_state(),
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::SetLevel(level) => {
                 self.level = level;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::SetParts(parts) => {
                 self.parts = parts;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
         }
 

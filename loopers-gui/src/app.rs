@@ -8,6 +8,7 @@ use loopers_common::api::{
     get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
     Part, QuantizationMode, PARTS,
 };
+use loopers_common::clamp;
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
@@ -23,7 +24,6 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use loopers_common::clamp;
 
 const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
 const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png");
@@ -521,9 +521,15 @@ impl BottomBarView {
         let size = self.time_view.draw(h, data, canvas, controller, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
-        self.peak_view
-            .draw(canvas, data.engine_state.input_levels, None, 160.0, h,
-                  |_| {}, last_event);
+        self.peak_view.draw(
+            canvas,
+            data.engine_state.input_levels,
+            None,
+            160.0,
+            h,
+            |_| {},
+            last_event,
+        );
 
         canvas.restore();
     }
@@ -1077,8 +1083,16 @@ impl PeakMeterView {
         self.image = Some((surface.image_snapshot(), Instant::now()));
     }
 
-    fn draw<F: FnOnce(f32)>(&mut self, canvas: &mut Canvas, levels: [u8; 2], set_level: Option<f32>,
-                            w: f32, h: f32, new_level: F, last_event: Option<GuiEvent>) -> Size {
+    fn draw<F: FnOnce(f32)>(
+        &mut self,
+        canvas: &mut Canvas,
+        levels: [u8; 2],
+        set_level: Option<f32>,
+        w: f32,
+        h: f32,
+        new_level: F,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke_width(1.5);
@@ -1152,7 +1166,10 @@ impl PeakMeterView {
 
             // handle clicks
             let bounds = Rect::from_size((w, h));
-            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) = last_event
+            if let Some(GuiEvent::MouseEvent(
+                MouseEventType::MouseDown(MouseButton::Left),
+                (x, y),
+            )) = last_event
             {
                 let point = canvas
                     .total_matrix()
@@ -1176,7 +1193,6 @@ impl PeakMeterView {
                 self.last_mouse_value = None;
             }
         }
-
 
         Size::new(w, h)
     }
@@ -1763,11 +1779,20 @@ impl LooperView {
             last_event,
         );
         canvas.translate((0.0, 40.0));
-        self.peak.draw(canvas, looper.levels, Some(looper.level), 70.0, 30.0,
-                       |level| controller.send_command(
-                           Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
-                           "Failed to set level"
-                       ), last_event);
+        self.peak.draw(
+            canvas,
+            looper.levels,
+            Some(looper.level),
+            70.0,
+            30.0,
+            |level| {
+                controller.send_command(
+                    Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
+                    "Failed to set level",
+                )
+            },
+            last_event,
+        );
 
         canvas.restore();
 

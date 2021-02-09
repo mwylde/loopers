@@ -182,7 +182,7 @@ impl LooperCommand {
                         target,
                     )
                 })
-            },
+            }
 
             "SetLevel" => {
                 let v = args.get(1).ok_or(
@@ -200,14 +200,8 @@ impl LooperCommand {
                     Some(f)
                 };
 
-                Box::new(move |d| {
-                    Looper(
-                        SetLevel(arg.unwrap_or(d.data as f32 / 127.0)),
-                        target,
-                    )
-                })
+                Box::new(move |d| Looper(SetLevel(arg.unwrap_or(d.data as f32 / 127.0)), target))
             }
-
 
             "1/2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Half), target)),
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),

@@ -186,7 +186,7 @@ impl Engine {
 
         set_sample_rate(sample_rate);
 
-        engine.reset();
+        engine.reset(host);
 
         for l in &engine.loopers {
             engine.session_saver.add_looper(l);
@@ -219,12 +219,12 @@ impl Engine {
         triggers.push_back(t);
     }
 
-    fn reset(&mut self) {
+    fn reset<'a, H: Host<'a>>(&mut self, host: &mut H) {
         if let Some(m) = &mut self.metronome {
             m.reset();
         }
         self.triggers.clear();
-        self.set_time(FrameTime(-(self.measure_len().0 as i64)));
+        self.set_time(FrameTime(-(self.measure_len().0 as i64)), host);
     }
 
     fn looper_by_index_mut(&mut self, idx: u8) -> Option<&mut Looper> {
@@ -440,7 +440,7 @@ impl Engine {
 
         self.id_counter = self.loopers.iter().map(|l| l.id).max().unwrap_or(0) + 1;
 
-        self.reset();
+        self.reset(host);
 
         Ok(())
     }
@@ -499,19 +499,28 @@ impl Engine {
             }
             Start => {
                 self.state = EngineState::Active;
+                if let Err(e) = host.start_transport() {
+                    error!("Failed to start host transport: {}", e);
+                }
             }
             Pause => {
                 self.state = EngineState::Stopped;
+                if let Err(e) = host.stop_transport() {
+                    error!("Failed to stop host transport: {}", e);
+                }
             }
             Stop => {
                 self.state = EngineState::Stopped;
-                self.reset();
+                self.reset(host);
+                if let Err(e) = host.stop_transport() {
+                    error!("Failed to stop host transport: {}", e);
+                }
             }
             StartStop => {
                 self.state = match self.state {
                     EngineState::Stopped => EngineState::Active,
                     EngineState::Active => {
-                        self.reset();
+                        self.reset(host);
                         EngineState::Stopped
                     }
                 };
@@ -523,9 +532,9 @@ impl Engine {
                 }
             }
             Reset => {
-                self.reset();
+                self.reset(host);
             }
-            SetTime(time) => self.set_time(*time),
+            SetTime(time) => self.set_time(*time, host),
             AddLooper => {
                 // TODO: make this non-allocating
                 let looper = crate::Looper::new(
@@ -693,7 +702,7 @@ impl Engine {
                 if let Some(met) = &mut self.metronome {
                     met.set_metric_structure(self.metric_structure);
                 }
-                self.reset();
+                self.reset(host);
             }
             SetTimeSignature(upper, lower) => {
                 if let Some(ts) = TimeSignature::new(*upper, *lower) {
@@ -701,7 +710,7 @@ impl Engine {
                     if let Some(met) = &mut self.metronome {
                         met.set_metric_structure(self.metric_structure);
                     }
-                    self.reset();
+                    self.reset(host);
                 }
             }
         }
@@ -733,10 +742,19 @@ impl Engine {
         FrameTime::from_ms(mspm as f64)
     }
 
-    fn set_time(&mut self, time: FrameTime) {
-        self.time = time.0;
-        for l in &mut self.loopers {
-            l.set_time(time);
+    fn set_time<'a, H: Host<'a>>(&mut self, time: FrameTime, host: &mut H) {
+        // for now, always send a positive time to the host
+        let pos_time = time + self.measure_len();
+        if pos_time.0 < 0 {
+            error!("Tried to set time too far back into past, ignoring")
+        } else {
+            self.time = time.0;
+            for l in &mut self.loopers {
+                l.set_time(time);
+            }
+            if let Err(e) = host.set_position(pos_time, self.metric_structure) {
+                error!("Failed to reposition host transport: {}", e);
+            }
         }
     }
 
