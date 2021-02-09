@@ -2,6 +2,9 @@
 extern crate log;
 extern crate derive_more;
 
+use crate::api::FrameTime;
+use crate::music::MetricStructure;
+
 pub mod api;
 pub mod config;
 pub mod gui_channel;
@@ -32,4 +35,9 @@ pub trait Host<'a> {
     fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
     where
         'a: 'b;
+
+    fn start_transport(&mut self) {}
+    fn stop_transport(&mut self) {}
+    #[allow(unused_variables)]
+    fn set_position(&mut self, time: FrameTime, metric_structure: MetricStructure) {}
 }

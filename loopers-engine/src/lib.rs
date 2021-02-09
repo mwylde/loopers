@@ -185,7 +185,7 @@ impl Engine {
 
         set_sample_rate(sample_rate);
 
-        engine.reset();
+        engine.reset(host);
 
         for l in &engine.loopers {
             engine.session_saver.add_looper(l);
@@ -218,12 +218,12 @@ impl Engine {
         triggers.push_back(t);
     }
 
-    fn reset(&mut self) {
+    fn reset<'a, H: Host<'a>>(&mut self, host: &mut H) {
         if let Some(m) = &mut self.metronome {
             m.reset();
         }
         self.triggers.clear();
-        self.set_time(FrameTime(-self.measure_len().0));
+        self.set_time(FrameTime(-self.measure_len().0), host);
         for l in &mut self.loopers {
             l.handle_command(LooperCommand::Play);
         }
@@ -453,7 +453,7 @@ impl Engine {
 
         self.id_counter = self.loopers.iter().map(|l| l.id).max().unwrap_or(0) + 1;
 
-        self.reset();
+        self.reset(host);
 
         Ok(())
     }
@@ -513,33 +513,58 @@ impl Engine {
             }
             Start => {
                 self.state = EngineState::Active;
+                host.set_position(
+                    FrameTime(self.time + self.measure_len().0),
+                    self.metric_structure,
+                );
+                host.start_transport();
             }
             Pause => {
                 self.state = EngineState::Paused;
+                host.stop_transport();
             }
             Stop => {
                 self.state = EngineState::Stopped;
-                self.reset();
+                self.reset(host);
+                host.stop_transport();
             }
             StartStop => {
                 self.state = match self.state {
-                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
+                    EngineState::Stopped | EngineState::Paused => {
+                        host.set_position(
+                            FrameTime(self.time + self.measure_len().0),
+                            self.metric_structure,
+                        );
+                        host.start_transport();
+                        EngineState::Active
+                    }
                     EngineState::Active => {
-                        self.reset();
+                        self.reset(host);
+                        host.stop_transport();
                         EngineState::Stopped
                     }
                 };
             }
             PlayPause => {
                 self.state = match self.state {
-                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
-                    EngineState::Active => EngineState::Paused,
+                    EngineState::Stopped | EngineState::Paused => {
+                        host.set_position(
+                            FrameTime(self.time + self.measure_len().0),
+                            self.metric_structure,
+                        );
+                        host.start_transport();
+                        EngineState::Active
+                    }
+                    EngineState::Active => {
+                        host.stop_transport();
+                        EngineState::Paused
+                    }
                 }
             }
             Reset => {
-                self.reset();
+                self.reset(host);
             }
-            SetTime(time) => self.set_time(*time),
+            SetTime(time) => self.set_time(*time, host),
             AddLooper => {
                 // TODO: make this non-allocating
                 let looper = crate::Looper::new(
@@ -703,7 +728,7 @@ impl Engine {
                 if let Some(met) = &mut self.metronome {
                     met.set_metric_structure(self.metric_structure);
                 }
-                self.reset();
+                self.reset(host);
             }
             SetTimeSignature(upper, lower) => {
                 if let Some(ts) = TimeSignature::new(*upper, *lower) {
@@ -711,7 +736,7 @@ impl Engine {
                     if let Some(met) = &mut self.metronome {
                         met.set_metric_structure(self.metric_structure);
                     }
-                    self.reset();
+                    self.reset(host);
                 }
             }
         }
@@ -741,10 +766,17 @@ impl Engine {
         FrameTime::from_ms(mspm as f64)
     }
 
-    fn set_time(&mut self, time: FrameTime) {
-        self.time = time.0;
-        for l in &mut self.loopers {
-            l.set_time(time);
+    fn set_time<'a, H: Host<'a>>(&mut self, time: FrameTime, host: &mut H) {
+        // for now, always send a positive time to the host
+        let pos_time = time + self.measure_len();
+        if pos_time.0 < 0 {
+            error!("Tried to set time too far back into past, ignoring")
+        } else {
+            self.time = time.0;
+            for l in &mut self.loopers {
+                l.set_time(time);
+            }
+            host.set_position(pos_time, self.metric_structure);
         }
     }
 

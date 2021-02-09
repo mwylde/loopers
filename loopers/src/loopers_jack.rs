@@ -1,8 +1,10 @@
 use crossbeam_channel::{bounded, Receiver, Sender};
 use jack::{AudioOut, Port, ProcessScope};
 use loopers_common::api::Command;
+use loopers_common::api::FrameTime;
 use loopers_common::gui_channel::GuiSender;
 use loopers_common::midi::MidiEvent;
+use loopers_common::music::MetricStructure;
 use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
@@ -12,6 +14,9 @@ use std::{io, thread};
 enum ClientChange {
     AddPort(u32),
     RemovePort(u32, Port<AudioOut>, Port<AudioOut>),
+    TransportStart,
+    TransportStop,
+    TransportPosition(FrameTime, MetricStructure),
     Shutdown,
 }
 
@@ -61,6 +66,27 @@ impl<'a> Host<'a> for JackHost<'a> {
         let ps = self.ps?;
         let [l, r] = self.looper_ports.get_mut(&id)?;
         Some([l.as_mut_slice(ps), r.as_mut_slice(ps)])
+    }
+
+    fn start_transport(&mut self) {
+        if let Err(e) = self.port_change_tx.try_send(ClientChange::TransportStart) {
+            warn!("Failed to send start transport request: {:?}", e);
+        }
+    }
+
+    fn stop_transport(&mut self) {
+        if let Err(e) = self.port_change_tx.try_send(ClientChange::TransportStop) {
+            warn!("Failed to send stop transport request: {:?}", e);
+        }
+    }
+
+    fn set_position(&mut self, time: FrameTime, ms: MetricStructure) {
+        if let Err(e) = self
+            .port_change_tx
+            .try_send(ClientChange::TransportPosition(time, ms))
+        {
+            warn!("Failed to send position transport request: {:?}", e);
+        }
     }
 }
 
@@ -294,6 +320,42 @@ pub fn jack_main(
                     error!("Unable to remove jack outputs: {:?}", e);
                 }
                 info!("removed ports for looper {}", id);
+            }
+            Ok(ClientChange::TransportStart) => {
+                if let Err(e) = active_client.as_client().transport().start() {
+                    error!("Failed to start jack transport: {:?}", e);
+                }
+            }
+            Ok(ClientChange::TransportStop) => {
+                if let Err(e) = active_client.as_client().transport().stop() {
+                    error!("Failed to stop jack transport: {:?}", e);
+                }
+            }
+            Ok(ClientChange::TransportPosition(time, ms)) => {
+                let transport = active_client.as_client().transport();
+                let mut pos = match transport.query() {
+                    Ok(jack::TransportStatePosition { pos, state: _ }) => pos,
+                    Err(e) => {
+                        error!("Failed to query transport position: {}", e);
+                        break;
+                    }
+                };
+                pos.set_frame(time.0 as u32);
+
+                let mut bbt = pos.bbt().unwrap_or(jack::TransportBBT::default());
+
+                bbt.with_bpm(ms.tempo.bpm() as f64).with_timesig(
+                    ms.time_signature.upper as f32,
+                    ms.time_signature.lower as f32,
+                );
+
+                if let Err(e) = pos.set_bbt(Some(bbt)) {
+                    error!("Invalid metric structure: {}", e);
+                }
+
+                if let Err(e) = transport.reposition(&pos) {
+                    error!("Failed to reposition transport: {}", e);
+                }
             }
             Ok(ClientChange::Shutdown) => {
                 break;
