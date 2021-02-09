@@ -1,6 +1,6 @@
 [package]
 name = "loopers-jack"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
 homepage = "https://github.com/mwylde/loopers"
@@ -12,7 +12,7 @@ readme = "../README.md"
 edition = "2018"
 
 [dependencies]
-jack = "0.6"
+jack = "0.6.5"
 
 futures = "0.1"
 bytes = "0.4"
@@ -32,15 +32,15 @@ dirs = "2"
 
 [dependencies.loopers-common]
 path = "../loopers-common"
-version = "0.1.1"
+version = "0.1.2"
 
 [dependencies.loopers-engine]
 path = "../loopers-engine"
-version = "0.1.1"
+version = "0.1.2"
 
 [dependencies.loopers-gui]
 path = "../loopers-gui"
-version = "0.1.1"
+version = "0.1.2"
 
 [features]
 fail-on-warnings = []

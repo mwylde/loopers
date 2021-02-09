@@ -104,7 +104,7 @@ impl<'a> Host<'a> for JackHost<'a> {
 
 fn main() {
     let matches = App::new("loopers-jack")
-        .version("0.1.0")
+        .version("0.1.2")
         .author("Micah Wylde <micah@micahw.com>")
         .about(
             "Loopers is a graphical live looper, designed for ease of use and rock-solid stability",
