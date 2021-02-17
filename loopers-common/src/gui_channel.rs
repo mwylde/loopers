@@ -113,6 +113,7 @@ pub struct GuiSender {
     log_channel: Option<Sender<LogMessage>>,
 }
 
+#[derive(Clone)]
 pub struct GuiReceiver {
     pub cmd_channel: Receiver<GuiCommand>,
     pub log_channel: Receiver<LogMessage>,

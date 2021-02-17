@@ -946,7 +946,7 @@ impl Engine {
         in_bufs: [&[f32]; 2],
         out_l: &mut [f32],
         out_r: &mut [f32],
-        mut met_bufs: [&mut [f32]; 2],
+        mut met_bufs: Option<[&mut [f32]; 2]>,
         frames: u64,
         midi_events: &[MidiEvent],
     ) {
@@ -1001,7 +1001,9 @@ impl Engine {
 
             // Play the metronome
             if let Some(metronome) = &mut self.metronome {
-                metronome.advance(&mut met_bufs);
+                if let Some(mut met_bufs) = met_bufs {
+                    metronome.advance(&mut met_bufs);
+                }
             }
 
             self.time += frames as i64;

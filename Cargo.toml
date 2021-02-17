@@ -1,2 +1,2 @@
 [workspace]
-members = ["loopers-common", "loopers-engine", "loopers-jack", "loopers-gui"]
+members = ["loopers-common", "loopers-engine", "loopers-jack", "loopers-gui", "loopers-vst"]

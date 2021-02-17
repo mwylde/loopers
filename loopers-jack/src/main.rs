@@ -250,7 +250,7 @@ fn main() {
                 in_bufs,
                 out_l,
                 out_r,
-                met_bufs,
+                Some(met_bufs),
                 ps.n_frames() as u64,
                 &midi_events,
             );
