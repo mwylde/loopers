@@ -1,0 +1,32 @@
+[package]
+name = "loopers-vst"
+version = "0.1.2"
+edition = "2018"
+authors = ["Micah Wylde <micah@micahw.com>"]
+description = "VST for loopers"
+homepage = "https://github.com/mwylde/loopers"
+repository = "https://github.com/mwylde/loopers"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+vst = "0.2.1"
+crossbeam-queue = "0.2"
+crossbeam-channel = "0.4"
+pugl-sys = "0.4.2"
+
+
+[dependencies.loopers-common]
+path = "../loopers-common"
+version = "0.1.2"
+
+[dependencies.loopers-engine]
+path = "../loopers-engine"
+version = "0.1.2"
+
+[dependencies.loopers-gui]
+path = "../loopers-gui"
+version = "0.1.2"
+
+[lib]
+name = "loopers"
+crate-type = ["cdylib"]
