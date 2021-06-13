@@ -491,7 +491,7 @@ impl Engine {
                 trigger.triggered_at(),
                 trigger.command,
             ));
-        };
+        }
         use Command::*;
         match command {
             Looper(lc, target) => {
