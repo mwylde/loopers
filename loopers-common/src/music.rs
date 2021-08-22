@@ -83,12 +83,10 @@ mod tests {
 
         assert!(
             next_beat_time.0 <= time + frames as i64,
-            format!(
-                "{} > {} (time = {})",
-                next_beat_time.0,
-                time + frames as i64,
-                time
-            )
+            "{} > {} (time = {})",
+            next_beat_time.0,
+            time + frames as i64,
+            time
         );
 
         // test that we never suggest beats in the past

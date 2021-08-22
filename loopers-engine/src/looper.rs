@@ -253,6 +253,76 @@ mod tests {
     }
 
     #[test]
+    fn test_solo() {
+        install_test_logger();
+
+        let mut l = looper_for_test();
+        l.transition_to(LooperMode::Recording);
+
+        let input_left = vec![1f32; 128];
+        let input_right = vec![-1f32; 128];
+
+        l.process_input(0, &[&input_left, &input_right], Part::A);
+        process_until_done(&mut l);
+
+        let mut o_l = vec![0f64; 128];
+        let mut o_r = vec![0f64; 128];
+
+        // with solo true and us in Playing, there should be no output
+        l.set_time(FrameTime(0));
+        l.transition_to(LooperMode::Playing);
+        process_until_done(&mut l);
+
+        l.process_output(
+            FrameTime(0),
+            &mut [&mut o_l, &mut o_r],
+            Part::A,
+            true,
+        );
+
+        for i in 0..128 {
+            assert_eq!(0.0, o_l[i]);
+            assert_eq!(0.0, o_r[i]);
+        }
+
+        // with solo true and us in Solo, there should be output
+        l.set_time(FrameTime(0));
+        l.transition_to(LooperMode::Soloed);
+        process_until_done(&mut l);
+
+        l.process_output(
+            FrameTime(0),
+            &mut [&mut o_l, &mut o_r],
+            Part::A,
+            true,
+        );
+
+        for i in 0..128 {
+            assert_eq!(1.0, o_l[i]);
+            assert_eq!(-1.0, o_r[i]);
+        }
+
+        // with solo true and us in Solo, but in another part, there should not be outoput
+        o_l = vec![0f64; 128];
+        o_r = vec![0f64; 128];
+
+        l.set_time(FrameTime(0));
+        process_until_done(&mut l);
+
+        l.process_output(
+            FrameTime(0),
+            &mut [&mut o_l, &mut o_r],
+            Part::B,
+            true,
+        );
+
+        for i in 0..128 {
+            assert_eq!(0.0, o_l[i]);
+            assert_eq!(0.0, o_r[i]);
+        }
+    }
+
+    #[test]
     fn test_non_harmonious_lengths() {
         install_test_logger();
 
@@ -1619,6 +1689,20 @@ impl Looper {
         }
     }
 
+    fn should_output(&self, part: Part, solo: bool) -> bool {
+        if !self.parts[part] {
+            return false
+        }
+
+        if solo && self.mode != LooperMode::Soloed {
+            return false
+        }
+
+        return self.mode == LooperMode::Playing ||
+            self.mode == LooperMode::Overdubbing ||
+            self.mode == LooperMode::Soloed
+    }
+
     // In process_output, we modify the specified output buffers according to our internal state. In
     // Playing or Overdub mode, we will add our buffer to the output. Otherwise, we do nothing.
     //
@@ -1650,12 +1734,7 @@ impl Looper {
 
         while out_idx < outputs[0].len() {
             if let Some((l, r)) = self.output_for_t(time) {
-                if (solo && self.mode == LooperMode::Soloed)
-                    || (!solo
-                        && self.parts[part]
-                        && (self.mode == LooperMode::Playing
-                            || self.mode == LooperMode::Overdubbing))
-                {
+                if self.should_output(part, solo) {
                     outputs[0][out_idx] += l * pan_l as f64 * self.level as f64;
                     outputs[1][out_idx] += r * pan_r as f64 * self.level as f64;
                 }
