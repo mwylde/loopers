@@ -9,13 +9,13 @@ repository = "https://github.com/mwylde/loopers"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-log = "0.4.8"
+log = "0.4"
 hound = "3.4.0"
 
-bytes = "0.5"
-dirs = "1.0"
+bytes = "1.0"
+dirs = "3.0"
 
-skia-safe = {version = "0.36", features = ["gl"]}
+skia-safe = {version = "0.41", features = ["gl", "x11"]}
 
 sdl2 = "0.34"
 
@@ -26,8 +26,8 @@ chrono = "0.4.11"
 regex = "1"
 
 gl-rs = { package = "gl", version = "0.14.0" }
-crossbeam-queue = "0.2"
-crossbeam-channel = "0.4"
+crossbeam-queue = "0.3"
+crossbeam-channel = "0.5"
 
 [dependencies.loopers-common]
 path = "../loopers-common"

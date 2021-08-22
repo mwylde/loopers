@@ -1,5 +1,5 @@
 use skia_safe::gpu::gl::FramebufferInfo;
-use skia_safe::gpu::{BackendRenderTarget, Context, SurfaceOrigin};
+use skia_safe::gpu::{BackendRenderTarget, DirectContext, SurfaceOrigin};
 use skia_safe::{
     Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob, Typeface,
 };
@@ -26,7 +26,7 @@ lazy_static! {
 }
 
 fn create_surface(
-    gr_context: &mut Context,
+    gr_context: &mut DirectContext,
     pixel_format: &PixelFormatEnum,
     fb_info: FramebufferInfo,
     size: (u32, u32),
@@ -88,7 +88,7 @@ pub fn skia_main(mut gui: Gui) {
 
     let debug = std::env::var("DEBUG").is_ok();
 
-    let mut gr_context = Context::new_gl(None).unwrap();
+    let mut gr_context = DirectContext::new_gl(None, None).unwrap();
 
     let mut fboid: GLint = 0;
     unsafe { gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut fboid) };
@@ -269,7 +269,7 @@ pub fn skia_main(mut gui: Gui) {
                 &paint,
             );
         }
-        surface.canvas().flush();
+        surface.flush();
 
         let new_min_size = gui.min_size();
         if new_min_size != min_size {

@@ -1587,7 +1587,7 @@ impl Looper {
 
     pub fn set_time(&mut self, time: FrameTime) {
         loop {
-            if let Err(_) = self.in_queue.pop() {
+            if self.in_queue.pop().is_none() {
                 break;
             }
         }
@@ -1663,7 +1663,7 @@ impl Looper {
     fn output_for_t(&mut self, t: FrameTime) -> Option<(f64, f64)> {
         let mut cur = self
             .in_progress_output
-            .or_else(|| self.in_queue.pop().ok())?;
+            .or_else(|| self.in_queue.pop())?;
         self.in_progress_output = Some(cur);
 
         loop {
@@ -1679,7 +1679,7 @@ impl Looper {
                 return Some(o);
             }
 
-            if let Ok(buf) = self.in_queue.pop() {
+            if let Some(buf) = self.in_queue.pop() {
                 cur = buf;
                 self.in_progress_output = Some(buf);
             } else {

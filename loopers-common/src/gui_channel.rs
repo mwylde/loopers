@@ -70,7 +70,7 @@ pub enum LogLevel {
 
 #[derive(Clone)]
 pub struct LogMessage {
-    buffer: ArrayVec<[u8; 256]>,
+    buffer: ArrayVec<u8, 256>,
     len: usize,
     level: LogLevel,
 }
