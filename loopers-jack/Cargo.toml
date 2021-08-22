@@ -12,7 +12,7 @@ readme = "../README.md"
 edition = "2018"
 
 [dependencies]
-jack = "0.6.5"
+jack = "0.7"
 
 futures = "0.1"
 bytes = "0.4"
@@ -23,9 +23,9 @@ clap = "2.33.0"
 log = "0.4"
 fern = "0.6"
 
-crossbeam-queue = "0.2"
-crossbeam-channel = "0.4"
-rand = "0.6"
+crossbeam-queue = "0.3"
+crossbeam-channel = "0.5"
+rand = "0.8"
 hound = "3.4.0"
 chrono = "0.4.11"
 dirs = "2"

@@ -49,7 +49,7 @@ pub trait Button {
             match event {
                 GuiEvent::MouseEvent(typ, pos) => {
                     let point = canvas
-                        .total_matrix()
+                        .local_to_device_as_3x3()
                         .invert()
                         .unwrap()
                         .map_point((pos.0 as f32, pos.1 as f32));
@@ -279,7 +279,7 @@ pub trait TextEditable {
             last_event
         {
             let point = canvas
-                .total_matrix()
+                .local_to_device_as_3x3()
                 .invert()
                 .unwrap()
                 .map_point((pos.0 as f32, pos.1 as f32));
@@ -433,7 +433,7 @@ impl PotWidget {
             last_event
         {
             let point = canvas
-                .total_matrix()
+                .local_to_device_as_3x3()
                 .invert()
                 .unwrap()
                 .map_point((x as f32, y as f32));

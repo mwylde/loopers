@@ -845,7 +845,6 @@ impl MetronomeButton {
     ) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        paint.set_filter_quality(FilterQuality::High);
 
         let bounds = Rect::new(0.0, -5.0, 25.0, 20.0);
 
@@ -1116,7 +1115,6 @@ impl PeakMeterView {
         if let Some((image, _)) = &self.image {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_filter_quality(FilterQuality::High);
 
             canvas.draw_image(&image, (0.0, 0.0), Some(&paint));
         }
@@ -1155,7 +1153,7 @@ impl PeakMeterView {
             if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) = last_event
             {
                 let point = canvas
-                    .total_matrix()
+                    .local_to_device_as_3x3()
                     .invert()
                     .unwrap()
                     .map_point((x as f32, y as f32));
@@ -1977,7 +1975,6 @@ impl<T: Eq + Copy> DrawCache<T> {
         canvas.save();
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        paint.set_filter_quality(FilterQuality::High);
         paint.set_color(Color::from_rgb(255, 255, 0));
         canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
         canvas.draw_image(image, (0.0, 0.0), Some(&paint));
@@ -2354,7 +2351,6 @@ impl WaveformView {
             let s = 48.0;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_filter_quality(FilterQuality::High);
             canvas.draw_image_rect(
                 &self.loop_icon,
                 None,
