@@ -491,7 +491,8 @@ impl Engine {
                 trigger.triggered_at(),
                 trigger.command,
             ));
-        };
+        }
+
         use Command::*;
         match command {
             Looper(lc, target) => {
@@ -813,7 +814,7 @@ impl Engine {
         }
     }
 
-    fn process_loopers<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], frames: u64) {
+    fn process_loopers<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], frames: u64, solo: bool) {
         let mut time = self.time;
         let mut idx = 0usize;
 
@@ -826,8 +827,6 @@ impl Engine {
         }
 
         let mut time = time as u64;
-
-        let solo = self.loopers.iter().any(|l| l.mode == LooperMode::Soloed);
 
         let next_time = (self.time + frames as i64) as u64;
         while time < next_time {
@@ -995,9 +994,13 @@ impl Engine {
             self.state = EngineState::Active;
         }
 
+
+        let solo = self.loopers.iter()
+            .any(|l| l.parts[self.current_part] && !l.deleted && l.mode == LooperMode::Soloed);
+
         if self.state == EngineState::Active {
             // process the loopers
-            self.process_loopers(host, &in_bufs, frames);
+            self.process_loopers(host, &in_bufs, frames, solo);
 
             // Play the metronome
             if let Some(metronome) = &mut self.metronome {
@@ -1039,6 +1042,7 @@ impl Engine {
                 active_looper: self.active,
                 looper_count: self.loopers.len(),
                 part: self.current_part,
+                solo,
                 sync_mode: self.sync_mode,
                 input_levels: Self::compute_peaks(&in_bufs),
                 looper_levels: peaks,

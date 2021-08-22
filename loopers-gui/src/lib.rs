@@ -73,11 +73,7 @@ pub struct LooperData {
 
 impl LooperData {
     fn mode_with_solo(&self, data: &AppData) -> LooperMode {
-        let solo = data
-            .loopers
-            .iter()
-            .any(|(_, l)| l.mode == LooperMode::Soloed);
-        if solo && self.mode != LooperMode::Soloed {
+        if data.engine_state.solo && self.mode != LooperMode::Soloed {
             LooperMode::Muted
         } else {
             self.mode
@@ -183,6 +179,7 @@ impl Gui {
                     active_looper: 0,
                     looper_count: 0,
                     part: Part::A,
+                    solo: false,
                     sync_mode: QuantizationMode::Measure,
                     input_levels: [0, 0],
                     looper_levels: [[0; 2]; 64],

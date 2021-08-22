@@ -24,6 +24,7 @@ pub struct EngineStateSnapshot {
     pub active_looper: u32,
     pub looper_count: usize,
     pub part: Part,
+    pub solo: bool,
     pub sync_mode: QuantizationMode,
     pub input_levels: [u8; 2],
     pub looper_levels: [[u8; 2]; 64],
