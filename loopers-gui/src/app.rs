@@ -883,7 +883,10 @@ impl MetronomeButton {
 
         paint.set_alpha_f(data.engine_state.metronome_volume.min(1.0).max(0.3));
 
-        canvas.draw_image_rect(&self.icon, None, bounds, &paint);
+        canvas.draw_image_rect_with_sampling_options(
+            &self.icon, None, bounds,
+            SamplingOptions::from_filter_quality(FilterQuality::High, None),
+            &paint);
 
         Size::new(25.0, 25.0)
     }
@@ -1116,7 +1119,10 @@ impl PeakMeterView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
 
-            canvas.draw_image(&image, (0.0, 0.0), Some(&paint));
+            canvas.draw_image_with_sampling_options(
+                &image, (0.0, 0.0),
+                SamplingOptions::from_filter_quality(FilterQuality::High, None),
+                Some(&paint));
         }
 
         // draw peak
@@ -1977,7 +1983,10 @@ impl<T: Eq + Copy> DrawCache<T> {
         paint.set_anti_alias(true);
         paint.set_color(Color::from_rgb(255, 255, 0));
         canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
-        canvas.draw_image(image, (0.0, 0.0), Some(&paint));
+        canvas.draw_image_with_sampling_options(
+            image, (0.0, 0.0),
+            SamplingOptions::from_filter_quality(FilterQuality::High, None),
+            Some(&paint));
         canvas.restore();
 
         Some(*size)
@@ -2351,10 +2360,11 @@ impl WaveformView {
             let s = 48.0;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            canvas.draw_image_rect(
+            canvas.draw_image_rect_with_sampling_options(
                 &self.loop_icon,
                 None,
                 Rect::new(-s / 2.0, (h - s) / 2.0, s / 2.0, (h + s) / 2.0),
+                SamplingOptions::from_filter_quality(FilterQuality::High, None),
                 &paint,
             );
 
