@@ -127,6 +127,9 @@ pub enum LooperCommand {
 
     // delete
     Delete,
+
+    Undo,
+    Redo,
 }
 
 impl LooperCommand {
@@ -252,6 +255,9 @@ pub enum Command {
 
     SetTempoBPM(f32),
     SetTimeSignature(u8, u8),
+
+    Undo,
+    Redo,
 }
 
 impl Command {

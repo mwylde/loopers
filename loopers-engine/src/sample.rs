@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::fmt::{Debug, Formatter};
 
 #[cfg(test)]
 mod tests {
@@ -134,6 +135,12 @@ pub struct Sample {
 pub enum XfadeDirection {
     IN,
     OUT,
+}
+
+impl Debug for Sample {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<sample [{}]>", self.buffer[0].len())
+    }
 }
 
 impl Sample {

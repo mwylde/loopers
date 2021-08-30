@@ -1334,6 +1334,8 @@ enum BottomButtonBehavior {
     Load,
     SetSyncMode(QuantizationMode),
     Part(Part),
+    Undo,
+    Redo,
 }
 
 struct LoadWindow {
@@ -1417,6 +1419,14 @@ impl BottomButtonView {
                     BottomButtonBehavior::Part(Part::D),
                     ControlButton::new("D", c, None, 22.0),
                 ),
+                (
+                    BottomButtonBehavior::Undo,
+                    ControlButton::new("Undo", c, None, 22.0)
+                ),
+                (
+                    BottomButtonBehavior::Redo,
+                    ControlButton::new("Redo", c, None, 22.0)
+                ),
             ],
             load_window: LoadWindow {
                 active: Arc::new(AtomicBool::new(false)),
@@ -1466,6 +1476,16 @@ impl BottomButtonView {
                                 "Failed to set sync mode",
                             );
                         }
+                        BottomButtonBehavior::Undo => {
+                            controller.send_command(
+                                Command::Undo,
+                                "Failed to send undo");
+                        }
+                        BottomButtonBehavior::Redo => {
+                            controller.send_command(
+                                Command::Redo,
+                                "Failed to send redo");
+                        }
                     };
                 }
             };
@@ -1509,6 +1529,7 @@ impl BottomButtonView {
 
             if behavior == BottomButtonBehavior::Load
                 || behavior == BottomButtonBehavior::SetSyncMode(QuantizationMode::Measure)
+                || behavior == BottomButtonBehavior::Part(Part::D)
             {
                 x += 30.0;
             }

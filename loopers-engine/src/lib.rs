@@ -705,6 +705,18 @@ impl Engine {
                     self.reset();
                 }
             }
+            Undo => {
+                let active = self.active;
+                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
+                    l.handle_command(LooperCommand::Undo);
+                }
+            }
+            Redo => {
+                let active = self.active;
+                if let Some(l) = self.loopers.iter_mut().find(|l| l.id == active) {
+                    l.handle_command(LooperCommand::Redo);
+                }
+            }
         }
     }
 
