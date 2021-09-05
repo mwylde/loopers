@@ -17,9 +17,10 @@ use loopers_common::gui_channel::{
 use loopers_common::music::PanLaw;
 use std::collections::VecDeque;
 use std::mem::swap;
-use crossbeam_utils::atomic::AtomicCell;
+
 use atomic::Atomic;
 use std::sync::atomic::Ordering;
+
 
 #[cfg(test)]
 mod tests {
@@ -811,6 +812,7 @@ pub enum ControlMessage {
     SetParts(PartSet),
     Undo,
     Redo,
+    StopOutput,
 }
 
 const TRANSFER_BUF_SIZE: usize = 16;
@@ -979,6 +981,8 @@ pub struct LooperBackend {
 
     undo_queue: VecDeque<LooperChange>,
     redo_queue: VecDeque<LooperChange>,
+
+    should_output: bool,
 }
 
 impl LooperBackend {
@@ -1085,6 +1089,7 @@ impl LooperBackend {
             ControlMessage::SetTime(time) => {
                 self.out_time = FrameTime(time.0.max(0));
                 self.in_time = time;
+                self.should_output = true;
             }
             ControlMessage::ReadOutput(time) => {
                 self.out_time = FrameTime(self.out_time.0.max(time.0));
@@ -1145,9 +1150,14 @@ impl LooperBackend {
                     }
                 }
             }
+            ControlMessage::StopOutput => {
+                self.should_output = false;
+            }
         }
 
-        self.fill_output();
+        if self.should_output {
+            self.fill_output();
+        }
         true
     }
 
@@ -1195,7 +1205,7 @@ impl LooperBackend {
                     break;
                 }
 
-                error!(
+                debug!(
                     "[OUTPUT {}] t = {} [{}; {}] (in time = {})",
                     self.id, self.out_time.0, buf.data[0][0], buf.size, self.in_time.0
                 );
@@ -1620,6 +1630,7 @@ impl Looper {
             waveform_generator: WaveformGenerator::new(id),
             undo_queue: VecDeque::new(),
             redo_queue: VecDeque::new(),
+            should_output: true
         };
 
         Looper {
@@ -1796,10 +1807,12 @@ impl Looper {
                 }
             }
             Undo => {
+                self.send_to_backend(ControlMessage::StopOutput);
                 self.send_to_backend(ControlMessage::Undo);
                 self.clear_queue();
             }
             Redo => {
+                self.send_to_backend(ControlMessage::StopOutput);
                 self.send_to_backend(ControlMessage::Redo);
                 self.clear_queue();
             }
@@ -1814,10 +1827,11 @@ impl Looper {
 
         loop {
             if cur.time.0 > t.0 {
-                debug!(
+                error!(
                     "data is in future for looper id {} (time is {}, needed {})",
                     self.id, cur.time.0, t.0
                 );
+                self.clear_queue();
                 return None;
             }
 
@@ -1870,7 +1884,7 @@ impl Looper {
         let mut out_idx = 0;
 
         let mut missing = 0;
-        let mut waiting = 1000;
+        let mut waiting = 1_000;
         let backoff = crossbeam_utils::Backoff::new();
 
         // this only really needs to be updated when the pan changes, so we don't need to do this
