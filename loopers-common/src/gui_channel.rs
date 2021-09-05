@@ -56,6 +56,7 @@ pub enum GuiCommand {
     AddNewSample(u32, FrameTime, [f32; 2], u64),
     AddOverdubSample(u32, FrameTime, [f32; 2]),
     SetLoopLengthAndOffset(u32, u64, FrameTime),
+    UpdateLooperWithSamples(u32, u64, Box<Waveform>, LooperState),
 
     AddLoopTrigger(u32, FrameTime, LooperCommand),
     AddGlobalTrigger(FrameTime, Command),

@@ -266,6 +266,17 @@ impl Gui {
                         },
                     );
                 }
+                Ok(GuiCommand::UpdateLooperWithSamples(id, length, waveform, state)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.mode = state.mode;
+                        l.parts = state.parts;
+                        l.speed = state.speed;
+                        l.pan = state.pan;
+                        l.level = state.level;
+                        l.waveform = *waveform;
+                        l.length = length;
+                    }
+                }
                 Ok(GuiCommand::RemoveLooper(id)) => {
                     self.state.loopers.remove(&id);
                 }
