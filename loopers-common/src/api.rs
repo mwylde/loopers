@@ -216,6 +216,9 @@ impl LooperCommand {
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),
             "2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Double), target)),
 
+            "Undo" => Box::new(move |_| Looper(Undo, target)),
+            "Redo" => Box::new(move |_| Looper(Redo, target)),
+
             _ => return Err(format!("{} is not a valid command", command)),
         })
     }
@@ -255,9 +258,6 @@ pub enum Command {
 
     SetTempoBPM(f32),
     SetTimeSignature(u8, u8),
-
-    Undo,
-    Redo,
 }
 
 impl Command {

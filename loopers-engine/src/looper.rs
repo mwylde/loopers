@@ -1081,6 +1081,7 @@ impl LooperBackend {
                 self.out_time = FrameTime(0);
                 self.offset = FrameTime(0);
                 self.xfade_samples_left = 0;
+                self.length.store(0, Ordering::Relaxed);
                 self.gui_sender
                     .send_update(GuiCommand::ClearLooper(self.id));
 
@@ -1220,6 +1221,8 @@ impl LooperBackend {
         // update our out time to the current input time so that we don't bother outputting a bunch
         // of wasted data
         self.out_time = self.in_time;
+
+        self.add_change(LooperChange::UnClear);
 
         // send our final length to the gui
         self.gui_sender
@@ -1874,7 +1877,7 @@ impl Looper {
         part: Part,
         solo: bool,
     ) {
-        if time.0 < 0 {
+        if time.0 < 0 || self.length() == 0 {
             return;
         }
 

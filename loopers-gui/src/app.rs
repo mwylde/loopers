@@ -1478,13 +1478,13 @@ impl BottomButtonView {
                         }
                         BottomButtonBehavior::Undo => {
                             controller.send_command(
-                                Command::Undo,
-                                "Failed to send undo");
+                                Command::Looper(LooperCommand::Undo, LooperTarget::Selected),
+                                "Failed to undo");
                         }
                         BottomButtonBehavior::Redo => {
                             controller.send_command(
-                                Command::Redo,
-                                "Failed to send redo");
+                                Command::Looper(LooperCommand::Redo, LooperTarget::Selected),
+                                "Failed to redo");
                         }
                     };
                 }
