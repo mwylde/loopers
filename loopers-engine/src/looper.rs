@@ -1020,6 +1020,8 @@ impl LooperBackend {
             level: self.level,
             parts: self.parts,
             offset: self.offset,
+            has_undos: !self.undo_queue.is_empty(),
+            has_redos: !self.redo_queue.is_empty(),
         }
     }
 
@@ -1143,6 +1145,9 @@ impl LooperBackend {
                         self.redo_queue.push_back(change);
                     }
                 }
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id, self.current_state()
+                ));
             }
             ControlMessage::Redo => {
                 if let Some(change) = self.redo_queue.pop_back() {
@@ -1150,6 +1155,9 @@ impl LooperBackend {
                         self.undo_queue.push_back(change);
                     }
                 }
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id, self.current_state()
+                ));
             }
             ControlMessage::StopOutput => {
                 self.should_output = false;
@@ -1326,6 +1334,8 @@ impl LooperBackend {
                 level: self.level,
                 parts: self.parts,
                 offset: self.offset,
+                has_undos: !self.undo_queue.is_empty(),
+                has_redos: !self.redo_queue.is_empty(),
             },
         ));
     }
@@ -1427,6 +1437,9 @@ impl LooperBackend {
     fn add_change(&mut self, change: LooperChange) {
         self.undo_queue.push_back(change);
         self.redo_queue.clear();
+        self.gui_sender.send_update(GuiCommand::LooperStateChange(
+            self.id, self.current_state()
+        ));
     }
 
     fn reset_gui(&mut self) {
@@ -1586,6 +1599,8 @@ impl Looper {
             level,
             parts,
             offset,
+            has_undos: false,
+            has_redos: false,
         };
 
         if samples.is_empty() {

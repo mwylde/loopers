@@ -225,8 +225,6 @@ Commands also differ in how they are affected by quantization:
 | Clear | Looper Targets | Quantized | Clears all samples from the selected loopers |
 | SetPan | Looper Targets, a pan value from -1 (fully left) to 1 (fully right) | Immediate | Sets the pan for the looper |
 | SetLevel | Looper Targets, a level value from 0 (silent) to 1 (full volume) | Immediate | Sets the output level for the looper |
-| Undo | Looper Targets | Immediate | Undoes the previous action |
-| Redo | Looper Targets | Immediate | Redoes the previous undo |
 
 ① _RecordOverdubPlay is quantized from Record -> Overdub and Overdub ->
 Play, but queued from Play -> Overdub._

@@ -41,6 +41,8 @@ pub struct LooperState {
     pub level: f32,
     pub parts: PartSet,
     pub offset: FrameTime,
+    pub has_undos: bool,
+    pub has_redos: bool,
 }
 
 #[derive(Clone, Debug)]

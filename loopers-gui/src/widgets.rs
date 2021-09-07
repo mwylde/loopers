@@ -117,23 +117,27 @@ impl ControlButton {
         &mut self,
         canvas: &mut Canvas,
         is_active: bool,
+        disabled: bool,
         on_click: F,
         last_event: Option<GuiEvent>,
     ) -> Size {
-        self.draw_with_progress(canvas, is_active, on_click, last_event, 0.0)
+        self.draw_with_progress(canvas, is_active, disabled, on_click, last_event, 0.0)
     }
 
     pub fn draw_with_progress<F: FnOnce(MouseButton) -> ()>(
         &mut self,
         canvas: &mut Canvas,
         is_active: bool,
+        disabled: bool,
         on_click: F,
         last_event: Option<GuiEvent>,
         progress_percent: f32,
     ) -> Size {
         let bounds = Rect::new(0.0, 0.0, self.width, self.height);
 
-        self.handle_event(canvas, &bounds, on_click, last_event);
+        if !disabled {
+            self.handle_event(canvas, &bounds, on_click, last_event);
+        }
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -144,6 +148,10 @@ impl ControlButton {
             ButtonState::Hover => Color::from_rgb(130, 130, 130),
             ButtonState::Pressed => Color::from_rgb(255, 255, 255),
         });
+
+        if disabled {
+            paint.set_alpha_f(0.3);
+        }
 
         paint.set_stroke_width(2.0);
 
@@ -174,6 +182,10 @@ impl ControlButton {
         let mut text_paint = Paint::default();
         text_paint.set_anti_alias(true);
         text_paint.set_color(Color::WHITE);
+
+        if disabled {
+            text_paint.set_alpha_f(0.3);
+        }
 
         let x = self.width * 0.5 - self.text_size.width * 0.5;
         let y = self.height * 0.5 + self.text_size.height * 0.5;
