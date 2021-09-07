@@ -25,6 +25,7 @@ size, and loop lengths are limited only by available memory.
 * Loops can be recorded to (setting loop length), overdubbed, cleared, muted, and soloed
 * Up to four parts can be used to divide up portions of a performance
 * Supports beat, measure, and free quantization of loop commands making it easy to keep things in sync
+* Unlimited undo/redo  
 * Every operation can be controlled via the GUI or MIDI
 * Sessions can be saved and restored
 * A built-in metronome (on a separate Jack output) helps keep you in time with your loops

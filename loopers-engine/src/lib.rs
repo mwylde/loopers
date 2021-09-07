@@ -263,7 +263,7 @@ impl Engine {
         };
 
         use LooperCommand::*;
-        match (looper.length_in_samples() == 0, looper.mode, lc) {
+        match (looper.length() == 0, looper.mode(), lc) {
             // SetLevel and SetPan should apply immediately
             (_, _, SetLevel(_)) => None,
             (_, _, SetPan(_)) => None,
@@ -996,7 +996,7 @@ impl Engine {
 
 
         let solo = self.loopers.iter()
-            .any(|l| l.parts[self.current_part] && !l.deleted && l.mode == LooperMode::Soloed);
+            .any(|l| l.parts[self.current_part] && !l.deleted && l.mode() == LooperMode::Soloed);
 
         if self.state == EngineState::Active {
             // process the loopers

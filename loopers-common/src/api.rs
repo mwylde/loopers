@@ -127,6 +127,9 @@ pub enum LooperCommand {
 
     // delete
     Delete,
+
+    Undo,
+    Redo,
 }
 
 impl LooperCommand {
@@ -212,6 +215,9 @@ impl LooperCommand {
             "1/2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Half), target)),
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),
             "2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Double), target)),
+
+            "Undo" => Box::new(move |_| Looper(Undo, target)),
+            "Redo" => Box::new(move |_| Looper(Redo, target)),
 
             _ => return Err(format!("{} is not a valid command", command)),
         })

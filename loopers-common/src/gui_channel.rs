@@ -41,6 +41,8 @@ pub struct LooperState {
     pub level: f32,
     pub parts: PartSet,
     pub offset: FrameTime,
+    pub has_undos: bool,
+    pub has_redos: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +58,7 @@ pub enum GuiCommand {
     AddNewSample(u32, FrameTime, [f32; 2], u64),
     AddOverdubSample(u32, FrameTime, [f32; 2]),
     SetLoopLengthAndOffset(u32, u64, FrameTime),
+    UpdateLooperWithSamples(u32, u64, Box<Waveform>, LooperState),
 
     AddLoopTrigger(u32, FrameTime, LooperCommand),
     AddGlobalTrigger(FrameTime, Command),

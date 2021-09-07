@@ -67,6 +67,8 @@ pub struct LooperData {
     pan: f32,
     level: f32,
     levels: [u8; 2],
+    has_undos: bool,
+    has_redos: bool,
     waveform: Waveform,
     trigger: Option<(FrameTime, LooperCommand)>,
 }
@@ -241,6 +243,8 @@ impl Gui {
                             speed: state.speed,
                             pan: state.pan,
                             level: state.level,
+                            has_undos: state.has_undos,
+                            has_redos: state.has_redos,
                             waveform: [vec![], vec![]],
                             levels: [0; 2],
                             trigger: None,
@@ -260,11 +264,24 @@ impl Gui {
                             speed: state.speed,
                             pan: state.pan,
                             level: state.level,
+                            has_undos: state.has_undos,
+                            has_redos: state.has_redos,
                             waveform: *waveform,
                             levels: [0; 2],
                             trigger: None,
                         },
                     );
+                }
+                Ok(GuiCommand::UpdateLooperWithSamples(id, length, waveform, state)) => {
+                    if let Some(l) = self.state.loopers.get_mut(&id) {
+                        l.mode = state.mode;
+                        l.parts = state.parts;
+                        l.speed = state.speed;
+                        l.pan = state.pan;
+                        l.level = state.level;
+                        l.waveform = *waveform;
+                        l.length = length;
+                    }
                 }
                 Ok(GuiCommand::RemoveLooper(id)) => {
                     self.state.loopers.remove(&id);
@@ -282,6 +299,8 @@ impl Gui {
                         l.speed = state.speed;
                         l.pan = state.pan;
                         l.level = state.level;
+                        l.has_undos = state.has_undos;
+                        l.has_redos = state.has_redos;
                     } else {
                         warn!("Got looper state change for unknown looper {}", id);
                     }

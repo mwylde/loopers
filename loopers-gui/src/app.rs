@@ -1334,6 +1334,8 @@ enum BottomButtonBehavior {
     Load,
     SetSyncMode(QuantizationMode),
     Part(Part),
+    Undo,
+    Redo,
 }
 
 struct LoadWindow {
@@ -1417,6 +1419,14 @@ impl BottomButtonView {
                     BottomButtonBehavior::Part(Part::D),
                     ControlButton::new("D", c, None, 22.0),
                 ),
+                (
+                    BottomButtonBehavior::Undo,
+                    ControlButton::new("Undo", c, None, 22.0)
+                ),
+                (
+                    BottomButtonBehavior::Redo,
+                    ControlButton::new("Redo", c, None, 22.0)
+                ),
             ],
             load_window: LoadWindow {
                 active: Arc::new(AtomicBool::new(false)),
@@ -1466,8 +1476,30 @@ impl BottomButtonView {
                                 "Failed to set sync mode",
                             );
                         }
+                        BottomButtonBehavior::Undo => {
+                            controller.send_command(
+                                Command::Looper(LooperCommand::Undo, LooperTarget::Selected),
+                                "Failed to undo");
+                        }
+                        BottomButtonBehavior::Redo => {
+                            controller.send_command(
+                                Command::Looper(LooperCommand::Redo, LooperTarget::Selected),
+                                "Failed to redo");
+                        }
                     };
                 }
+            };
+
+            let disabled = match behavior {
+                BottomButtonBehavior::Undo => {
+                    data.loopers.get(&data.engine_state.active_looper).map(|l| !l.has_undos)
+                        .unwrap_or(false)
+                }
+                BottomButtonBehavior::Redo => {
+                    data.loopers.get(&data.engine_state.active_looper).map(|l| !l.has_redos)
+                        .unwrap_or(true)
+                }
+                _ => false,
             };
 
             let mut progress_percent = 0.0;
@@ -1501,6 +1533,7 @@ impl BottomButtonView {
                     BottomButtonBehavior::SetSyncMode(mode) => data.engine_state.sync_mode == mode,
                     _ => false,
                 },
+                disabled,
                 on_click,
                 last_event,
                 progress_percent,
@@ -1509,6 +1542,7 @@ impl BottomButtonView {
 
             if behavior == BottomButtonBehavior::Load
                 || behavior == BottomButtonBehavior::SetSyncMode(QuantizationMode::Measure)
+                || behavior == BottomButtonBehavior::Part(Part::D)
             {
                 x += 30.0;
             }
@@ -1625,6 +1659,7 @@ impl LooperView {
             button.draw(
                 canvas,
                 false,
+                false,
                 |button| {
                     if button == MouseButton::Left {
                         controller
@@ -1647,6 +1682,7 @@ impl LooperView {
             button.draw(
                 canvas,
                 data.parts[part],
+                false,
                 |button| {
                     if button == MouseButton::Left {
                         let lc = if data.parts[part] {
@@ -1677,6 +1713,7 @@ impl LooperView {
             button.draw(
                 canvas,
                 looper.mode == mode,
+                false,
                 |button| {
                     if button == MouseButton::Left {
                         use LooperMode::*;
