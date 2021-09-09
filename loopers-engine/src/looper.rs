@@ -1119,6 +1119,9 @@ impl LooperBackend {
                     self.id,
                     self.current_state(),
                 ));
+                self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                    self.id, self.current_state()
+                ));
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
@@ -1171,7 +1174,7 @@ impl LooperBackend {
     }
 
     #[inline]
-    fn time_in_loop(&self, t: FrameTime) -> usize {
+    fn time_loop_idx(&self, t: FrameTime) -> usize {
         (t - self.offset)
             .0
             .rem_euclid(self.length_in_samples() as i64) as usize
@@ -1205,7 +1208,7 @@ impl LooperBackend {
                     for i in 0..2 {
                         for t in 0..buf.size {
                             buf.data[i][t] +=
-                                b[i][self.time_in_loop(self.out_time + FrameTime(t as i64))] as f64;
+                                b[i][self.time_loop_idx(self.out_time + FrameTime(t as i64))] as f64;
                         }
                     }
                 }
@@ -1343,7 +1346,7 @@ impl LooperBackend {
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
         if self.mode() == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
-            let time_in_loop = self.time_in_loop(FrameTime(time_in_samples as i64));
+            let time_in_loop = self.time_loop_idx(FrameTime(time_in_samples as i64));
 
             let s = self
                 .samples
@@ -1359,7 +1362,7 @@ impl LooperBackend {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
                         wv[c][i] += s.buffer[c]
-                            [self.time_in_loop(FrameTime(time_in_samples as i64 + i as i64))]
+                            [self.time_loop_idx(FrameTime(time_in_samples as i64 + i as i64))]
                             as f64;
                     }
                 }
@@ -1495,7 +1498,12 @@ impl LooperBackend {
     }
 
     pub fn length_in_samples(&self) -> u64 {
-        self.length.load(Ordering::Relaxed)
+        let len = self.length.load(Ordering::Relaxed);
+        match self.speed {
+            LooperSpeed::Half => len * 2,
+            LooperSpeed::One => len,
+            LooperSpeed::Double => len / 2,
+        }
     }
 
     pub fn serialize(&self, path: &Path) -> Result<SavedLooper, SaveLoadError> {

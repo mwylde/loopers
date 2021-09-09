@@ -1620,6 +1620,7 @@ impl LooperView {
                             Color::YELLOW,
                             Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
                             button_height,
+                            100.0,
                         ),
                         15.0,
                     ),
@@ -1637,6 +1638,26 @@ impl LooperView {
                         Self::new_state_button(LooperMode::Muted, "mute", button_height),
                         15.0,
                     ),
+                    (
+                        Self::new_command_button(
+                            "½x",
+                            Color::WHITE,
+                            Command::Looper(LooperCommand::SetSpeed(LooperSpeed::Half), LooperTarget::Id(id)),
+                            button_height,
+                            45.0
+                        ),
+                        10.0
+                    ),
+                    (
+                        Self::new_command_button(
+                            "2x",
+                            Color::WHITE,
+                            Command::Looper(LooperCommand::SetSpeed(LooperSpeed::Double), LooperTarget::Id(id)),
+                            button_height,
+                            45.0
+                        ),
+                        15.0
+                    )
                 ],
             ],
             state: ButtonState::Default,
@@ -1652,8 +1673,9 @@ impl LooperView {
         color: Color,
         command: Command,
         h: f32,
+        w: f32,
     ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
-        let mut button = ControlButton::new(name, color, Some(100.0), h);
+        let mut button = ControlButton::new(name, color, Some(w), h);
 
         Box::new(move |canvas, _, controller, last_event| {
             button.draw(
@@ -1774,6 +1796,22 @@ impl LooperView {
             LOOPER_CIRCLE_INDICATOR_WIDTH / 2.0,
         );
 
+        if looper.speed != LooperSpeed::One {
+            let mut paint = Paint::default();
+            paint.set_color(Color::WHITE);
+            paint.set_anti_alias(true);
+
+            let font = Font::new(Typeface::default(), 21.0);
+            let text = match looper.speed {
+                LooperSpeed::Half => "½x",
+                LooperSpeed::Double => "2x",
+                LooperSpeed::One => unreachable!(),
+            };
+
+            canvas.draw_str(text, Point::new(40.0, 55.0), &font, &paint);
+        }
+
+
         let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
 
         let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT))
@@ -1844,10 +1882,6 @@ impl LooperView {
             canvas.draw_str(&format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
         }
 
-        // draw speed
-        // TODO: re-enable once speeds are actually implemented in the engine
-        //draw_speed_text(looper, canvas);
-
         canvas.restore();
         canvas.restore();
 
@@ -1906,22 +1940,6 @@ impl LooperView {
 
         bounds.size()
     }
-}
-
-#[allow(dead_code)]
-fn draw_speed_text(looper: &LooperData, canvas: &mut Canvas) {
-    let mut paint = Paint::default();
-    paint.set_color(Color::WHITE);
-    paint.set_anti_alias(true);
-
-    let font = Font::new(Typeface::default(), 21.0);
-    let text = match looper.speed {
-        LooperSpeed::Half => "½x",
-        LooperSpeed::One => "1x",
-        LooperSpeed::Double => "2x",
-    };
-
-    canvas.draw_str(text, Point::new(-15.0, 35.0), &font, &paint);
 }
 
 impl Button for LooperView {
