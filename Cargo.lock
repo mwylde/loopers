@@ -716,6 +716,7 @@ dependencies = [
  "fern",
  "futures",
  "hound",
+ "itertools",
  "lazy_static",
  "log",
  "loopers-common",

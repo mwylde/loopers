@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use std::fmt::{Debug, Formatter};
+use loopers_common::api::LooperSpeed;
+use itertools::Itertools;
 
 #[cfg(test)]
 mod tests {
@@ -42,7 +44,7 @@ mod tests {
     fn test_overdub() {
         let mut sample = Sample::with_size(8);
         let data = [vec![1.0f32, 1.0], vec![-1.0, -1.0]];
-        sample.overdub(0, &[&data[0], &data[1]]);
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![1.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -53,7 +55,7 @@ mod tests {
             sample.buffer[1]
         );
 
-        sample.overdub(0, &[&data[0], &data[1]]);
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![2.0f32, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -64,7 +66,7 @@ mod tests {
             sample.buffer[1]
         );
 
-        sample.overdub(6, &[&data[0], &data[1]]);
+        sample.overdub(6, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![2.0f32, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
@@ -176,16 +178,38 @@ impl Sample {
 
     // Overdubs the buffer, starting at the give time. len(data[{0, 1}]) + time_in_samples must
     // be < than self.len().
-    pub fn overdub(&mut self, time_in_samples: u64, data: &[&[f32]]) {
+    pub fn overdub(&mut self, time_in_samples: u64, data: &[&[f32]], speed: LooperSpeed) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
         let len = self.length() as usize;
 
-        for (i, channel) in data.iter().enumerate() {
-            for (t, v) in channel.iter().enumerate() {
-                self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+        match speed {
+            LooperSpeed::Half => {
+                // in half-speed mode, we only record every other sample
+                for (i, channel) in data.iter().step_by(2).enumerate() {
+                    for (t, v) in channel.iter().enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+                    }
+                }
             }
-        }
+            LooperSpeed::One => {
+                // in 1x speed mode we record every sample
+                for (i, channel) in data.iter().enumerate() {
+                    for (t, v) in channel.iter().enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+                    }
+                }
+            }
+            LooperSpeed::Double => {
+                // in double speed mode we record every sample twice
+                for (i, channel) in data.iter().enumerate().interleave(data.iter().enumerate()) {
+                    for (t, v) in channel.iter().enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+                    }
+                }
+            }
+        };
+
     }
 
     pub fn replace(&mut self, time_in_samples: u64, data: &[&[f32]]) {

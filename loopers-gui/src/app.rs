@@ -1639,20 +1639,18 @@ impl LooperView {
                         15.0,
                     ),
                     (
-                        Self::new_command_button(
+                        Self::new_speed_button(
                             "½x",
-                            Color::WHITE,
-                            Command::Looper(LooperCommand::SetSpeed(LooperSpeed::Half), LooperTarget::Id(id)),
+                            LooperSpeed::Half,
                             button_height,
                             45.0
                         ),
                         10.0
                     ),
                     (
-                        Self::new_command_button(
+                        Self::new_speed_button(
                             "2x",
-                            Color::WHITE,
-                            Command::Looper(LooperCommand::SetSpeed(LooperSpeed::Double), LooperTarget::Id(id)),
+                            LooperSpeed::Double,
                             button_height,
                             45.0
                         ),
@@ -1686,6 +1684,35 @@ impl LooperView {
                     if button == MouseButton::Left {
                         controller
                             .send_command(command.clone(), "Failed to send command to engine");
+                    }
+                },
+                last_event,
+            )
+        })
+    }
+
+    fn new_speed_button(
+        name: &str,
+        speed: LooperSpeed,
+        h: f32,
+        w: f32,
+    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+        let mut button = ControlButton::new(name, Color::LIGHT_GRAY, Some(w), h);
+
+        Box::new(move |canvas, data, controller, last_event| {
+            button.draw(
+                canvas,
+                data.speed == speed,
+                false,
+                |button| {
+                    if button == MouseButton::Left {
+                        let command = Command::Looper(LooperCommand::SetSpeed(if data.speed == speed {
+                            LooperSpeed::One
+                        } else {
+                            speed
+                        }), LooperTarget::Id(data.id));
+
+                        controller.send_command(command, "Failed to send command to engine");
                     }
                 },
                 last_event,
