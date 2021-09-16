@@ -1184,7 +1184,7 @@ impl LooperBackend {
                 LooperSpeed::Double => t * 2,
             }
         } else {
-            1i64
+            t
         }.rem_euclid(self.length.load(Ordering::Relaxed) as i64) as usize
     }
 
