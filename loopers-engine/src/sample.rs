@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::fmt::{Debug, Formatter};
 use loopers_common::api::LooperSpeed;
 use itertools::Itertools;
-use std::borrow::Borrow;
 
 #[cfg(test)]
 mod tests {
@@ -102,11 +101,11 @@ mod tests {
         sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::Double);
         assert_eq!(8, sample.length());
         assert_eq!(
-            vec![1.0f32, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5],
+            vec![1.0f32, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0],
             sample.buffer[0]
         );
         assert_eq!(
-            vec![-1.0f32, -1.5, -2.0, -2.5, -3.0, -3.0, -4.0, -4.0],
+            vec![-1.0f32, -1.0, -2.0, -2.0, -3.0, -3.0, -4.0, -4.0],
             sample.buffer[1]
         );
 
