@@ -1453,12 +1453,17 @@ impl LooperBackend {
     }
 
     fn reset_gui(&mut self) {
-        self.gui_sender.send_update(GuiCommand::UpdateLooperWithSamples(
-            self.id,
-            self.length_in_samples(true),
-            Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
-            self.current_state(),
-        ));
+        if self.length_in_samples(false) > 0 {
+            self.gui_sender.send_update(GuiCommand::UpdateLooperWithSamples(
+                self.id,
+                self.length_in_samples(true),
+                Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
+                self.current_state(),
+            ));
+        } else {
+            self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                self.id, self.current_state()))
+        }
     }
 
     fn undo_change(&mut self, change: LooperChange) -> Option<LooperChange> {

@@ -30,10 +30,9 @@ const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png")
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Recording => Color::from_rgb(255, 78, 0),
-        LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
-        LooperMode::Playing => Color::from_rgb(118, 255, 0),
-        LooperMode::Soloed => Color::from_rgb(118, 255, 0),
+        LooperMode::Recording => Color::from_rgb(228, 58, 44),
+        LooperMode::Overdubbing => Color::from_rgb(99, 213, 164),
+        LooperMode::Playing | LooperMode::Soloed => Color::from_rgb(85, 180, 95),
         LooperMode::Muted => Color::from_rgb(178, 178, 178),
     }
 }
@@ -1024,7 +1023,7 @@ impl PeakMeterView {
     fn color(lines: usize, i: usize) -> Color {
         let p = i as f32 / lines as f32;
         if p < 0.8 {
-            Color::GREEN
+            Color::from_rgb(85, 180, 95)
         } else if p < 0.9 {
             Color::YELLOW
         } else {
@@ -1825,17 +1824,28 @@ impl LooperView {
 
         if looper.speed != LooperSpeed::One {
             let mut paint = Paint::default();
-            paint.set_color(Color::WHITE);
-            paint.set_anti_alias(true);
 
             let font = Font::new(Typeface::default(), 21.0);
-            let text = match looper.speed {
-                LooperSpeed::Half => "½x",
-                LooperSpeed::Double => "2x",
+            let (text, x) = match looper.speed {
+                LooperSpeed::Half => ("½x", 35.0),
+                LooperSpeed::Double => ("2x", 40.0),
                 LooperSpeed::One => unreachable!(),
             };
 
-            canvas.draw_str(text, Point::new(40.0, 55.0), &font, &paint);
+            // draw shadow
+            paint.set_color(Color::BLACK);
+            paint.set_anti_alias(true);
+            paint.set_alpha_f(0.9);
+            paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, 3.4, None));
+
+            canvas.draw_str(text, Point::new(x + 1.0, 56.0), &font, &paint);
+
+            // draw text
+            paint.set_color(Color::WHITE);
+            paint.set_alpha_f(1.0);
+            paint.set_mask_filter(None);
+
+            canvas.draw_str(text, Point::new(x, 55.0), &font, &paint);
         }
 
 
