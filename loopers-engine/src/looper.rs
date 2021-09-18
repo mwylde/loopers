@@ -983,6 +983,7 @@ pub struct LooperBackend {
     redo_queue: VecDeque<LooperChange>,
 
     should_output: bool,
+    gui_needs_reset: bool,
 }
 
 impl LooperBackend {
@@ -1115,13 +1116,7 @@ impl LooperBackend {
             }
             ControlMessage::SetSpeed(speed) => {
                 self.speed = speed;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    self.current_state(),
-                ));
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_needs_reset = true;
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
@@ -1169,6 +1164,10 @@ impl LooperBackend {
 
         if self.should_output {
             self.fill_output();
+            if self.gui_needs_reset {
+                self.reset_gui();
+                self.gui_needs_reset = false;
+            }
         }
         true
     }
@@ -1370,7 +1369,7 @@ impl LooperBackend {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
                         wv[c][i] += s.buffer[c]
-                            [self.time_loop_idx(FrameTime(time_in_samples as i64 + i as i64), false)]
+                            [self.time_loop_idx(FrameTime(time_in_samples as i64 + i as i64), true)]
                             as f64;
                     }
                 }
@@ -1467,12 +1466,12 @@ impl LooperBackend {
             LooperChange::PushSample => {
                 let sample = self.samples.pop()
                     .map(|s| LooperChange::PopSample(s));
-                self.reset_gui();
+                self.gui_needs_reset = true;
                 sample
             }
             LooperChange::PopSample(buffer) => {
                 self.samples.push(buffer);
-                self.reset_gui();
+                self.gui_needs_reset = true;
                 Some(LooperChange::PushSample)
             }
             LooperChange::Clear { samples, in_time, out_time, offset } => {
@@ -1481,7 +1480,7 @@ impl LooperBackend {
                 self.out_time = out_time;
                 self.offset = offset;
 
-                self.reset_gui();
+                self.gui_needs_reset = true;
 
                 Some(LooperChange::UnClear)
             }
@@ -1668,7 +1667,8 @@ impl Looper {
             waveform_generator: WaveformGenerator::new(id),
             undo_queue: VecDeque::new(),
             redo_queue: VecDeque::new(),
-            should_output: true
+            should_output: true,
+            gui_needs_reset: false,
         };
 
         Looper {
@@ -1804,6 +1804,7 @@ impl Looper {
             }
 
             SetSpeed(speed) => {
+                self.send_to_backend(ControlMessage::StopOutput);
                 self.send_to_backend(ControlMessage::SetSpeed(speed));
                 self.clear_queue();
             }
