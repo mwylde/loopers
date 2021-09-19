@@ -30,10 +30,9 @@ const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png")
 
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
-        LooperMode::Recording => Color::from_rgb(255, 78, 0),
-        LooperMode::Overdubbing => Color::from_rgb(0, 255, 255),
-        LooperMode::Playing => Color::from_rgb(118, 255, 0),
-        LooperMode::Soloed => Color::from_rgb(118, 255, 0),
+        LooperMode::Recording => Color::from_rgb(228, 58, 44),
+        LooperMode::Overdubbing => Color::from_rgb(101, 191, 171),
+        LooperMode::Playing | LooperMode::Soloed => Color::from_rgb(85, 180, 95),
         LooperMode::Muted => Color::from_rgb(178, 178, 178),
     }
 }
@@ -1024,7 +1023,7 @@ impl PeakMeterView {
     fn color(lines: usize, i: usize) -> Color {
         let p = i as f32 / lines as f32;
         if p < 0.8 {
-            Color::GREEN
+            Color::from_rgb(85, 180, 95)
         } else if p < 0.9 {
             Color::YELLOW
         } else {
@@ -1620,6 +1619,7 @@ impl LooperView {
                             Color::YELLOW,
                             Command::Looper(LooperCommand::Clear, LooperTarget::Id(id)),
                             button_height,
+                            100.0,
                         ),
                         15.0,
                     ),
@@ -1637,6 +1637,24 @@ impl LooperView {
                         Self::new_state_button(LooperMode::Muted, "mute", button_height),
                         15.0,
                     ),
+                    (
+                        Self::new_speed_button(
+                            "½x",
+                            LooperSpeed::Half,
+                            button_height,
+                            45.0
+                        ),
+                        10.0
+                    ),
+                    (
+                        Self::new_speed_button(
+                            "2x",
+                            LooperSpeed::Double,
+                            button_height,
+                            45.0
+                        ),
+                        15.0
+                    )
                 ],
             ],
             state: ButtonState::Default,
@@ -1652,8 +1670,9 @@ impl LooperView {
         color: Color,
         command: Command,
         h: f32,
+        w: f32,
     ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
-        let mut button = ControlButton::new(name, color, Some(100.0), h);
+        let mut button = ControlButton::new(name, color, Some(w), h);
 
         Box::new(move |canvas, _, controller, last_event| {
             button.draw(
@@ -1664,6 +1683,35 @@ impl LooperView {
                     if button == MouseButton::Left {
                         controller
                             .send_command(command.clone(), "Failed to send command to engine");
+                    }
+                },
+                last_event,
+            )
+        })
+    }
+
+    fn new_speed_button(
+        name: &str,
+        speed: LooperSpeed,
+        h: f32,
+        w: f32,
+    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+        let mut button = ControlButton::new(name, Color::LIGHT_GRAY, Some(w), h);
+
+        Box::new(move |canvas, data, controller, last_event| {
+            button.draw(
+                canvas,
+                data.speed == speed,
+                false,
+                |button| {
+                    if button == MouseButton::Left {
+                        let command = Command::Looper(LooperCommand::SetSpeed(if data.speed == speed {
+                            LooperSpeed::One
+                        } else {
+                            speed
+                        }), LooperTarget::Id(data.id));
+
+                        controller.send_command(command, "Failed to send command to engine");
                     }
                 },
                 last_event,
@@ -1774,6 +1822,33 @@ impl LooperView {
             LOOPER_CIRCLE_INDICATOR_WIDTH / 2.0,
         );
 
+        if looper.speed != LooperSpeed::One {
+            let mut paint = Paint::default();
+
+            let font = Font::new(Typeface::default(), 21.0);
+            let (text, x) = match looper.speed {
+                LooperSpeed::Half => ("½x", 35.0),
+                LooperSpeed::Double => ("2x", 40.0),
+                LooperSpeed::One => unreachable!(),
+            };
+
+            // draw shadow
+            paint.set_color(Color::BLACK);
+            paint.set_anti_alias(true);
+            paint.set_alpha_f(0.9);
+            paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, 3.4, None));
+
+            canvas.draw_str(text, Point::new(x + 1.0, 56.0), &font, &paint);
+
+            // draw text
+            paint.set_color(Color::WHITE);
+            paint.set_alpha_f(1.0);
+            paint.set_mask_filter(None);
+
+            canvas.draw_str(text, Point::new(x, 55.0), &font, &paint);
+        }
+
+
         let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
 
         let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT))
@@ -1844,10 +1919,6 @@ impl LooperView {
             canvas.draw_str(&format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
         }
 
-        // draw speed
-        // TODO: re-enable once speeds are actually implemented in the engine
-        //draw_speed_text(looper, canvas);
-
         canvas.restore();
         canvas.restore();
 
@@ -1906,22 +1977,6 @@ impl LooperView {
 
         bounds.size()
     }
-}
-
-#[allow(dead_code)]
-fn draw_speed_text(looper: &LooperData, canvas: &mut Canvas) {
-    let mut paint = Paint::default();
-    paint.set_color(Color::WHITE);
-    paint.set_anti_alias(true);
-
-    let font = Font::new(Typeface::default(), 21.0);
-    let text = match looper.speed {
-        LooperSpeed::Half => "½x",
-        LooperSpeed::One => "1x",
-        LooperSpeed::Double => "2x",
-    };
-
-    canvas.draw_str(text, Point::new(-15.0, 35.0), &font, &paint);
 }
 
 impl Button for LooperView {

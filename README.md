@@ -25,7 +25,8 @@ size, and loop lengths are limited only by available memory.
 * Loops can be recorded to (setting loop length), overdubbed, cleared, muted, and soloed
 * Up to four parts can be used to divide up portions of a performance
 * Supports beat, measure, and free quantization of loop commands making it easy to keep things in sync
-* Unlimited undo/redo  
+* Unlimited undo/redo
+* Double speed and half speed playback (and overdubbing!)
 * Every operation can be controlled via the GUI or MIDI
 * Sessions can be saved and restored
 * A built-in metronome (on a separate Jack output) helps keep you in time with your loops
@@ -226,6 +227,9 @@ Commands also differ in how they are affected by quantization:
 | Clear | Looper Targets | Quantized | Clears all samples from the selected loopers |
 | SetPan | Looper Targets, a pan value from -1 (fully left) to 1 (fully right) | Immediate | Sets the pan for the looper |
 | SetLevel | Looper Targets, a level value from 0 (silent) to 1 (full volume) | Immediate | Sets the output level for the looper |
+| 1/2x | Looper Targets | Immediate | Sets the looper to 1/2x speed |
+| 1x | Looper Targets | Immediate | Sets the looper to 1x speed |
+| 2x | Looper Targets | Immediate | Sets the looper to 2x speed |
 
 ① _RecordOverdubPlay is quantized from Record -> Overdub and Overdub ->
 Play, but queued from Play -> Overdub._

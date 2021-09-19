@@ -56,7 +56,7 @@ mod tests {
 
     fn verify_length(looper: &Looper, expected: u64) {
         assert_eq!(
-            looper.backend.as_ref().unwrap().length_in_samples(),
+            looper.backend.as_ref().unwrap().length_in_samples(false),
             expected,
             "backend has unexpected length"
         );
@@ -983,6 +983,7 @@ pub struct LooperBackend {
     redo_queue: VecDeque<LooperChange>,
 
     should_output: bool,
+    gui_needs_reset: bool,
 }
 
 impl LooperBackend {
@@ -1115,10 +1116,7 @@ impl LooperBackend {
             }
             ControlMessage::SetSpeed(speed) => {
                 self.speed = speed;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    self.current_state(),
-                ));
+                self.gui_needs_reset = true;
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
@@ -1166,19 +1164,31 @@ impl LooperBackend {
 
         if self.should_output {
             self.fill_output();
+            if self.gui_needs_reset {
+                self.reset_gui();
+                self.gui_needs_reset = false;
+            }
         }
         true
     }
 
     #[inline]
-    fn time_in_loop(&self, t: FrameTime) -> usize {
-        (t - self.offset)
-            .0
-            .rem_euclid(self.length_in_samples() as i64) as usize
+    fn time_loop_idx(&self, t: FrameTime, adjust_for_speed: bool) -> usize {
+        let t = (t - self.offset).0;
+
+        if adjust_for_speed {
+            match self.speed {
+                LooperSpeed::Half => t / 2,
+                LooperSpeed::One => t,
+                LooperSpeed::Double => t * 2,
+            }
+        } else {
+            t
+        }.rem_euclid(self.length.load(Ordering::Relaxed) as i64) as usize
     }
 
     fn fill_output(&mut self) {
-        let sample_len = self.length_in_samples() as usize;
+        let sample_len = self.length_in_samples(true) as usize;
         // don't fill the output if we're in record mode, because we don't know our length. the
         // timing won't be correct if we wrap around.
         if sample_len > 0 && self.mode() != LooperMode::Recording && self.out_time.0 >= 0 {
@@ -1205,7 +1215,7 @@ impl LooperBackend {
                     for i in 0..2 {
                         for t in 0..buf.size {
                             buf.data[i][t] +=
-                                b[i][self.time_in_loop(self.out_time + FrameTime(t as i64))] as f64;
+                                b[i][self.time_loop_idx(self.out_time + FrameTime(t as i64), true)] as f64;
                         }
                     }
                 }
@@ -1236,7 +1246,7 @@ impl LooperBackend {
         self.gui_sender
             .send_update(GuiCommand::SetLoopLengthAndOffset(
                 self.id,
-                self.length_in_samples(),
+                self.length_in_samples(false),
                 self.offset,
             ));
     }
@@ -1291,7 +1301,7 @@ impl LooperBackend {
     }
 
     fn prepare_for_overdubbing(&mut self, _next_state: LooperMode) {
-        let overdub_sample = Sample::with_size(self.length_in_samples() as usize);
+        let overdub_sample = Sample::with_size(self.length_in_samples(false) as usize);
 
         // TODO: currently, overdub buffers coming from record are not properly crossfaded until
         //       overdubbing is finished
@@ -1343,14 +1353,14 @@ impl LooperBackend {
     fn handle_input(&mut self, time_in_samples: u64, inputs: &[&[f32]]) {
         if self.mode() == LooperMode::Overdubbing {
             // in overdub mode, we add the new samples to our existing buffer
-            let time_in_loop = self.time_in_loop(FrameTime(time_in_samples as i64));
+            let time_in_loop = self.time_loop_idx(FrameTime(time_in_samples as i64), false);
 
             let s = self
                 .samples
                 .last_mut()
                 .expect("No samples for looper in overdub mode");
 
-            s.overdub(time_in_loop as u64, inputs);
+            s.overdub(time_in_loop as u64, inputs, self.speed);
 
             // TODO: this logic should probably be abstracted out into Sample so it can be reused
             //       between here and fill_output
@@ -1359,7 +1369,7 @@ impl LooperBackend {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
                         wv[c][i] += s.buffer[c]
-                            [self.time_in_loop(FrameTime(time_in_samples as i64 + i as i64))]
+                            [self.time_loop_idx(FrameTime(time_in_samples as i64 + i as i64), true)]
                             as f64;
                     }
                 }
@@ -1368,14 +1378,14 @@ impl LooperBackend {
                 self.mode(),
                 FrameTime(time_in_samples as i64),
                 &[&wv[0], &wv[1]],
-                self.length_in_samples(),
+                self.length_in_samples(true),
                 &mut self.gui_sender,
             );
         } else if self.mode() == LooperMode::Recording {
             // in record mode, we extend the current buffer with the new samples
 
             // if these are the first samples, set the offset to the current time
-            if self.length_in_samples() == 0 {
+            if self.length_in_samples(false) == 0 {
                 self.offset = FrameTime(time_in_samples as i64);
             }
 
@@ -1398,7 +1408,7 @@ impl LooperBackend {
                 self.mode(),
                 FrameTime(time_in_samples as i64),
                 &[&wv[0], &wv[1]],
-                self.length_in_samples(),
+                self.length_in_samples(true),
                 &mut self.gui_sender,
             );
         } else {
@@ -1443,12 +1453,17 @@ impl LooperBackend {
     }
 
     fn reset_gui(&mut self) {
-        self.gui_sender.send_update(GuiCommand::UpdateLooperWithSamples(
-            self.id,
-            self.length_in_samples(),
-            Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
-            self.current_state(),
-        ));
+        if self.length_in_samples(false) > 0 {
+            self.gui_sender.send_update(GuiCommand::UpdateLooperWithSamples(
+                self.id,
+                self.length_in_samples(true),
+                Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
+                self.current_state(),
+            ));
+        } else {
+            self.gui_sender.send_update(GuiCommand::LooperStateChange(
+                self.id, self.current_state()))
+        }
     }
 
     fn undo_change(&mut self, change: LooperChange) -> Option<LooperChange> {
@@ -1456,12 +1471,12 @@ impl LooperBackend {
             LooperChange::PushSample => {
                 let sample = self.samples.pop()
                     .map(|s| LooperChange::PopSample(s));
-                self.reset_gui();
+                self.gui_needs_reset = true;
                 sample
             }
             LooperChange::PopSample(buffer) => {
                 self.samples.push(buffer);
-                self.reset_gui();
+                self.gui_needs_reset = true;
                 Some(LooperChange::PushSample)
             }
             LooperChange::Clear { samples, in_time, out_time, offset } => {
@@ -1470,7 +1485,7 @@ impl LooperBackend {
                 self.out_time = out_time;
                 self.offset = offset;
 
-                self.reset_gui();
+                self.gui_needs_reset = true;
 
                 Some(LooperChange::UnClear)
             }
@@ -1494,8 +1509,17 @@ impl LooperBackend {
         }
     }
 
-    pub fn length_in_samples(&self) -> u64 {
-        self.length.load(Ordering::Relaxed)
+    pub fn length_in_samples(&self, adjust_for_speed: bool) -> u64 {
+        let len = self.length.load(Ordering::Relaxed);
+        if adjust_for_speed {
+            match self.speed {
+                LooperSpeed::Half => len * 2,
+                LooperSpeed::One => len,
+                LooperSpeed::Double => len / 2,
+            }
+        } else {
+            len
+        }
     }
 
     pub fn serialize(&self, path: &Path) -> Result<SavedLooper, SaveLoadError> {
@@ -1648,7 +1672,8 @@ impl Looper {
             waveform_generator: WaveformGenerator::new(id),
             undo_queue: VecDeque::new(),
             redo_queue: VecDeque::new(),
-            should_output: true
+            should_output: true,
+            gui_needs_reset: false,
         };
 
         Looper {
@@ -1784,7 +1809,9 @@ impl Looper {
             }
 
             SetSpeed(speed) => {
+                self.send_to_backend(ControlMessage::StopOutput);
                 self.send_to_backend(ControlMessage::SetSpeed(speed));
+                self.clear_queue();
             }
 
             SetPan(pan) => {

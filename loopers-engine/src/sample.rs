@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use std::fmt::{Debug, Formatter};
+use loopers_common::api::LooperSpeed;
+use itertools::Itertools;
 
 #[cfg(test)]
 mod tests {
@@ -42,7 +44,7 @@ mod tests {
     fn test_overdub() {
         let mut sample = Sample::with_size(8);
         let data = [vec![1.0f32, 1.0], vec![-1.0, -1.0]];
-        sample.overdub(0, &[&data[0], &data[1]]);
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![1.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -53,7 +55,7 @@ mod tests {
             sample.buffer[1]
         );
 
-        sample.overdub(0, &[&data[0], &data[1]]);
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![2.0f32, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -64,7 +66,7 @@ mod tests {
             sample.buffer[1]
         );
 
-        sample.overdub(6, &[&data[0], &data[1]]);
+        sample.overdub(6, &[&data[0], &data[1]], LooperSpeed::One);
         assert_eq!(8, sample.length());
         assert_eq!(
             vec![2.0f32, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
@@ -74,6 +76,39 @@ mod tests {
             vec![-2.0f32, -2.0, 0.0, 0.0, 0.0, 0.0, -1.0, -1.0],
             sample.buffer[1]
         );
+    }
+
+    #[test]
+    fn test_overdub_0_5x() {
+        let mut sample = Sample::with_size(8);
+        let data = [vec![1.0f32, 2.0, 3.0, 4.0], vec![-1.0, -2.0, -3.0, -4.0]];
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::Half);
+        assert_eq!(8, sample.length());
+        assert_eq!(
+            vec![1.5f32, 3.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            sample.buffer[0]
+        );
+        assert_eq!(
+            vec![-1.5f32, -3.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            sample.buffer[1]
+        );
+    }
+
+    #[test]
+    fn test_overdub_2x() {
+        let mut sample = Sample::with_size(8);
+        let data = [vec![1.0f32, 2.0, 3.0, 4.0], vec![-1.0, -2.0, -3.0, -4.0]];
+        sample.overdub(0, &[&data[0], &data[1]], LooperSpeed::Double);
+        assert_eq!(8, sample.length());
+        assert_eq!(
+            vec![1.0f32, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0],
+            sample.buffer[0]
+        );
+        assert_eq!(
+            vec![-1.0f32, -1.0, -2.0, -2.0, -3.0, -3.0, -4.0, -4.0],
+            sample.buffer[1]
+        );
+
     }
 
     #[test]
@@ -176,16 +211,39 @@ impl Sample {
 
     // Overdubs the buffer, starting at the give time. len(data[{0, 1}]) + time_in_samples must
     // be < than self.len().
-    pub fn overdub(&mut self, time_in_samples: u64, data: &[&[f32]]) {
+    pub fn overdub(&mut self, time_in_samples: u64, data: &[&[f32]], speed: LooperSpeed) {
         assert_eq!(2, data.len());
         assert_eq!(data[0].len(), data[1].len());
         let len = self.length() as usize;
 
+        let time_in_samples = match speed {
+            LooperSpeed::Half => time_in_samples / 2,
+            LooperSpeed::One => time_in_samples,
+            LooperSpeed::Double => time_in_samples * 2,
+        };
+
         for (i, channel) in data.iter().enumerate() {
-            for (t, v) in channel.iter().enumerate() {
-                self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+            match speed {
+                LooperSpeed::Double => {
+                    // in half speed mode we record every sample twice
+                    for (t, v) in channel.iter().interleave(channel.iter()).enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+                    }
+                }
+                LooperSpeed::One => {
+                    // in 1x speed mode we record every sample
+                    for (t, v) in channel.iter().enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += *v;
+                    }
+                }
+                LooperSpeed::Half => {
+                    for (t, (v1, v2)) in channel.iter().tuples().enumerate() {
+                        self.buffer[i][(time_in_samples as usize + t) % len] += (*v1 + *v2) / 2.0;
+                    }
+                }
             }
-        }
+        };
+
     }
 
     pub fn replace(&mut self, time_in_samples: u64, data: &[&[f32]]) {
