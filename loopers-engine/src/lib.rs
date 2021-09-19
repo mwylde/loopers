@@ -1010,16 +1010,6 @@ impl Engine {
             self.time += frames as i64;
         }
 
-        // copy the input for the active looper
-        if let Some([l, r]) = host.output_for_looper(self.active) {
-            l.iter_mut()
-                .zip(in_bufs[0].iter())
-                .for_each(|(a, b)| *a += *b);
-            r.iter_mut()
-                .zip(in_bufs[1].iter())
-                .for_each(|(a, b)| *a += *b);
-        }
-
         for i in 0..frames as usize {
             out_l[i] = self.output_left[i] as f32;
         }
