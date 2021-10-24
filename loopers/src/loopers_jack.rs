@@ -1,59 +1,13 @@
-#![cfg_attr(feature = "fail-on-warnings", deny(warnings))]
-
-extern crate bytes;
-extern crate chrono;
-extern crate crossbeam_queue;
-extern crate dirs;
-extern crate futures;
-extern crate jack;
-extern crate serde;
-#[macro_use]
-extern crate log;
-
-use clap::{App, Arg};
-use crossbeam_channel::{bounded, Sender, Receiver};
-use jack::{AudioOut, Port, ProcessScope};
-use loopers_common::gui_channel::GuiSender;
-use loopers_common::midi::MidiEvent;
-use loopers_common::Host;
-use loopers_engine::Engine;
-use loopers_gui::Gui;
 use std::collections::HashMap;
 use std::{io, thread};
-
-// metronome sounds; included in the binary for now to ease usage of cargo install
-const SINE_NORMAL: &[u8] = include_bytes!("../resources/sine_normal.wav");
-const SINE_EMPHASIS: &[u8] = include_bytes!("../resources/sine_emphasis.wav");
-
-fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
-    let stdout_config = fern::Dispatch::new()
-        .chain(io::stdout())
-        .level(log::LevelFilter::Info);
-
-    let file_config = fern::Dispatch::new()
-        .chain(fern::log_file("output.log")?)
-        .level(log::LevelFilter::Debug);
-
-    let mut d = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .chain(stdout_config);
-
-    if debug_log {
-        d = d.chain(file_config);
-    };
-
-    d.apply()?;
-
-    Ok(())
-}
+use jack::{AudioOut, Port, ProcessScope};
+use crossbeam_channel::{bounded, Sender, Receiver};
+use loopers_common::api::Command;
+use loopers_common::gui_channel::GuiSender;
+use loopers_common::Host;
+use loopers_common::midi::MidiEvent;
+use loopers_engine::Engine;
+use loopers_gui::Gui;
 
 enum ClientChange {
     AddPort(u32),
@@ -94,8 +48,8 @@ impl<'a> Host<'a> for JackHost<'a> {
     }
 
     fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
-    where
-        'a: 'b,
+        where
+            'a: 'b,
     {
         match self.port_change_resp.try_recv() {
             Ok(ClientChangeResponse::PortAdded(id, l, r)) => {
@@ -110,63 +64,107 @@ impl<'a> Host<'a> for JackHost<'a> {
     }
 }
 
-fn main() {
-    let matches = App::new("loopers-jack")
-        .version("0.1.2")
-        .author("Micah Wylde <micah@micahw.com>")
-        .about(
-            "Loopers is a graphical live looper, designed for ease of use and rock-solid stability",
-        )
-        .arg(
-            Arg::with_name("restore")
-                .long("restore")
-                .help("Automatically restores the last saved session"),
-        )
-        .arg(
-            Arg::with_name("no-gui")
-                .long("no-gui")
-                .help("Launches in headless mode (without the gui)"),
-        )
-        .arg(Arg::with_name("debug").long("debug"))
-        .get_matches();
+struct Notifications;
 
-    if let Err(e) = setup_logger(matches.is_present("debug")) {
-        eprintln!("Unable to set up logging: {:?}", e);
+impl jack::NotificationHandler for Notifications {
+    fn thread_init(&self, _: &jack::Client) {
+        debug!("JACK: thread init");
     }
 
-    let restore = matches.is_present("restore");
-
-    if restore {
-        info!("Restoring previous session");
+    fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
+        debug!(
+            "JACK: shutdown with status {:?} because \"{}\"",
+            status, reason
+        );
     }
 
-    let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
+    fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
+        debug!(
+            "JACK: freewheel mode is {}",
+            if is_enabled { "on" } else { "off" }
+        );
+    }
 
-    let (new_gui, gui_sender) = if !matches.is_present("no-gui") {
-        let (sender, receiver) = GuiSender::new();
-        (
-            Some(Gui::new(receiver, gui_to_engine_sender, sender.clone())),
-            sender,
-        )
-    } else {
-        (None, GuiSender::disconnected())
-    };
+    fn sample_rate(&mut self, _: &jack::Client, _: jack::Frames) -> jack::Control {
+        jack::Control::Quit
+    }
 
-    // read wav files
-    let reader = hound::WavReader::new(SINE_NORMAL).unwrap();
-    let beat_normal: Vec<f32> = reader
-        .into_samples()
-        .into_iter()
-        .map(|x| x.unwrap())
-        .collect();
+    fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
+        info!(
+            "JACK: {} client with name \"{}\"",
+            if is_reg { "registered" } else { "unregistered" },
+            name
+        );
+    }
 
-    let reader = hound::WavReader::new(SINE_EMPHASIS).unwrap();
-    let beat_empahsis: Vec<f32> = reader
-        .into_samples()
-        .into_iter()
-        .map(|x| x.unwrap())
-        .collect();
+    fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
+        info!(
+            "JACK: {} port with id {}",
+            if is_reg { "registered" } else { "unregistered" },
+            port_id
+        );
+    }
 
+    fn port_rename(
+        &mut self,
+        _: &jack::Client,
+        port_id: jack::PortId,
+        old_name: &str,
+        new_name: &str,
+    ) -> jack::Control {
+        info!(
+            "JACK: port with id {} renamed from {} to {}",
+            port_id, old_name, new_name
+        );
+        jack::Control::Continue
+    }
+
+    fn ports_connected(
+        &mut self,
+        _: &jack::Client,
+        port_id_a: jack::PortId,
+        port_id_b: jack::PortId,
+        are_connected: bool,
+    ) {
+        debug!(
+            "JACK: ports with id {} and {} are {}",
+            port_id_a,
+            port_id_b,
+            if are_connected {
+                "connected"
+            } else {
+                "disconnected"
+            }
+        );
+    }
+
+    fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
+        info!("JACK: graph reordered");
+        jack::Control::Continue
+    }
+
+    fn xrun(&mut self, _: &jack::Client) -> jack::Control {
+        warn!("JACK: xrun occurred");
+        jack::Control::Continue
+    }
+
+    fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
+        info!(
+            "JACK: {} latency has changed",
+            match mode {
+                jack::LatencyType::Capture => "capture",
+                jack::LatencyType::Playback => "playback",
+            }
+        );
+    }
+}
+
+pub fn jack_main(gui: Option<Gui>,
+                 gui_sender: GuiSender,
+                 gui_to_engine_receiver: Receiver<Command>,
+                 beat_normal: Vec<f32>,
+                 beat_emphasis: Vec<f32>,
+                 restore: bool) {
     // Create client
     let (client, _status) = jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
         .expect("Jack server is not running");
@@ -214,7 +212,7 @@ fn main() {
         gui_sender,
         gui_to_engine_receiver,
         beat_normal,
-        beat_empahsis,
+        beat_emphasis,
         restore,
         client.sample_rate(),
     );
@@ -322,7 +320,7 @@ fn main() {
     });
 
     // start the gui
-    if let Some(gui) = new_gui {
+    if let Some(gui) = gui {
         gui.start();
     } else {
         loop {
@@ -339,99 +337,4 @@ fn main() {
     }
 
     std::process::exit(0);
-}
-
-struct Notifications;
-
-impl jack::NotificationHandler for Notifications {
-    fn thread_init(&self, _: &jack::Client) {
-        debug!("JACK: thread init");
-    }
-
-    fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
-        debug!(
-            "JACK: shutdown with status {:?} because \"{}\"",
-            status, reason
-        );
-    }
-
-    fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
-        debug!(
-            "JACK: freewheel mode is {}",
-            if is_enabled { "on" } else { "off" }
-        );
-    }
-
-    fn sample_rate(&mut self, _: &jack::Client, _: jack::Frames) -> jack::Control {
-        jack::Control::Quit
-    }
-
-    fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
-        info!(
-            "JACK: {} client with name \"{}\"",
-            if is_reg { "registered" } else { "unregistered" },
-            name
-        );
-    }
-
-    fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
-        info!(
-            "JACK: {} port with id {}",
-            if is_reg { "registered" } else { "unregistered" },
-            port_id
-        );
-    }
-
-    fn port_rename(
-        &mut self,
-        _: &jack::Client,
-        port_id: jack::PortId,
-        old_name: &str,
-        new_name: &str,
-    ) -> jack::Control {
-        info!(
-            "JACK: port with id {} renamed from {} to {}",
-            port_id, old_name, new_name
-        );
-        jack::Control::Continue
-    }
-
-    fn ports_connected(
-        &mut self,
-        _: &jack::Client,
-        port_id_a: jack::PortId,
-        port_id_b: jack::PortId,
-        are_connected: bool,
-    ) {
-        debug!(
-            "JACK: ports with id {} and {} are {}",
-            port_id_a,
-            port_id_b,
-            if are_connected {
-                "connected"
-            } else {
-                "disconnected"
-            }
-        );
-    }
-
-    fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        info!("JACK: graph reordered");
-        jack::Control::Continue
-    }
-
-    fn xrun(&mut self, _: &jack::Client) -> jack::Control {
-        warn!("JACK: xrun occurred");
-        jack::Control::Continue
-    }
-
-    fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
-        info!(
-            "JACK: {} latency has changed",
-            match mode {
-                jack::LatencyType::Capture => "capture",
-                jack::LatencyType::Playback => "playback",
-            }
-        );
-    }
 }

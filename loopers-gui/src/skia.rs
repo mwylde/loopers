@@ -72,7 +72,6 @@ pub fn skia_main(mut gui: Gui) {
     gl_attr.set_double_buffer(true);
     gl_attr.set_depth_size(0);
     gl_attr.set_stencil_size(8);
-    gl_attr.set_accelerated_visual(true);
 
     let mut window = video_subsystem
         .window("loopers", INITIAL_WIDTH as u32, INITIAL_HEIGHT as u32)

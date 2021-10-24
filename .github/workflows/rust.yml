@@ -3,10 +3,8 @@ name: Rust
 on: [push]
 
 jobs:
-  build:
-
+  build-linux:
     runs-on: ubuntu-20.04
-
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -15,3 +13,13 @@ jobs:
       run: cargo build -v
     - name: Run tests
       run: cargo test --verbose
+  build-macos:
+    runs-on: macos-10.14
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: brew install jack sdl2
+    - name: Build
+      run: cargo build -v --features=coreaudio-rs
+    - name: Run tests
+      run: cargo test --verbose --features=coreaudio-rs
