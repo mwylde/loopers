@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
 use std::{io, mem};
 use std::ptr::null;
-use std::sync::{Arc, Mutex};
 use coreaudio::audio_unit::audio_format::LinearPcmFlags;
 use coreaudio::audio_unit::render_callback::{self, data};
 use coreaudio::audio_unit::{AudioUnit, Element, SampleFormat, Scope, StreamFormat};
 use coreaudio::sys::*;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{bounded, Receiver};
 use loopers_common::api::Command;
 use loopers_common::gui_channel::GuiSender;
 use loopers_common::Host;
@@ -56,7 +54,7 @@ pub fn coreaudio_main(gui: Option<Gui>,
         sample_rate: SAMPLE_RATE,
         sample_format: SAMPLE_FORMAT,
         flags: format_flag | LinearPcmFlags::IS_PACKED | LinearPcmFlags::IS_NON_INTERLEAVED,
-        channels_per_frame: 2,
+        channels_per_frame: 1,
     };
 
     let out_stream_format = StreamFormat {
@@ -74,7 +72,7 @@ pub fn coreaudio_main(gui: Option<Gui>,
 
     let mut host = CoreAudioHost {};
 
-    let _engine = Engine::new(
+    let mut engine = Engine::new(
         &mut host,
         gui_sender,
         gui_to_engine_receiver,
@@ -91,12 +89,8 @@ pub fn coreaudio_main(gui: Option<Gui>,
     let asbd = out_stream_format.to_asbd();
     output_audio_unit.set_property(id, Scope::Input, Element::Output, Some(&asbd))?;
 
-    let buffer_left = Arc::new(Mutex::new(VecDeque::<S>::new()));
-    let producer_left = buffer_left.clone();
-    let consumer_left = buffer_left.clone();
-    let buffer_right = Arc::new(Mutex::new(VecDeque::<S>::new()));
-    let producer_right = buffer_right.clone();
-    let consumer_right = buffer_right.clone();
+    let (mut sender_l, receiver_l) = bounded(2048);
+    let (mut sender_r, receiver_r) = bounded(2048);
 
     type Args = render_callback::Args<data::NonInterleaved<S>>;
 
@@ -106,18 +100,23 @@ pub fn coreaudio_main(gui: Option<Gui>,
             mut data,
             ..
         } = args;
-        let buffer_left = producer_left.lock().unwrap();
-        let buffer_right = producer_right.lock().unwrap();
-        let mut buffers = vec![buffer_left, buffer_right];
         for i in 0..num_frames {
+            let queues = [&mut sender_l, &mut sender_r];
             for (ch, channel) in data.channels_mut().enumerate() {
                 let value: S = channel[i];
-                buffers[ch].push_back(value);
+                queues[ch].send(value).unwrap();
             }
         }
         Ok(())
     })?;
     input_audio_unit.start()?;
+
+    let mut input_l = vec![0f32; 4096];
+    let mut input_r = vec![0f32; 4096];
+    let mut output_l = vec![0f32; 4096];
+    let mut output_r = vec![0f32; 4096];
+    let mut met_l = vec![0f32; 4096];
+    let mut met_r = vec![0f32; 4096];
 
     output_audio_unit.set_render_callback(move |args: Args| {
         let Args {
@@ -126,16 +125,37 @@ pub fn coreaudio_main(gui: Option<Gui>,
             ..
         } = args;
 
-        let buffer_left = consumer_left.lock().unwrap();
-        let buffer_right = consumer_right.lock().unwrap();
-        let mut buffers = vec![buffer_left, buffer_right];
+        if num_frames > output_l.len() {
+            panic!("frame is too big: {}", num_frames);
+        }
+
         for i in 0..num_frames {
-            // Default other channels to copy value from first channel as a fallback
-            let zero: S = 0 as S;
-            let f: S = *buffers[0].front().unwrap_or(&zero);
+            input_l[i] = receiver_l.try_recv().unwrap_or(0.0);
+            input_r[i] = receiver_r.try_recv().unwrap_or(0.0);
+
+            output_l[i] = 0.0;
+            output_r[i] = 0.0;
+
+            met_l[i] = 0.0;
+            met_r[i] = 0.0;
+        }
+
+        engine.process(&mut host,
+                       [&input_l[0..num_frames], &input_r[0..num_frames]],
+                       &mut output_l[0..num_frames],
+                       &mut output_r[0..num_frames],
+                       [&mut met_l[0..num_frames], &mut met_r[0..num_frames]],
+                       num_frames as u64,
+                       &[][..]);
+
+        let outputs = [&output_l, &output_r];
+        let mets = [&met_l, &met_r];
+
+        for i in 0..num_frames {
             for (ch, channel) in data.channels_mut().enumerate() {
-                let sample: S = buffers[ch].pop_front().unwrap_or(f);
-                channel[i] = sample;
+                if ch < 2 {
+                    channel[i] = outputs[ch][i] + mets[ch][i];
+                }
             }
         }
         Ok(())
@@ -158,7 +178,6 @@ pub fn coreaudio_main(gui: Option<Gui>,
     std::process::exit(0);
 }
 
-/// Copied from cpal
 pub fn default_output_device() -> Option<AudioDeviceID> {
     let property_address = AudioObjectPropertyAddress {
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,
@@ -185,7 +204,6 @@ pub fn default_output_device() -> Option<AudioDeviceID> {
     Some(audio_device_id)
 }
 
-/// Copied from cpal
 pub fn default_input_device() -> Option<AudioDeviceID> {
     let property_address = AudioObjectPropertyAddress {
         mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -212,7 +230,6 @@ pub fn default_input_device() -> Option<AudioDeviceID> {
     Some(audio_device_id)
 }
 
-/// Copied from cpal
 fn audio_unit_from_device(
     device_id: AudioDeviceID,
     input: bool,
