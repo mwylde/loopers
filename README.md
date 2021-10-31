@@ -7,10 +7,11 @@ written in Rust, designed for ease of use and rock-solid stability. It
 can be used as a practice tool, compositional aid, or for performing
 looped works in a live setting.
 
-Currently it runs only on Linux as a standalone
+Currently it runs on Linux as a standalone
 [Jack](https://jackaudio.org/) application, which allows it to
 interface with other Jack clients like effect racks, software
-instruments, and DAWs.
+instruments, and DAWs, or on MacOS using Jack or (experimentally)
+directly with CoreAudio.
 
 ![video of loopers](docs/demo.gif)
 
@@ -36,25 +37,27 @@ size, and loop lengths are limited only by available memory.
 
 ## Getting started
 
+### Linux
+
 To build loopers, you will need jack and sdl2.
 
 For Ubuntu/Debian these can be installed with:
 
-``` bash
+```bash
 $ sudo apt install jackd2 libjack-jackd2-dev libgl1-mesa-dev libsdl2-dev
 ```
 
 Now you're ready to install loopers itself. First get a rust toolchain
 installed (https://rustup.rs), then:
 
-``` bash
-$ cargo install loopers-jack
+```bash
+$ cargo install loopers
 ```
 
 Then start it with the command
 
-``` bash
-$ loopers-jack
+```bash
+$ loopers
 ```
 
 (If you get an error about Jack not running, you will need to start
@@ -64,6 +67,29 @@ documentation](https://jackaudio.org/) for details).
 This will create a Jack client, which can be hooked up to your
 inputs/outputs/effects with any number of tools (I recommend
 [Claudia](https://kx.studio/Applications:Claudia) from KXStudio).
+
+Loopers should also be fully compatible with pipewire.
+
+### MacOS
+
+Loopers has experimental support for running on CoreAudio, the native
+audio system for MacOS (you can also run it on top of [jack](https://jackaudio.org/) on
+MacOS which is currently better supported). To build on Mac with coreaudio:
+
+```bash
+$ brew install jack sdl2
+$ cargo install loopers
+$ loopers
+```
+
+By default it will run using CoreAudio. To run with jack instead,
+
+```bash
+$ loopers --driver jack
+```
+
+**Note: midi is not currently supported via coreaudio, and there is no ability to choose
+audio sources and sinks (the default devices are used).**
 
 ## Current state
 

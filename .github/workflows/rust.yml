@@ -20,6 +20,6 @@ jobs:
     - name: Install dependencies
       run: brew install jack sdl2
     - name: Build
-      run: cargo build -v --features=coreaudio-rs
+      run: cargo build -v
     - name: Run tests
-      run: cargo test --verbose --features=coreaudio-rs
+      run: cargo test --verbose

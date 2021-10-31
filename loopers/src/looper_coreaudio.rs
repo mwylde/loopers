@@ -65,10 +65,10 @@ pub fn coreaudio_main(gui: Option<Gui>,
         channels_per_frame: 2,
     };
 
-    println!("input={:#?}", &in_stream_format);
-    println!("output={:#?}", &out_stream_format);
-    println!("input_asbd={:#?}", &in_stream_format.to_asbd());
-    println!("output_asbd={:#?}", &out_stream_format.to_asbd());
+    debug!("input={:#?}", &in_stream_format);
+    debug!("output={:#?}", &out_stream_format);
+    debug!("input_asbd={:#?}", &in_stream_format.to_asbd());
+    debug!("output_asbd={:#?}", &out_stream_format.to_asbd());
 
     let mut host = CoreAudioHost {};
 

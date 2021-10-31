@@ -12,7 +12,7 @@ extern crate log;
 
 mod loopers_jack;
 
-#[cfg(feature = "coreaudio-rs")]
+#[cfg(target_os = "macos")]
 mod looper_coreaudio;
 
 use clap::{App, Arg};
@@ -57,10 +57,10 @@ fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
     Ok(())
 }
 
-#[cfg(feature = "coreaudio-rs")]
+#[cfg(target_os = "macos")]
 const DEFAULT_DRIVER: &str = "coreaudio";
 
-#[cfg(not(feature = "coreaudio-rs"))]
+#[cfg(not(target_os = "macos"))]
 const DEFAULT_DRIVER: &str = "jack";
 
 
@@ -139,8 +139,8 @@ fn main() {
             jack_main(gui, gui_sender, gui_to_engine_receiver, beat_normal, beat_emphasis, restore);
         }
         "coreaudio" => {
-            if cfg!(feature = "coreaudio-rs") {
-                #[cfg(feature = "coreaudio-rs")]
+            if cfg!(target_os = "macos") {
+                #[cfg(target_os = "macos")]
                 crate::looper_coreaudio::coreaudio_main(
                     gui, gui_sender, gui_to_engine_receiver, beat_normal, beat_emphasis, restore)
                     .expect("failed to set up coreaudio");
