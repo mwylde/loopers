@@ -1,5 +1,5 @@
 [package]
-name = "loopers-jack"
+name = "loopers"
 version = "0.1.2"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
@@ -29,6 +29,9 @@ rand = "0.8"
 hound = "3.4.0"
 chrono = "0.4.11"
 dirs = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+coreaudio-rs = {version = "0.10.0"}
 
 [dependencies.loopers-common]
 path = "../loopers-common"
