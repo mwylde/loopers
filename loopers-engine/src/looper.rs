@@ -1572,6 +1572,9 @@ pub struct Looper {
     pub pan_law: PanLaw,
 
 
+    // this is pretty hacky -- we sometimes need a way to see the mode that has been just set on the
+    // looper, before it's had a chance to make it to the backend
+    local_mode: Option<LooperMode>,
     mode: Arc<Atomic<LooperMode>>,
     length: Arc<Atomic<u64>>,
     pub backend: Option<LooperBackend>,
@@ -1609,6 +1612,7 @@ impl Looper {
         samples: Vec<Sample>,
         mut gui_sender: GuiSender,
     ) -> Looper {
+        debug!("Creating new looper with samples {}", id);
         let record_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
         let play_queue = Arc::new(ArrayQueue::new(512 * 1024 / TRANSFER_BUF_SIZE));
 
@@ -1694,6 +1698,7 @@ impl Looper {
             in_progress_output: None,
 
             last_time: FrameTime(0),
+            local_mode: None
         }
     }
 
@@ -1765,6 +1770,10 @@ impl Looper {
                 false
             }
         }
+    }
+
+    pub fn local_mode(&self) -> LooperMode {
+        return self.local_mode.unwrap_or(self.mode());
     }
 
     pub fn mode(&self) -> LooperMode {
@@ -1968,6 +1977,8 @@ impl Looper {
             Err(TrySendError::Full(_)) => warn!("channel full while requesting more output"),
             _ => {}
         }
+
+        self.local_mode = None;
     }
 
     // In process_input, we modify our internal buffers based on the input. In Record mode, we
@@ -2026,6 +2037,7 @@ impl Looper {
         }
 
         self.send_to_backend(ControlMessage::TransitionTo(mode));
+        self.local_mode = Some(mode);
     }
 }
 

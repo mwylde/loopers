@@ -4,7 +4,6 @@ extern crate lazy_static;
 extern crate log;
 
 use std::collections::VecDeque;
-use std::f32::NEG_INFINITY;
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io;
 use std::io::{Read, Write};
@@ -84,7 +83,7 @@ const THRESHOLD: f32 = 0.05;
 fn max_abs(b: &[f32]) -> f32 {
     b.iter()
         .map(|v| v.abs())
-        .fold(NEG_INFINITY, |a, b| a.max(b))
+        .fold(f32::NEG_INFINITY, |a, b| a.max(b))
 }
 
 pub fn last_session_path() -> io::Result<PathBuf> {
@@ -225,6 +224,9 @@ impl Engine {
         }
         self.triggers.clear();
         self.set_time(FrameTime(-(self.measure_len().0 as i64)));
+        for l in &mut self.loopers {
+            l.handle_command(LooperCommand::Play);
+        }
     }
 
     fn looper_by_index_mut(&mut self, idx: u8) -> Option<&mut Looper> {
@@ -257,10 +259,10 @@ impl Engine {
         looper: &Looper,
     ) -> Option<Trigger> {
         let trigger_condition = match sync_mode {
-            Free => return None,
-            QuantizationMode::Beat => TriggerCondition::Beat,
-            QuantizationMode::Measure => TriggerCondition::Measure,
-        };
+            Free => if time.0 < 0 { Some(TriggerCondition::Beat) } else { None },
+            QuantizationMode::Beat => Some(TriggerCondition::Beat),
+            QuantizationMode::Measure => Some(TriggerCondition::Measure),
+        }?;
 
         use LooperCommand::*;
         match (looper.length() == 0, looper.mode(), lc) {
@@ -430,6 +432,7 @@ impl Engine {
         session.loopers.sort_by_key(|l| l.id);
 
         for l in session.loopers {
+            debug!("Restoring looper {}", l.id);
             let looper = Looper::from_serialized(&l, dir, self.gui_sender.clone())?.start();
             self.session_saver.add_looper(&looper);
             if let Err(e) = host.add_looper(looper.id) {
@@ -990,10 +993,11 @@ impl Engine {
             self.output_right[i] = *r as f64;
         }
 
-        if !self.triggers.is_empty() {
+        if self.state != EngineState::Active && (!self.triggers.is_empty() ||
+            self.loopers.iter().any(|l| l.local_mode() == LooperMode::Recording ||
+                l.local_mode() == LooperMode::Overdubbing)) {
             self.state = EngineState::Active;
         }
-
 
         let solo = self.loopers.iter()
             .any(|l| l.parts[self.current_part] && !l.deleted && l.mode() == LooperMode::Soloed);

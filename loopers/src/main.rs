@@ -32,10 +32,6 @@ fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
         .chain(io::stdout())
         .level(log::LevelFilter::Info);
 
-    let file_config = fern::Dispatch::new()
-        .chain(fern::log_file("../../../output.log")?)
-        .level(log::LevelFilter::Debug);
-
     let mut d = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -49,6 +45,10 @@ fn setup_logger(debug_log: bool) -> Result<(), fern::InitError> {
         .chain(stdout_config);
 
     if debug_log {
+        let file_config = fern::Dispatch::new()
+            .chain(fern::log_file("output.log")?)
+            .level(log::LevelFilter::Debug);
+
         d = d.chain(file_config);
     };
 
