@@ -31,7 +31,7 @@ const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png")
 fn color_for_mode(mode: LooperMode) -> Color {
     match mode {
         LooperMode::Recording => Color::from_rgb(228, 58, 44),
-        LooperMode::Overdubbing => Color::from_rgb(101, 191, 171),
+        LooperMode::Overdubbing => Color::from_rgb(85, 163, 180),
         LooperMode::Playing | LooperMode::Soloed => Color::from_rgb(85, 180, 95),
         LooperMode::Muted => Color::from_rgb(178, 178, 178),
     }

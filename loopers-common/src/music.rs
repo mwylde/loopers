@@ -122,30 +122,30 @@ impl TimeSignature {
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tempo {
-    samples_per_beat: u64,
+    bpm: u64,
 }
 
 impl Tempo {
     pub fn from_bpm(bpm: f32) -> Tempo {
         assert!(bpm > 0.0, "bpm must be positive");
         Tempo {
-            samples_per_beat: ((get_sample_rate() as f64) / (bpm as f64 / 60.0)) as u64,
+            bpm: (bpm * 1_000_000.0) as u64,
         }
     }
 
     pub fn bpm(&self) -> f32 {
-        ((get_sample_rate() as f64) / self.samples_per_beat as f64 * 60.0) as f32
+        (self.bpm as f32) / 1_000_000.0
     }
 
     pub fn samples_per_beat(&self) -> u64 {
-        self.samples_per_beat
+        ((get_sample_rate() as f64) / (self.bpm() as f64 / 60.0)) as u64
     }
 
     pub fn beat(&self, time: FrameTime) -> i64 {
         if time.0 >= 0 {
-            time.0 / self.samples_per_beat as i64
+            time.0 / self.samples_per_beat() as i64
         } else {
-            (time.0 as f32 / self.samples_per_beat as f32).floor() as i64
+            (time.0 as f32 / self.samples_per_beat() as f32).floor() as i64
         }
     }
 
@@ -153,12 +153,12 @@ impl Tempo {
     /// the beat). If `time` already points to the 0 of a beat, will return `time`.
     pub fn next_full_beat(&self, time: FrameTime) -> FrameTime {
         let cur = self.beat(time);
-        let rem = time.0.rem_euclid(self.samples_per_beat as i64);
+        let rem = time.0.rem_euclid(self.samples_per_beat() as i64);
 
         if rem == 0 {
-            FrameTime(cur * self.samples_per_beat as i64)
+            FrameTime(cur * self.samples_per_beat() as i64)
         } else {
-            FrameTime((cur + 1) * self.samples_per_beat as i64)
+            FrameTime((cur + 1) * self.samples_per_beat() as i64)
         }
     }
 }
