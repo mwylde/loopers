@@ -416,7 +416,8 @@ impl Engine {
 
         debug!("Restoring session: {:?}", session);
 
-        self.metric_structure = session.metric_structure;
+        self.metric_structure = session.metric_structure.to_ms(session.sample_rate)
+            .ok_or(SaveLoadError::OtherError("invalid metric structure".to_string()))?;
         self.sync_mode = session.sync_mode;
 
         if let Some(metronome) = &mut self.metronome {

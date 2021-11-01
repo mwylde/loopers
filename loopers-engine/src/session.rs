@@ -85,7 +85,7 @@ impl SessionSaver {
 
         let mut session = SavedSession {
             save_time: now.timestamp_millis(),
-            metric_structure: sd.metric_structure,
+            metric_structure: sd.metric_structure.to_saved(),
             metronome_volume: sd.metronome_volume,
             sync_mode: sd.sync_mode,
             sample_rate: sd.sample_rate,

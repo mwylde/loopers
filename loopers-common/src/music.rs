@@ -121,6 +121,11 @@ impl TimeSignature {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct SavedTempo {
+    samples_per_beat: u64
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tempo {
     bpm: u64,
 }
@@ -164,6 +169,22 @@ impl Tempo {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+pub struct SavedMetricStructure {
+    pub time_signature: TimeSignature,
+    pub tempo: SavedTempo,
+}
+
+impl SavedMetricStructure {
+    pub fn to_ms(&self, sample_rate: usize) -> Option<MetricStructure> {
+        MetricStructure::new(
+            self.time_signature.upper,
+            self.time_signature.lower,
+            ((sample_rate as f64) / self.tempo.samples_per_beat as f64 * 60.0) as f32
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MetricStructure {
     pub time_signature: TimeSignature,
     pub tempo: Tempo,
@@ -176,6 +197,15 @@ impl MetricStructure {
             time_signature,
             tempo: Tempo::from_bpm(bpm),
         })
+    }
+
+    pub fn to_saved(&self) -> SavedMetricStructure {
+        SavedMetricStructure {
+            time_signature: self.time_signature,
+            tempo: SavedTempo {
+                samples_per_beat: self.tempo.samples_per_beat(),
+            }
+        }
     }
 }
 
