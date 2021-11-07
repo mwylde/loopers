@@ -1,5 +1,5 @@
 use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
-use crate::music::MetricStructure;
+use crate::music::{SavedMetricStructure};
 use derive_more::{Add, Div, Mul, Sub};
 use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
@@ -497,7 +497,7 @@ pub struct SavedSession {
     pub save_time: i64,
     #[serde(default)]
     pub metronome_volume: u8,
-    pub metric_structure: MetricStructure,
+    pub metric_structure: SavedMetricStructure,
     #[serde(default = "sync_mode_default")]
     pub sync_mode: QuantizationMode,
     #[serde(default)]

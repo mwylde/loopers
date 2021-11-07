@@ -129,7 +129,7 @@ impl Engine {
         restore: bool,
         sample_rate: usize,
     ) -> Engine {
-        let metric_structure = MetricStructure::new(4, 4, 120.0).unwrap();
+        let metric_structure = MetricStructure::new(4, 4, Tempo::from_bpm(120.0)).unwrap();
 
         let config = match read_config() {
             Ok(config) => config,
@@ -416,7 +416,8 @@ impl Engine {
 
         debug!("Restoring session: {:?}", session);
 
-        self.metric_structure = session.metric_structure;
+        self.metric_structure = session.metric_structure.to_ms()
+            .map_err(|e| SaveLoadError::OtherError(e))?;
         self.sync_mode = session.sync_mode;
 
         if let Some(metronome) = &mut self.metronome {

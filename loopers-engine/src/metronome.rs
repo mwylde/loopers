@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 #[cfg(test)]
 mod tests {
+    use loopers_common::music::Tempo;
     use super::*;
 
     fn sample(v: f32, n: usize) -> Sample {
@@ -22,7 +23,9 @@ mod tests {
 
         let bpm = 60_000f32 / FrameTime(8).to_ms() as f32;
 
-        let mut met = Metronome::new(MetricStructure::new(3, 4, bpm).unwrap(), normal, emphasis);
+        let mut met = Metronome::new(
+            MetricStructure::new(3, 4,
+                                 Tempo::from_bpm(bpm)).unwrap(), normal, emphasis);
 
         assert_eq!(0, met.time.0);
 
