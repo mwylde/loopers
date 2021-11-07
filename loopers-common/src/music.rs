@@ -122,7 +122,17 @@ impl TimeSignature {
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct SavedTempo {
-    samples_per_beat: u64
+    samples_per_beat: Option<u64>,
+    bpm: Option<u64>,
+}
+
+impl SavedTempo {
+    fn new(bpm: u64) -> SavedTempo {
+        SavedTempo {
+            samples_per_beat: None,
+            bpm: Some(bpm),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -131,11 +141,15 @@ pub struct Tempo {
 }
 
 impl Tempo {
-    pub fn from_bpm(bpm: f32) -> Tempo {
-        assert!(bpm > 0.0, "bpm must be positive");
+    pub fn new(bpm: u64) -> Tempo {
+        assert!(bpm > 0, "bpm must be positive");
         Tempo {
-            bpm: (bpm * 1_000_000.0) as u64,
+            bpm
         }
+    }
+
+    pub fn from_bpm(bpm: f32) -> Tempo {
+        Tempo::new((bpm * 1_000_000.0) as u64)
     }
 
     pub fn bpm(&self) -> f32 {
@@ -175,12 +189,20 @@ pub struct SavedMetricStructure {
 }
 
 impl SavedMetricStructure {
-    pub fn to_ms(&self, sample_rate: usize) -> Option<MetricStructure> {
+    pub fn to_ms(&self) -> Result<MetricStructure, String> {
+        let bpm = match self.tempo {
+            SavedTempo { bpm: Some(bpm), .. } => Ok(Tempo::new(bpm)),
+            SavedTempo { samples_per_beat: Some(spb), ..} =>
+                Ok(Tempo::from_bpm(
+                    ((get_sample_rate() as f64) / spb as f64 * 60.0) as f32)),
+            _ => Err("Neither bpm nor samples_per_beat supplied".to_string())
+        }?;
+
         MetricStructure::new(
             self.time_signature.upper,
             self.time_signature.lower,
-            ((sample_rate as f64) / self.tempo.samples_per_beat as f64 * 60.0) as f32
-        )
+            bpm,
+        ).ok_or("Invalid time signature".to_string())
     }
 }
 
@@ -191,20 +213,18 @@ pub struct MetricStructure {
 }
 
 impl MetricStructure {
-    pub fn new(upper: u8, lower: u8, bpm: f32) -> Option<MetricStructure> {
+    pub fn new(upper: u8, lower: u8, tempo: Tempo) -> Option<MetricStructure> {
         let time_signature = TimeSignature::new(upper, lower)?;
         Some(MetricStructure {
             time_signature,
-            tempo: Tempo::from_bpm(bpm),
+            tempo,
         })
     }
 
     pub fn to_saved(&self) -> SavedMetricStructure {
         SavedMetricStructure {
             time_signature: self.time_signature,
-            tempo: SavedTempo {
-                samples_per_beat: self.tempo.samples_per_beat(),
-            }
+            tempo: SavedTempo::new(self.tempo.bpm),
         }
     }
 }
