@@ -1,8 +1,9 @@
 # Loopers
 
 ![master status](https://github.com/mwylde/loopers/workflows/Rust/badge.svg?branch=master)
+[![Crate](https://img.shields.io/crates/v/loopers-jack.svg)](https://crates.io/crates/loopers-jack)
 
-Loopers is graphical [live looper](http://www.livelooping.org/),
+Loopers is a graphical [live looper](http://www.livelooping.org/),
 written in Rust, designed for ease of use and rock-solid stability. It
 can be used as a practice tool, compositional aid, or for performing
 looped works in a live setting.
@@ -62,19 +63,20 @@ $ loopers
 
 (If you get an error about Jack not running, you will need to start
 the Jack server first. See the [Jack
-documentation](https://jackaudio.org/) for details).
+documentation](https://jackaudio.org/) for details.)
 
 This will create a Jack client, which can be hooked up to your
 inputs/outputs/effects with any number of tools (I recommend
 [Claudia](https://kx.studio/Applications:Claudia) from KXStudio).
 
-Loopers should also be fully compatible with pipewire.
+Loopers should also be fully compatible with [PipeWire](https://pipewire.org/),
+which removes the need for a separate Jack server.
 
 ### MacOS
 
 Loopers has experimental support for running on CoreAudio, the native
 audio system for MacOS (you can also run it on top of [jack](https://jackaudio.org/) on
-MacOS which is currently better supported). To build on Mac with coreaudio:
+MacOS, which is currently better supported). To build on Mac with coreaudio:
 
 ```bash
 $ brew install jack sdl2
@@ -90,13 +92,6 @@ $ loopers --driver jack
 
 **Note: midi is not currently supported via coreaudio, and there is no ability to choose
 audio sources and sinks (the default devices are used).**
-
-## Current state
-
-Loopers has just had its initial release, 0.1. The software is usable
-and should be quite stable, but likely still has some bugs. It's also
-missing some key features like undo/redo, time shifting, and a GUI
-midi configurator and currently runs only on Linux with Jack.
 
 ## Documentation
 
@@ -151,7 +146,6 @@ without changing the loop length.
 
 </dl>
 
-
 In addition to those exclusive modes, a looper can have one or more of
 the following _modifiers_:
 
@@ -174,7 +168,7 @@ midi command.
 
 ### Quantization
 
-When using multiple loopers, it is generally desirable that they be
+When using multiple loopers, it is generally desirable for them to be
 synchronized together. In Loopers, this is accomplished by having a
 single time control which is used across all loopers. It is also key
 that loops have lengths which are exact multiples of each other (for
