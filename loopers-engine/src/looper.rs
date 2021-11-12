@@ -16,6 +16,7 @@ use loopers_common::gui_channel::{
 };
 use loopers_common::music::PanLaw;
 use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
 use std::mem::swap;
 
 use atomic::Atomic;
@@ -933,7 +934,6 @@ impl WaveformGenerator {
     }
 }
 
-#[derive(Debug)]
 enum LooperChange {
     PushSample,
     PopSample(Sample),
@@ -944,6 +944,17 @@ enum LooperChange {
         offset: FrameTime,
     },
     UnClear,
+}
+
+impl Debug for LooperChange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LooperChange::PushSample => write!(f, "PushSample"),
+            LooperChange::PopSample(sample) => write!(f, "PopSample<{}>", sample.length()),
+            LooperChange::Clear { samples, .. } => write!(f, "Clear<{}>", samples.len()),
+            LooperChange::UnClear => write!(f, "UnClear"),
+        }
+    }
 }
 
 pub struct LooperBackend {
@@ -1138,6 +1149,8 @@ impl LooperBackend {
                 ));
             },
             ControlMessage::Undo => {
+                info!("Performing Undo on queue: {:?}", self.undo_queue);
+
                 if let Some(change) = self.undo_queue.pop_back() {
                     if let Some(change) = self.undo_change(change) {
                         self.redo_queue.push_back(change);
@@ -1148,6 +1161,7 @@ impl LooperBackend {
                 ));
             }
             ControlMessage::Redo => {
+                info!("Performing Redo on queue: {:?}", self.redo_queue);
                 if let Some(change) = self.redo_queue.pop_back() {
                     if let Some(change) = self.undo_change(change) {
                         self.undo_queue.push_back(change);
@@ -1484,6 +1498,10 @@ impl LooperBackend {
                 self.in_time = in_time;
                 self.out_time = out_time;
                 self.offset = offset;
+
+                if !self.samples.is_empty() {
+                    self.length.store(self.samples[0].length(), Ordering::Relaxed);
+                }
 
                 self.gui_needs_reset = true;
 
