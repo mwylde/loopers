@@ -1235,7 +1235,13 @@ impl PlayPauseButton {
             };
         }
 
-        if data.engine_state.engine_state == EngineState::Stopped {
+        if data.engine_state.engine_state == EngineState::Active {
+            // draw pause button
+            let rect1 = Rect::new(0.0, 0.0, 7.5, 20.0);
+            let rect2 = Rect::new(12.5, 0.0, 20.0, 20.0);
+            canvas.draw_rect(&rect1, &paint);
+            canvas.draw_rect(&rect2, &paint);
+        } else {
             // draw play icon
             let mut path = Path::new();
             path.move_to((0.0, 0.0));
@@ -1244,12 +1250,6 @@ impl PlayPauseButton {
             path.line_to((0.0, 0.0));
             path.close();
             canvas.draw_path(&path, &paint);
-        } else {
-            // draw pause button
-            let rect1 = Rect::new(0.0, 0.0, 7.5, 20.0);
-            let rect2 = Rect::new(12.5, 0.0, 20.0, 20.0);
-            canvas.draw_rect(&rect1, &paint);
-            canvas.draw_rect(&rect2, &paint);
         }
 
         Size::new(25.0, 25.0)

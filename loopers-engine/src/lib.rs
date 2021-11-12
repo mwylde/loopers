@@ -506,7 +506,7 @@ impl Engine {
                 self.state = EngineState::Active;
             }
             Pause => {
-                self.state = EngineState::Stopped;
+                self.state = EngineState::Paused;
             }
             Stop => {
                 self.state = EngineState::Stopped;
@@ -514,7 +514,7 @@ impl Engine {
             }
             StartStop => {
                 self.state = match self.state {
-                    EngineState::Stopped => EngineState::Active,
+                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
                     EngineState::Active => {
                         self.reset();
                         EngineState::Stopped
@@ -523,8 +523,8 @@ impl Engine {
             }
             PlayPause => {
                 self.state = match self.state {
-                    EngineState::Stopped => EngineState::Active,
-                    EngineState::Active => EngineState::Stopped,
+                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
+                    EngineState::Active => EngineState::Paused,
                 }
             }
             Reset => {
@@ -994,7 +994,7 @@ impl Engine {
             self.output_right[i] = *r as f64;
         }
 
-        if self.state != EngineState::Active && (!self.triggers.is_empty() ||
+        if (self.state != EngineState::Active && self.state != EngineState::Paused) && (!self.triggers.is_empty() ||
             self.loopers.iter().any(|l| l.local_mode() == LooperMode::Recording ||
                 l.local_mode() == LooperMode::Overdubbing)) {
             self.state = EngineState::Active;

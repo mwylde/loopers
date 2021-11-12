@@ -13,6 +13,7 @@ pub const WAVEFORM_DOWNSAMPLE: usize = 2048;
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum EngineState {
     Stopped,
+    Paused,
     Active,
 }
 
