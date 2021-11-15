@@ -147,16 +147,6 @@ impl jack::NotificationHandler for Notifications {
         warn!("JACK: xrun occurred");
         jack::Control::Continue
     }
-
-    fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
-        info!(
-            "JACK: {} latency has changed",
-            match mode {
-                jack::LatencyType::Capture => "capture",
-                jack::LatencyType::Playback => "playback",
-            }
-        );
-    }
 }
 
 pub fn jack_main(gui: Option<Gui>,

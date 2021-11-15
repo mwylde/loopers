@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "loopers"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "bytes 0.4.12",
  "chrono",
@@ -758,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "loopers-common"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "arrayvec",
  "bytes 1.0.1",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "loopers-engine"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "atomic",
  "bytes 1.0.1",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "loopers-gui"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "bytes 1.0.1",
  "chrono",

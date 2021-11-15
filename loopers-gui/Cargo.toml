@@ -1,6 +1,6 @@
 [package]
 name = "loopers-gui"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2018"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Gui for loopers project. See loopers-jack for for the main project."
@@ -31,4 +31,4 @@ crossbeam-channel = "0.5"
 
 [dependencies.loopers-common]
 path = "../loopers-common"
-version = "0.1.2"
+version = "^0.2.0"
