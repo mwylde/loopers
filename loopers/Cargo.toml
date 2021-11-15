@@ -43,7 +43,7 @@ version = "^0.2.0"
 
 [dependencies.loopers-gui]
 path = "../loopers-gui"
-version = "0.1.2"
+version = "^0.2.0"
 
 [features]
 fail-on-warnings = []
