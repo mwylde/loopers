@@ -1,6 +1,6 @@
 [package]
 name = "loopers"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Loopers is graphical live looper, designed for ease of use and rock-solid stability"
 homepage = "https://github.com/mwylde/loopers"

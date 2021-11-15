@@ -1,7 +1,7 @@
 # Loopers
 
 ![master status](https://github.com/mwylde/loopers/workflows/Rust/badge.svg?branch=master)
-[![Crate](https://img.shields.io/crates/v/loopers-jack.svg)](https://crates.io/crates/loopers-jack)
+[![Crate](https://img.shields.io/crates/v/loopers.svg)](https://crates.io/crates/loopers)
 
 Loopers is a graphical [live looper](http://www.livelooping.org/),
 written in Rust, designed for ease of use and rock-solid stability. It
