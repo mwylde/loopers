@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "loopers-engine"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "atomic",
  "bytes 1.0.1",
