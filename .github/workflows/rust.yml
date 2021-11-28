@@ -13,6 +13,14 @@ jobs:
       run: cargo build -v
     - name: Run tests
       run: cargo test --verbose
+    - name: Build appimage
+      run: scripts/create_appimage.sh
+    - name: Archive appimage
+      uses: actions/upload-artifact@v2
+      with:
+        if-no-files-found: error
+        name: loopers-appimage-${{ github.sha }}
+        path: target/appimage/Loopers*.AppImage
   build-macos:
     runs-on: macos-10.14
     steps:
