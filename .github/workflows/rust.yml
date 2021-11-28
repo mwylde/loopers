@@ -31,3 +31,13 @@ jobs:
       run: cargo build -v
     - name: Run tests
       run: cargo test --verbose
+    - name: Build app
+      run: scripts/create_mac_app.sh
+      env:
+        VERSION: 0.2.0-${{ github.sha }}
+    - name: Archive macos dmg
+      uses: actions/upload-artifact@v2
+      with:
+        if-no-files-found: error
+        name: loopers-${{ github.sha }}.dmg
+        path: target/macos/Loopers*.dmg
