@@ -9,7 +9,7 @@ pushd "${TARGET}"
 
 cargo build --manifest-path "../../Cargo.toml" --release
 
-mkdir Loopers.app
+mkdir -p Loopers.app
 mkdir -p Loopers.app/Contents/MacOS
 mkdir -p Loopers.app/Contents/Resources
 
@@ -30,6 +30,17 @@ mv Loopers.icns Loopers.app/Contents/Resources
 
 # copy binary
 cp ../release/loopers Loopers.app/Contents/MacOS
+
+# copy libraries
+SDL2=$(otool -L Loopers.app/Contents/MacOS/loopers | grep sdl2 | xargs | cut -d ' ' -f 1)
+JACK=$(otool -L Loopers.app/Contents/MacOS/loopers | grep libjack | xargs | cut -d ' ' -f 1)
+mkdir -p Loopers.app/Contents/Frameworks
+cp "${SDL2}" Loopers.app/Contents/Frameworks
+cp "${JACK}" Loopers.app/Contents/Frameworks
+
+# relink libraries
+install_name_tool -change "${SDL2}" "../Frameworks/$(echo "${SDL2}" | grep -o '[^/]*$')" Loopers.app/Contents/MacOS/loopers
+install_name_tool -change "${JACK}" "../Frameworks/$(echo "${JACK}" | grep -o '[^/]*$')" Loopers.app/Contents/MacOS/loopers
 
 # create plist
 cat > Loopers.app/Contents/Info.plist <<EOF
