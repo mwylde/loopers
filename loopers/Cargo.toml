@@ -12,7 +12,7 @@ readme = "../README.md"
 edition = "2018"
 
 [dependencies]
-jack = "0.7"
+jack = "0.8"
 
 futures = "0.1"
 bytes = "0.4"
