@@ -46,7 +46,7 @@ pub fn coreaudio_main(gui: Option<Gui>,
 
     let format_flag = match SAMPLE_FORMAT {
         SampleFormat::F32 => LinearPcmFlags::IS_FLOAT,
-        SampleFormat::I32 | SampleFormat::I16 | SampleFormat::I8 => LinearPcmFlags::IS_SIGNED_INTEGER,
+        SampleFormat::I24 | SampleFormat::I32 | SampleFormat::I16 | SampleFormat::I8 => LinearPcmFlags::IS_SIGNED_INTEGER,
     };
 
     // Using IS_NON_INTERLEAVED everywhere because data::Interleaved is commented out / not implemented
@@ -54,7 +54,7 @@ pub fn coreaudio_main(gui: Option<Gui>,
         sample_rate: SAMPLE_RATE,
         sample_format: SAMPLE_FORMAT,
         flags: format_flag | LinearPcmFlags::IS_PACKED | LinearPcmFlags::IS_NON_INTERLEAVED,
-        channels_per_frame: 1,
+        channels: 1,
     };
 
     let out_stream_format = StreamFormat {
@@ -62,7 +62,7 @@ pub fn coreaudio_main(gui: Option<Gui>,
         sample_format: SAMPLE_FORMAT,
         flags: format_flag | LinearPcmFlags::IS_PACKED | LinearPcmFlags::IS_NON_INTERLEAVED,
         // you can change this to 1
-        channels_per_frame: 2,
+        channels: 2,
     };
 
     debug!("input={:#?}", &in_stream_format);

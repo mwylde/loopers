@@ -76,6 +76,7 @@ pub enum LogLevel {
 pub struct LogMessage {
     buffer: ArrayVec<u8, 256>,
     len: usize,
+    #[allow(unused)]
     level: LogLevel,
 }
 
