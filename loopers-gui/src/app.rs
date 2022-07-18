@@ -884,7 +884,7 @@ impl MetronomeButton {
 
         canvas.draw_image_rect_with_sampling_options(
             &self.icon, None, bounds,
-            SamplingOptions::from_filter_quality(FilterQuality::High, None),
+            CubicResampler::catmull_rom(),
             &paint);
 
         Size::new(25.0, 25.0)
@@ -1120,7 +1120,7 @@ impl PeakMeterView {
 
             canvas.draw_image_with_sampling_options(
                 &image, (0.0, 0.0),
-                SamplingOptions::from_filter_quality(FilterQuality::High, None),
+                CubicResampler::catmull_rom(),
                 Some(&paint));
         }
 
@@ -2077,7 +2077,7 @@ impl<T: Eq + Copy> DrawCache<T> {
         canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
         canvas.draw_image_with_sampling_options(
             image, (0.0, 0.0),
-            SamplingOptions::from_filter_quality(FilterQuality::High, None),
+            CubicResampler::catmull_rom(),
             Some(&paint));
         canvas.restore();
 
@@ -2456,7 +2456,7 @@ impl WaveformView {
                 &self.loop_icon,
                 None,
                 Rect::new(-s / 2.0, (h - s) / 2.0, s / 2.0, (h + s) / 2.0),
-                SamplingOptions::from_filter_quality(FilterQuality::High, None),
+                CubicResampler::catmull_rom(),
                 &paint,
             );
 

@@ -13,11 +13,11 @@ log = "0.4"
 hound = "3.4.0"
 
 bytes = "1.0"
-dirs = "3.0"
+dirs = "4.0"
 
-skia-safe = {version = "0.41", features = ["gl", "x11"]}
+skia-safe = {version = "0.50", features = ["gl", "x11"]}
 
-sdl2 = "0.34"
+sdl2 = "0.35"
 
 tinyfiledialogs = "3.3"
 lazy_static = "1"
