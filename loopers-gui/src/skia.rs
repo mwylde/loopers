@@ -1,4 +1,4 @@
-use skia_safe::gpu::gl::FramebufferInfo;
+use skia_safe::gpu::gl::{FramebufferInfo, Interface};
 use skia_safe::gpu::{BackendRenderTarget, DirectContext, SurfaceOrigin};
 use skia_safe::{
     Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob, Typeface,
@@ -87,7 +87,14 @@ pub fn skia_main(mut gui: Gui) {
 
     let debug = std::env::var("DEBUG").is_ok();
 
-    let mut gr_context = DirectContext::new_gl(None, None).unwrap();
+    let interface = Interface::new_load_with(|name| {
+        if name == "eglGetCurrentDisplay" {
+            return std::ptr::null();
+        }
+        video_subsystem.gl_get_proc_address(&name) as *const _
+    });
+
+    let mut gr_context = DirectContext::new_gl(interface, None).unwrap();
 
     let mut fboid: GLint = 0;
     unsafe { gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut fboid) };
