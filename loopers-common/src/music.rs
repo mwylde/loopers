@@ -82,10 +82,10 @@ mod tests {
         let next_beat_time = tempo.next_full_beat(FrameTime(time));
 
         assert!(
-            next_beat_time.0 <= time + frames as i64,
+            next_beat_time.0 <= time + frames,
             "{} > {} (time = {})",
             next_beat_time.0,
-            time + frames as i64,
+            time + frames,
             time
         );
 
@@ -143,9 +143,7 @@ pub struct Tempo {
 impl Tempo {
     pub fn new(bpm: u64) -> Tempo {
         assert!(bpm > 0, "bpm must be positive");
-        Tempo {
-            bpm
-        }
+        Tempo { bpm }
     }
 
     pub fn from_bpm(bpm: f32) -> Tempo {
@@ -192,17 +190,17 @@ impl SavedMetricStructure {
     pub fn to_ms(&self) -> Result<MetricStructure, String> {
         let bpm = match self.tempo {
             SavedTempo { bpm: Some(bpm), .. } => Ok(Tempo::new(bpm)),
-            SavedTempo { samples_per_beat: Some(spb), ..} =>
-                Ok(Tempo::from_bpm(
-                    ((get_sample_rate() as f64) / spb as f64 * 60.0) as f32)),
-            _ => Err("Neither bpm nor samples_per_beat supplied".to_string())
+            SavedTempo {
+                samples_per_beat: Some(spb),
+                ..
+            } => Ok(Tempo::from_bpm(
+                ((get_sample_rate() as f64) / spb as f64 * 60.0) as f32,
+            )),
+            _ => Err("Neither bpm nor samples_per_beat supplied".to_string()),
         }?;
 
-        MetricStructure::new(
-            self.time_signature.upper,
-            self.time_signature.lower,
-            bpm,
-        ).ok_or("Invalid time signature".to_string())
+        MetricStructure::new(self.time_signature.upper, self.time_signature.lower, bpm)
+            .ok_or("Invalid time signature".to_string())
     }
 }
 

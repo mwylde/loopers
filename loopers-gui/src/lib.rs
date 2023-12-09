@@ -135,7 +135,10 @@ impl Controller {
     }
 
     pub fn log(&mut self, msg: &str) {
-        if let Err(_) = write!(self.gui_sender, "{}", msg).and_then(|_| self.gui_sender.flush()) {
+        if write!(self.gui_sender, "{}", msg)
+            .and_then(|_| self.gui_sender.flush())
+            .is_err()
+        {
             error!("Failed to write message to gui");
         }
     }
@@ -317,7 +320,7 @@ impl Gui {
                 Ok(GuiCommand::AddOverdubSample(id, time, sample)) => {
                     if let Some(l) = self.state.loopers.get_mut(&id) {
                         let time = time - l.offset;
-                        if time.0 >= 0 && l.waveform[0].len() > 0 && l.length > 0 {
+                        if time.0 >= 0 && !l.waveform[0].is_empty() && l.length > 0 {
                             let i =
                                 ((time.0 as u64 % l.length) / WAVEFORM_DOWNSAMPLE as u64) as usize;
                             if i < l.waveform[0].len() - 1 {
@@ -381,7 +384,7 @@ impl Gui {
         self.root.min_size(&self.state)
     }
 
-    pub fn draw(&mut self, canvas: &mut Canvas, w: f32, h: f32, last_event: Option<GuiEvent>) {
+    pub fn draw(&mut self, canvas: &Canvas, w: f32, h: f32, last_event: Option<GuiEvent>) {
         if self.initialized {
             self.root
                 .draw(canvas, &self.state, w, h, &mut self.controller, last_event);

@@ -12,16 +12,16 @@ license = "MIT OR Apache-2.0"
 log = "0.4"
 hound = "3.4.0"
 
-bytes = "1.0"
-dirs = "4.0"
+bytes = "1.5"
+dirs = "5.0"
 
-skia-safe = {version = "0.50", features = ["gl", "x11"]}
+skia-safe = {version = "0.69", features = ["gl", "x11"]}
 
-sdl2 = "0.35"
+sdl2 = "0.36"
 
-tinyfiledialogs = "3.3"
+tinyfiledialogs = "3.9"
 lazy_static = "1"
-chrono = "0.4.11"
+chrono = "0.4.31"
 
 regex = "1"
 
