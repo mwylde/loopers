@@ -174,7 +174,7 @@ impl Eq for Trigger {}
 
 impl PartialOrd for Trigger {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.triggered_at.partial_cmp(&other.triggered_at)
+        Some(self.cmp(other))
     }
 }
 

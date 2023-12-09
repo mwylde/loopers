@@ -8,7 +8,7 @@ use skia_safe::{
 use std::f32::consts::PI;
 use std::time::UNIX_EPOCH;
 
-pub fn draw_circle_indicator(canvas: &mut Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
+pub fn draw_circle_indicator(canvas: &Canvas, color: Color, p: f32, x: f32, y: f32, r: f32) {
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
     paint.set_color(color);
@@ -44,36 +44,31 @@ pub trait Button {
         bounds: &Rect,
         on_click: F,
         event: Option<GuiEvent>,
-    ) -> () {
-        if let Some(event) = event {
-            match event {
-                GuiEvent::MouseEvent(typ, pos) => {
-                    let point = canvas
-                        .local_to_device_as_3x3()
-                        .invert()
-                        .unwrap()
-                        .map_point((pos.0 as f32, pos.1 as f32));
-                    if bounds.contains(point) {
-                        match typ {
-                            MouseEventType::MouseDown(MouseButton::Left) => {
-                                self.set_state(ButtonState::Pressed);
-                            }
-                            MouseEventType::MouseUp(button) => {
-                                if self.get_state() == ButtonState::Pressed {
-                                    on_click(button);
-                                }
-                                self.set_state(ButtonState::Hover);
-                            }
-                            MouseEventType::Moved => {
-                                self.set_state(ButtonState::Hover);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        self.set_state(ButtonState::Default);
+    ) {
+        if let Some(GuiEvent::MouseEvent(typ, pos)) = event {
+            let point = canvas
+                .local_to_device_as_3x3()
+                .invert()
+                .unwrap()
+                .map_point((pos.0 as f32, pos.1 as f32));
+            if bounds.contains(point) {
+                match typ {
+                    MouseEventType::MouseDown(MouseButton::Left) => {
+                        self.set_state(ButtonState::Pressed);
                     }
+                    MouseEventType::MouseUp(button) => {
+                        if self.get_state() == ButtonState::Pressed {
+                            on_click(button);
+                        }
+                        self.set_state(ButtonState::Hover);
+                    }
+                    MouseEventType::Moved => {
+                        self.set_state(ButtonState::Hover);
+                    }
+                    _ => {}
                 }
-                _ => {}
+            } else {
+                self.set_state(ButtonState::Default);
             }
         }
     }
@@ -113,9 +108,9 @@ impl ControlButton {
         }
     }
 
-    pub fn draw<F: FnOnce(MouseButton) -> ()>(
+    pub fn draw<F: FnOnce(MouseButton)>(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         is_active: bool,
         disabled: bool,
         on_click: F,
@@ -124,9 +119,9 @@ impl ControlButton {
         self.draw_with_progress(canvas, is_active, disabled, on_click, last_event, 0.0)
     }
 
-    pub fn draw_with_progress<F: FnOnce(MouseButton) -> ()>(
+    pub fn draw_with_progress<F: FnOnce(MouseButton)>(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         is_active: bool,
         disabled: bool,
         on_click: F,
@@ -161,7 +156,7 @@ impl ControlButton {
             Style::Stroke
         });
 
-        canvas.draw_rect(&bounds, &paint);
+        canvas.draw_rect(bounds, &paint);
 
         if progress_percent > 0.0 {
             let progress = Rect {
@@ -176,7 +171,7 @@ impl ControlButton {
             paint.set_stroke_width(2.0);
             paint.set_color(self.color);
             paint.set_style(Style::Fill);
-            canvas.draw_rect(&progress, &paint);
+            canvas.draw_rect(progress, &paint);
         }
 
         let mut text_paint = Paint::default();
@@ -208,10 +203,11 @@ impl Button for ControlButton {
 
 #[allow(dead_code)]
 pub trait Modal {
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         manager: &mut ModalManager,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         w: f32,
         h: f32,
         data: &AppData,
@@ -242,7 +238,7 @@ impl ModalManager {
 
     pub fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         w: f32,
         h: f32,
         data: &AppData,
@@ -279,7 +275,7 @@ pub trait TextEditable {
 
     fn draw_edit(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         font: &Font,
         bounds: &Rect,
         sender: &mut Controller,
@@ -310,7 +306,7 @@ pub trait TextEditable {
                         }
 
                         edited.push(c);
-                        if !Self::is_valid(&edited) {
+                        if !Self::is_valid(edited) {
                             edited.pop();
                         }
 
@@ -347,7 +343,7 @@ pub trait TextEditable {
             if *selected {
                 if !edited.is_empty() {
                     paint.set_color(Color::BLUE);
-                    canvas.draw_rect(&text_bounds, &paint);
+                    canvas.draw_rect(text_bounds, &paint);
                 }
             } else {
                 text_paint.set_color(Color::BLACK);
@@ -371,7 +367,7 @@ pub trait TextEditable {
                 }
             }
 
-            canvas.draw_str(edited, Point::new(15.0, 18.0), &font, &text_paint);
+            canvas.draw_str(edited, Point::new(15.0, 18.0), font, &text_paint);
         }
 
         if commit {
@@ -398,7 +394,7 @@ impl PotWidget {
     // level is [-1, 1], with 0 centered
     pub fn draw<F: FnOnce(f32)>(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         level: f32,
         new_level: F,
         last_event: Option<GuiEvent>,
@@ -434,7 +430,7 @@ impl PotWidget {
         bg_paint.set_anti_alias(true);
         bg_paint.set_stroke_width(7.0);
         bg_paint.set_style(Style::Stroke);
-        bg_paint.set_color(crate::skia::BACKGROUND_COLOR.clone());
+        bg_paint.set_color(*crate::skia::BACKGROUND_COLOR);
 
         canvas.draw_path(&path, &bg_paint);
         canvas.draw_path(&path, &paint);

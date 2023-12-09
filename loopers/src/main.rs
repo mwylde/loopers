@@ -15,13 +15,13 @@ mod loopers_jack;
 #[cfg(target_os = "macos")]
 mod looper_coreaudio;
 
-use clap::{App, Arg};
+use crate::loopers_jack::jack_main;
+use clap::{arg, Command};
 use crossbeam_channel::bounded;
 use loopers_common::gui_channel::GuiSender;
 use loopers_gui::Gui;
 use std::io;
 use std::process::exit;
-use crate::loopers_jack::jack_main;
 
 // metronome sounds; included in the binary for now to ease usage of cargo install
 const SINE_NORMAL: &[u8] = include_bytes!("../resources/sine_normal.wav");
@@ -63,7 +63,6 @@ const DEFAULT_DRIVER: &str = "coreaudio";
 #[cfg(not(target_os = "macos"))]
 const DEFAULT_DRIVER: &str = "jack";
 
-
 fn main() {
     let drivers = if cfg!(feature = "coreaudio-rs") {
         "coreaudio, jack"
@@ -71,36 +70,30 @@ fn main() {
         "jack"
     };
 
-    let matches = App::new("loopers")
+    let matches = Command::new("loopers")
         .version("0.1.2")
         .author("Micah Wylde <micah@micahw.com>")
         .about(
             "Loopers is a graphical live looper, designed for ease of use and rock-solid stability",
         )
+        .arg(arg!(--restore "Automatically restores the last saved session"))
+        .arg(arg!(--"no-gui" "Launches in headless mode (without the gui)"))
         .arg(
-            Arg::with_name("restore")
-                .long("restore")
-                .help("Automatically restores the last saved session"),
-        )
-        .arg(
-            Arg::with_name("no-gui")
-                .long("no-gui")
-                .help("Launches in headless mode (without the gui)"),
-        )
-        .arg(
-            Arg::with_name("driver")
-                .long("driver")
-                .takes_value(true)
+            arg!(--driver <VALUE>)
                 .default_value(DEFAULT_DRIVER)
-                .help(&format!("Controls which audio driver to use (included drivers: {})", drivers)))
-        .arg(Arg::with_name("debug").long("debug"))
+                .help(format!(
+                    "Controls which audio driver to use (included drivers: {})",
+                    drivers
+                )),
+        )
+        .arg(arg!(--debug))
         .get_matches();
 
-    if let Err(e) = setup_logger(matches.is_present("debug")) {
+    if let Err(e) = setup_logger(matches.get_flag("debug")) {
         eprintln!("Unable to set up logging: {:?}", e);
     }
 
-    let restore = matches.is_present("restore");
+    let restore = matches.get_flag("restore");
 
     if restore {
         info!("Restoring previous session");
@@ -108,7 +101,7 @@ fn main() {
 
     let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
 
-    let (gui, gui_sender) = if !matches.is_present("no-gui") {
+    let (gui, gui_sender) = if !matches.get_flag("no-gui") {
         let (sender, receiver) = GuiSender::new();
         (
             Some(Gui::new(receiver, gui_to_engine_sender, sender.clone())),
@@ -120,30 +113,38 @@ fn main() {
 
     // read wav files
     let reader = hound::WavReader::new(SINE_NORMAL).unwrap();
-    let beat_normal: Vec<f32> = reader
-        .into_samples()
-        .into_iter()
-        .map(|x| x.unwrap())
-        .collect();
+    let beat_normal: Vec<f32> = reader.into_samples().map(|x| x.unwrap()).collect();
 
     let reader = hound::WavReader::new(SINE_EMPHASIS).unwrap();
-    let beat_emphasis: Vec<f32> = reader
-        .into_samples()
-        .into_iter()
-        .map(|x| x.unwrap())
-        .collect();
+    let beat_emphasis: Vec<f32> = reader.into_samples().map(|x| x.unwrap()).collect();
 
-    match matches.value_of("driver")
-        .unwrap_or(DEFAULT_DRIVER) {
+    match matches
+        .get_one("driver")
+        .unwrap_or(&DEFAULT_DRIVER.to_string())
+        .as_str()
+    {
         "jack" => {
-            jack_main(gui, gui_sender, gui_to_engine_receiver, beat_normal, beat_emphasis, restore);
+            jack_main(
+                gui,
+                gui_sender,
+                gui_to_engine_receiver,
+                beat_normal,
+                beat_emphasis,
+                restore,
+            );
         }
         "coreaudio" => {
             if cfg!(target_os = "macos") {
                 #[cfg(target_os = "macos")]
                 crate::looper_coreaudio::coreaudio_main(
-                    gui, gui_sender, gui_to_engine_receiver, beat_normal, beat_emphasis, restore)
-                    .expect("failed to set up coreaudio");
+                    gui,
+                    gui_sender,
+                    gui_to_engine_receiver,
+                    beat_normal,
+                    beat_emphasis,
+                    restore,
+                )
+                .expect("failed to set up coreaudio");
             } else {
                 eprintln!("Coreaudio is not supported on this system; choose another driver");
                 exit(1);
@@ -154,6 +155,4 @@ fn main() {
             exit(1);
         }
     }
-
 }
-

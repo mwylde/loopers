@@ -1,5 +1,5 @@
 use skia_safe::gpu::gl::FramebufferInfo;
-use skia_safe::gpu::{BackendRenderTarget, DirectContext, SurfaceOrigin};
+use skia_safe::gpu::{self, DirectContext, SurfaceOrigin};
 use skia_safe::{
     Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob, Typeface,
 };
@@ -23,6 +23,7 @@ const INITIAL_HEIGHT: i32 = 600;
 
 lazy_static! {
     pub static ref BACKGROUND_COLOR: Color = Color::from_rgb(29, 30, 39);
+    // pub static ref BACKGROUND_COLOR: Color = Color::GREEN;
 }
 
 fn create_surface(
@@ -33,7 +34,7 @@ fn create_surface(
     scale_factor: f32,
 ) -> Surface {
     let backend_render_target =
-        BackendRenderTarget::new_gl((size.0 as i32, size.1 as i32), 0, 8, fb_info);
+        gpu::backend_render_targets::make_gl((size.0 as i32, size.1 as i32), 0, 8, fb_info);
 
     let color_type = match pixel_format {
         PixelFormatEnum::RGBA8888 => ColorType::RGBA8888,
@@ -45,7 +46,7 @@ fn create_surface(
         }
     };
 
-    let mut surface = Surface::from_backend_render_target(
+    let mut surface = gpu::surfaces::wrap_backend_render_target(
         gr_context,
         &backend_render_target,
         SurfaceOrigin::BottomLeft,
@@ -83,7 +84,7 @@ pub fn skia_main(mut gui: Gui) {
 
     // must live until window is destroyed
     let _ctx = window.gl_create_context().unwrap();
-    gl::load_with(|name| video_subsystem.gl_get_proc_address(&name) as *const _);
+    gl::load_with(|name| video_subsystem.gl_get_proc_address(name) as *const _);
 
     let debug = std::env::var("DEBUG").is_ok();
 
@@ -95,6 +96,7 @@ pub fn skia_main(mut gui: Gui) {
     let fb_info = FramebufferInfo {
         fboid: fboid.try_into().unwrap(),
         format: skia_safe::gpu::gl::Format::RGBA8.into(),
+        protected: gpu::Protected::No,
     };
 
     let size = window.drawable_size();
@@ -145,31 +147,25 @@ pub fn skia_main(mut gui: Gui) {
                         && keymod.contains(Mod::LSHIFTMOD)
                     {
                         capture_debug_frame = true;
-                    } else {
-                        match keycode {
-                            Some(key) => {
-                                if let Some(c) = char_from_key(key) {
-                                    last_event = Some(GuiEvent::KeyEvent(
-                                        KeyEventType::Pressed,
-                                        KeyEventKey::Char(c),
-                                    ));
-                                } else {
-                                    let key = match key {
-                                        Keycode::Backspace | Keycode::Delete => {
-                                            Some(KeyEventKey::Backspace)
-                                        }
-                                        Keycode::Escape => Some(KeyEventKey::Esc),
-                                        Keycode::Return => Some(KeyEventKey::Enter),
-                                        _ => None,
-                                    };
-
-                                    if let Some(key) = key {
-                                        last_event =
-                                            Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key));
-                                    }
+                    } else if let Some(key) = keycode {
+                        if let Some(c) = char_from_key(key) {
+                            last_event = Some(GuiEvent::KeyEvent(
+                                KeyEventType::Pressed,
+                                KeyEventKey::Char(c),
+                            ));
+                        } else {
+                            let key = match key {
+                                Keycode::Backspace | Keycode::Delete => {
+                                    Some(KeyEventKey::Backspace)
                                 }
+                                Keycode::Escape => Some(KeyEventKey::Esc),
+                                Keycode::Return => Some(KeyEventKey::Enter),
+                                _ => None,
+                            };
+
+                            if let Some(key) = key {
+                                last_event = Some(GuiEvent::KeyEvent(KeyEventType::Pressed, key));
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -204,20 +200,20 @@ pub fn skia_main(mut gui: Gui) {
             }
         }
 
-        let mut canvas = surface.canvas();
-        canvas.clear(BACKGROUND_COLOR.clone());
+        let canvas = surface.canvas();
+        canvas.clear(*BACKGROUND_COLOR);
 
         let size = window.drawable_size();
 
         if capture_debug_frame {
             let mut recorder = PictureRecorder::new();
-            let mut recording_canvas =
+            let recording_canvas =
                 recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None);
 
-            canvas.clear(BACKGROUND_COLOR.clone());
+            canvas.clear(*BACKGROUND_COLOR);
 
             gui.draw(
-                &mut recording_canvas,
+                recording_canvas,
                 window.size().0 as f32,
                 window.size().1 as f32,
                 last_event,
@@ -237,7 +233,7 @@ pub fn skia_main(mut gui: Gui) {
         }
 
         gui.draw(
-            &mut canvas,
+            canvas,
             window.size().0 as f32,
             window.size().1 as f32,
             last_event,
@@ -268,7 +264,7 @@ pub fn skia_main(mut gui: Gui) {
                 &paint,
             );
         }
-        surface.flush();
+        gr_context.flush_and_submit();
 
         let new_min_size = gui.min_size();
         if new_min_size != min_size {
