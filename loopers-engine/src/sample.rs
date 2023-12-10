@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::fmt::{Debug, Formatter};
-use loopers_common::api::LooperSpeed;
 use itertools::Itertools;
+use loopers_common::api::LooperSpeed;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests {
@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn test_record() {
-        let mut sample = Sample::new();
+        let mut sample = Sample::default();
         let data = [vec![1.0f32, 1.0], vec![-1.0, -1.0]];
 
         sample.record(&[&data[0], &data[1]]);
@@ -108,7 +108,6 @@ mod tests {
             vec![-1.0f32, -1.0, -2.0, -2.0, -3.0, -3.0, -4.0, -4.0],
             sample.buffer[1]
         );
-
     }
 
     #[test]
@@ -178,11 +177,13 @@ impl Debug for Sample {
     }
 }
 
-impl Sample {
-    pub fn new() -> Sample {
+impl Default for Sample {
+    fn default() -> Self {
         Sample::with_size(0)
     }
+}
 
+impl Sample {
     pub fn with_size(len: usize) -> Sample {
         Sample {
             buffer: [vec![0f32; len], vec![0f32; len]],
@@ -242,8 +243,7 @@ impl Sample {
                     }
                 }
             }
-        };
-
+        }
     }
 
     pub fn replace(&mut self, time_in_samples: u64, data: &[&[f32]]) {
@@ -285,6 +285,7 @@ impl Sample {
         // assert!(end_time <= xfade_size as u64,
         //         format!("expected {} <= {}", end_time, xfade_size));
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..data.len() {
             for j in 0..data[i].len() {
                 let idx = ((time_in_samples + j as u64) % len) as usize;

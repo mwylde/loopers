@@ -22,7 +22,6 @@ use std::mem::swap;
 use atomic::Atomic;
 use std::sync::atomic::Ordering;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,10 +60,7 @@ mod tests {
             expected,
             "backend has unexpected length"
         );
-        assert_eq!(
-            looper.length(), expected,
-            "looper has unexpected length"
-        );
+        assert_eq!(looper.length(), expected, "looper has unexpected length");
     }
 
     fn looper_for_test() -> Looper {
@@ -207,7 +203,7 @@ mod tests {
             input_right[i] = -(i as f32 + 1.0);
         }
 
-        let mut t = 0 as i64;
+        let mut t = 0_i64;
 
         l.process_input(t as u64, &[&input_left, &input_right], Part::A);
         process_until_done(&mut l);
@@ -280,12 +276,7 @@ mod tests {
         l.transition_to(LooperMode::Playing);
         process_until_done(&mut l);
 
-        l.process_output(
-            FrameTime(0),
-            &mut [&mut o_l, &mut o_r],
-            Part::A,
-            true,
-        );
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], Part::A, true);
 
         for i in 0..128 {
             assert_eq!(0.0, o_l[i]);
@@ -297,12 +288,7 @@ mod tests {
         l.transition_to(LooperMode::Soloed);
         process_until_done(&mut l);
 
-        l.process_output(
-            FrameTime(0),
-            &mut [&mut o_l, &mut o_r],
-            Part::A,
-            true,
-        );
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], Part::A, true);
 
         for i in 0..128 {
             assert_eq!(1.0, o_l[i]);
@@ -316,12 +302,7 @@ mod tests {
         l.set_time(FrameTime(0));
         process_until_done(&mut l);
 
-        l.process_output(
-            FrameTime(0),
-            &mut [&mut o_l, &mut o_r],
-            Part::B,
-            true,
-        );
+        l.process_output(FrameTime(0), &mut [&mut o_l, &mut o_r], Part::B, true);
 
         for i in 0..128 {
             assert_eq!(0.0, o_l[i]);
@@ -747,6 +728,7 @@ mod tests {
 const CROSS_FADE_SAMPLES: usize = 8192;
 
 struct StateMachine {
+    #[allow(clippy::type_complexity)]
     transitions: Vec<(
         Vec<LooperMode>,
         Vec<LooperMode>,
@@ -828,7 +810,7 @@ struct TransferBuf<DATA: Copy> {
 
 impl<DATA: Copy> TransferBuf<DATA> {
     pub fn contains_t(&self, time: FrameTime) -> bool {
-        return time.0 >= self.time.0 && time.0 < self.time.0 + self.size as i64;
+        time.0 >= self.time.0 && time.0 < self.time.0 + self.size as i64
     }
 
     pub fn get_t(&self, time: FrameTime) -> Option<(DATA, DATA)> {
@@ -846,18 +828,19 @@ fn compute_waveform(samples: &[Sample], downsample: usize) -> Waveform {
     let size = len / downsample + 1;
     let mut out = [Vec::with_capacity(size), Vec::with_capacity(size)];
 
+    #[allow(clippy::needless_range_loop)]
     for c in 0..2 {
         for t in (0..len).step_by(downsample) {
             let mut p = 0f64;
             let end = downsample.min(len - t);
             for s in samples {
                 for j in 0..end {
-                    let i = t as usize + j;
+                    let i = t + j;
                     p += s.buffer[c][i].abs() as f64;
                 }
             }
 
-            out[c].push((p as f64 / (samples.len() as f64 * end as f64)) as f32);
+            out[c].push((p / (samples.len() as f64 * end as f64)) as f32);
         }
     }
 
@@ -903,6 +886,7 @@ impl WaveformGenerator {
 
         for i in 0..samples[0].len() {
             if self.size < WAVEFORM_DOWNSAMPLE {
+                #[allow(clippy::needless_range_loop)]
                 for c in 0..2 {
                     self.acc[c] += samples[c][i].abs();
                 }
@@ -1038,7 +1022,7 @@ impl LooperBackend {
     }
 
     pub fn mode(&self) -> LooperMode {
-        return self.mode.load(Ordering::Relaxed);
+        self.mode.load(Ordering::Relaxed)
     }
 
     fn handle_msg(&mut self, msg: ControlMessage) -> bool /* continue */ {
@@ -1131,23 +1115,19 @@ impl LooperBackend {
             }
             ControlMessage::SetPan(pan) => {
                 self.pan = pan;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id,
-                    self.current_state(),
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::SetLevel(level) => {
                 self.level = level;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::SetParts(parts) => {
                 self.parts = parts;
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
-            },
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
+            }
             ControlMessage::Undo => {
                 info!("Performing Undo on queue: {:?}", self.undo_queue);
 
@@ -1156,9 +1136,8 @@ impl LooperBackend {
                         self.redo_queue.push_back(change);
                     }
                 }
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::Redo => {
                 info!("Performing Redo on queue: {:?}", self.redo_queue);
@@ -1167,9 +1146,8 @@ impl LooperBackend {
                         self.undo_queue.push_back(change);
                     }
                 }
-                self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                    self.id, self.current_state()
-                ));
+                self.gui_sender
+                    .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::StopOutput => {
                 self.should_output = false;
@@ -1198,7 +1176,8 @@ impl LooperBackend {
             }
         } else {
             t
-        }.rem_euclid(self.length.load(Ordering::Relaxed) as i64) as usize
+        }
+        .rem_euclid(self.length.load(Ordering::Relaxed) as i64) as usize
     }
 
     fn fill_output(&mut self) {
@@ -1209,7 +1188,7 @@ impl LooperBackend {
             // make sure we don't pass our input and don't spend too much time doing this
             let mut count = 0;
             let end = self.in_time.0 + sample_len as i64;
-            while self.out_time.0 + 1 < end as i64
+            while self.out_time.0 + 1 < end
                 && count < 32
                 && self.out_queue.len() < self.out_queue.capacity() / 2
             {
@@ -1226,10 +1205,12 @@ impl LooperBackend {
                         continue;
                     }
 
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..2 {
                         for t in 0..buf.size {
-                            buf.data[i][t] +=
-                                b[i][self.time_loop_idx(self.out_time + FrameTime(t as i64), true)] as f64;
+                            buf.data[i][t] += b[i]
+                                [self.time_loop_idx(self.out_time + FrameTime(t as i64), true)]
+                                as f64;
                         }
                     }
                 }
@@ -1310,7 +1291,7 @@ impl LooperBackend {
 
     fn prepare_for_recording(&mut self, _: LooperMode) {
         self.samples.clear();
-        self.samples.push(Sample::new());
+        self.samples.push(Sample::default());
         self.length.store(0, Ordering::Relaxed);
     }
 
@@ -1379,6 +1360,7 @@ impl LooperBackend {
             // TODO: this logic should probably be abstracted out into Sample so it can be reused
             //       between here and fill_output
             let mut wv = [vec![0f64; inputs[0].len()], vec![0f64; inputs[0].len()]];
+            #[allow(clippy::needless_range_loop)]
             for c in 0..2 {
                 for i in 0..inputs[0].len() {
                     for s in &self.samples {
@@ -1461,30 +1443,29 @@ impl LooperBackend {
     fn add_change(&mut self, change: LooperChange) {
         self.undo_queue.push_back(change);
         self.redo_queue.clear();
-        self.gui_sender.send_update(GuiCommand::LooperStateChange(
-            self.id, self.current_state()
-        ));
+        self.gui_sender
+            .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
     }
 
     fn reset_gui(&mut self) {
         if self.length_in_samples(false) > 0 {
-            self.gui_sender.send_update(GuiCommand::UpdateLooperWithSamples(
-                self.id,
-                self.length_in_samples(true),
-                Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
-                self.current_state(),
-            ));
+            self.gui_sender
+                .send_update(GuiCommand::UpdateLooperWithSamples(
+                    self.id,
+                    self.length_in_samples(true),
+                    Box::new(compute_waveform(&self.samples, WAVEFORM_DOWNSAMPLE)),
+                    self.current_state(),
+                ));
         } else {
-            self.gui_sender.send_update(GuiCommand::LooperStateChange(
-                self.id, self.current_state()))
+            self.gui_sender
+                .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()))
         }
     }
 
     fn undo_change(&mut self, change: LooperChange) -> Option<LooperChange> {
         match change {
             LooperChange::PushSample => {
-                let sample = self.samples.pop()
-                    .map(|s| LooperChange::PopSample(s));
+                let sample = self.samples.pop().map(LooperChange::PopSample);
                 self.gui_needs_reset = true;
                 sample
             }
@@ -1493,14 +1474,20 @@ impl LooperBackend {
                 self.gui_needs_reset = true;
                 Some(LooperChange::PushSample)
             }
-            LooperChange::Clear { samples, in_time, out_time, offset } => {
+            LooperChange::Clear {
+                samples,
+                in_time,
+                out_time,
+                offset,
+            } => {
                 self.samples = samples;
                 self.in_time = in_time;
                 self.out_time = out_time;
                 self.offset = offset;
 
                 if !self.samples.is_empty() {
-                    self.length.store(self.samples[0].length(), Ordering::Relaxed);
+                    self.length
+                        .store(self.samples[0].length(), Ordering::Relaxed);
                 }
 
                 self.gui_needs_reset = true;
@@ -1562,7 +1549,7 @@ impl LooperBackend {
         for (i, s) in self.samples.iter().enumerate() {
             let name = format!("loop_{}_{}.wav", self.id, i);
             let p = path.join(&name);
-            let mut writer = hound::WavWriter::create(&p, spec.clone())?;
+            let mut writer = hound::WavWriter::create(&p, spec)?;
 
             for j in 0..s.length() as usize {
                 writer.write_sample(s.buffer[0][j])?;
@@ -1588,7 +1575,6 @@ pub struct Looper {
     pub level: f32,
 
     pub pan_law: PanLaw,
-
 
     // this is pretty hacky -- we sometimes need a way to see the mode that has been just set on the
     // looper, before it's had a chance to make it to the backend
@@ -1620,6 +1606,7 @@ impl Looper {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new_with_samples(
         id: u32,
         parts: PartSet,
@@ -1636,7 +1623,7 @@ impl Looper {
 
         let (s, r) = bounded(1000);
 
-        let length = samples.get(0).map(|s| s.length()).unwrap_or(0);
+        let length = samples.first().map(|s| s.length()).unwrap_or(0);
 
         let state = LooperState {
             mode: LooperMode::Playing,
@@ -1661,9 +1648,9 @@ impl Looper {
         }
 
         let mode = Arc::new(Atomic::new(LooperMode::Playing));
-        let length = Arc::new(Atomic::new(samples.get(0)
-            .map(|s| s.length())
-            .unwrap_or(0)));
+        let length = Arc::new(Atomic::new(
+            samples.first().map(|s| s.length()).unwrap_or(0),
+        ));
 
         let backend = LooperBackend {
             id,
@@ -1716,7 +1703,7 @@ impl Looper {
             in_progress_output: None,
 
             last_time: FrameTime(0),
-            local_mode: None
+            local_mode: None,
         }
     }
 
@@ -1729,7 +1716,7 @@ impl Looper {
         for sample_path in &state.samples {
             let mut reader = hound::WavReader::open(&path.join(sample_path))?;
 
-            let mut sample = Sample::new();
+            let mut sample = Sample::default();
             let mut left = Vec::with_capacity(reader.len() as usize / 2);
             let mut right = Vec::with_capacity(reader.len() as usize / 2);
 
@@ -1791,7 +1778,7 @@ impl Looper {
     }
 
     pub fn local_mode(&self) -> LooperMode {
-        return self.local_mode.unwrap_or(self.mode());
+        self.local_mode.unwrap_or(self.mode())
     }
 
     pub fn mode(&self) -> LooperMode {
@@ -1872,7 +1859,8 @@ impl Looper {
                 // TODO: this logic is duplicated in the gui, would be good to unify somehow
                 if self.length() == 0 {
                     self.transition_to(LooperMode::Recording);
-                } else if self.mode() == LooperMode::Recording || self.mode() == LooperMode::Playing {
+                } else if self.mode() == LooperMode::Recording || self.mode() == LooperMode::Playing
+                {
                     self.transition_to(LooperMode::Overdubbing);
                 } else {
                     self.transition_to(LooperMode::Playing);
@@ -1892,9 +1880,7 @@ impl Looper {
     }
 
     fn output_for_t(&mut self, t: FrameTime) -> Option<(f64, f64)> {
-        let mut cur = self
-            .in_progress_output
-            .or_else(|| self.in_queue.pop())?;
+        let mut cur = self.in_progress_output.or_else(|| self.in_queue.pop())?;
         self.in_progress_output = Some(cur);
 
         loop {
@@ -1923,16 +1909,16 @@ impl Looper {
 
     fn should_output(&self, part: Part, solo: bool) -> bool {
         if !self.parts[part] {
-            return false
+            return false;
         }
 
         if solo && self.mode() != LooperMode::Soloed {
-            return false
+            return false;
         }
 
-        return self.mode() == LooperMode::Playing ||
-            self.mode() == LooperMode::Overdubbing ||
-            self.mode() == LooperMode::Soloed
+        self.mode() == LooperMode::Playing
+            || self.mode() == LooperMode::Overdubbing
+            || self.mode() == LooperMode::Soloed
     }
 
     // In process_output, we modify the specified output buffers according to our internal state. In
@@ -2012,7 +1998,7 @@ impl Looper {
 
         let mut buf = TransferBuf {
             id: msg_id,
-            time: FrameTime(0 as i64),
+            time: FrameTime(0),
             size: 0,
             data: [[0f32; TRANSFER_BUF_SIZE]; 2],
         };
@@ -2027,13 +2013,11 @@ impl Looper {
 
             if self.parts[part] {
                 // if this is not the current part, send 0s
-                for i in 0..l.len() {
-                    buf.data[0][i] = l[i];
-                    buf.data[1][i] = r[i];
-                }
+                buf.data[0][..l.len()].copy_from_slice(l);
+                buf.data[1][..r.len()].copy_from_slice(r);
             }
 
-            if let Err(_) = self.out_queue.push(buf) {
+            if self.out_queue.push(buf).is_err() {
                 // TODO: handle error case where our queue is full
                 error!("queue is full on looper {}", self.id);
             }
@@ -2061,7 +2045,7 @@ impl Looper {
 
 impl Drop for Looper {
     fn drop(&mut self) {
-        if let Err(_) = self.channel.send(ControlMessage::Shutdown) {
+        if self.channel.send(ControlMessage::Shutdown).is_err() {
             warn!("failed to shutdown backend because queue was full");
         }
     }
