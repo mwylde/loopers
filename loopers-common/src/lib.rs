@@ -28,6 +28,7 @@ pub fn f32_to_i16(v: f32) -> i16 {
     (v * 32768.0).floor() as i16
 }
 
+#[allow(unused_variables)]
 pub trait Host<'a> {
     fn add_looper(&mut self, id: u32) -> Result<(), String>;
     fn remove_looper(&mut self, id: u32) -> Result<(), String>;
@@ -38,6 +39,6 @@ pub trait Host<'a> {
 
     fn start_transport(&mut self) {}
     fn stop_transport(&mut self) {}
-    #[allow(unused_variables)]
-    fn set_position(&mut self, time: FrameTime, metric_structure: MetricStructure) {}
+    fn set_transport_position(&mut self, time: FrameTime, metric_structure: MetricStructure) {}
+    fn set_transport_bpm(&mut self, bpm: f32) {}
 }

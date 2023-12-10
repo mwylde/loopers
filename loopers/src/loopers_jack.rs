@@ -1,4 +1,7 @@
 use crossbeam_channel::{bounded, Receiver, Sender};
+use jack::jack_sys::{
+    jack_nframes_t, jack_position_t, jack_set_timebase_callback, jack_transport_state_t,
+};
 use jack::{AudioOut, Port, ProcessScope};
 use loopers_common::api::Command;
 use loopers_common::api::FrameTime;
@@ -9,6 +12,9 @@ use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::collections::HashMap;
+use std::ffi::c_void;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::{io, thread};
 
 enum ClientChange {
@@ -80,7 +86,7 @@ impl<'a> Host<'a> for JackHost<'a> {
         }
     }
 
-    fn set_position(&mut self, time: FrameTime, ms: MetricStructure) {
+    fn set_transport_position(&mut self, time: FrameTime, ms: MetricStructure) {
         if let Err(e) = self
             .port_change_tx
             .try_send(ClientChange::TransportPosition(time, ms))
@@ -175,10 +181,83 @@ impl jack::NotificationHandler for Notifications {
     }
 }
 
+fn update_transport_position(
+    pos: &mut jack::TransportPosition,
+    time: FrameTime,
+    ms: MetricStructure,
+) {
+    pos.set_frame(time.0 as u32);
+
+    let mut bbt = pos.bbt().unwrap_or_default();
+
+    let beat = ms.tempo.beat(time);
+    let beats_per_bar = ms.time_signature.upper;
+
+    if beats_per_bar != 0 && beat >= 0 {
+        bbt.bar = (beat / beats_per_bar as i64) as usize + 1;
+        bbt.beat = (beat % beats_per_bar as i64) as usize + 1;
+    }
+
+    bbt.with_ticks_per_beat(ms.tempo.samples_per_beat() as f64);
+    bbt.tick = (time.0 - beat * ms.tempo.samples_per_beat() as i64) as usize;
+
+    bbt.with_bpm(ms.tempo.bpm() as f64).with_timesig(
+        ms.time_signature.upper as f32,
+        ms.time_signature.lower as f32,
+    );
+
+    if let Err(e) = pos.set_bbt(Some(bbt)) {
+        error!("Invalid metric structure: {}", e);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn timebase_callback(
+    _state: jack_transport_state_t,
+    _nframes: jack_nframes_t,
+    pos: *mut jack_position_t,
+    new_pos: std::ffi::c_int,
+    arg: *mut std::ffi::c_void,
+) {
+    let mut engine = unsafe { &mut *(arg as *mut Arc<Mutex<Engine>>) }
+        .lock()
+        .unwrap();
+    let pos = unsafe { &mut *pos.cast::<jack::TransportPosition>() };
+    if new_pos != 0 {
+        engine.time = pos.frame() as i64;
+    }
+    update_transport_position(pos, FrameTime(engine.time), engine.metric_structure);
+}
+
+fn transport_listener(
+    transport: jack::Transport,
+    stop: Arc<AtomicBool>,
+    command_sender: Sender<Command>,
+) {
+    std::thread::spawn(move || {
+        let mut state_last: Option<jack::TransportState> = None;
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            if let Ok(jack::TransportStatePosition { state, .. }) = transport.query() {
+                if Some(state) != state_last {
+                    let _ = match state {
+                        jack::TransportState::Starting | jack::TransportState::Rolling => {
+                            command_sender.send(Command::Start(false))
+                        }
+                        jack::TransportState::Stopped => command_sender.send(Command::Pause(false)),
+                    };
+                    state_last = Some(state);
+                }
+            }
+        }
+    });
+}
+
 pub fn jack_main(
     gui: Option<Gui>,
     gui_sender: GuiSender,
-    gui_to_engine_receiver: Receiver<Command>,
+    command_to_engine_sender: Sender<Command>,
+    command_to_engine_receiver: Receiver<Command>,
     beat_normal: Vec<f32>,
     beat_emphasis: Vec<f32>,
     restore: bool,
@@ -217,16 +296,25 @@ pub fn jack_main(
         port_change_resp: port_change_resp_rx.clone(),
     };
 
-    let mut engine = Engine::new(
+    let engine = Arc::new(Mutex::new(Engine::new(
         &mut host,
         gui_sender,
-        gui_to_engine_receiver,
+        command_to_engine_receiver,
         beat_normal,
         beat_emphasis,
         restore,
         client.sample_rate(),
-    );
+    )));
 
+    let mut engine_clone = engine.clone();
+    unsafe {
+        jack_set_timebase_callback(
+            client.raw(),
+            0,
+            Some(timebase_callback),
+            &mut engine_clone as *mut _ as *mut c_void,
+        );
+    }
     let process_port_change = port_change_tx.clone();
 
     let process_callback =
@@ -268,7 +356,7 @@ pub fn jack_main(
                 .filter_map(|e| MidiEvent::from_bytes(e.bytes))
                 .collect();
 
-            engine.process(
+            engine.lock().unwrap().process(
                 &mut host,
                 in_bufs,
                 out_l,
@@ -284,6 +372,15 @@ pub fn jack_main(
 
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
+
+    let transport = active_client.as_client().transport();
+    let stop_transport_listener = Arc::new(AtomicBool::new(false));
+
+    transport_listener(
+        transport,
+        stop_transport_listener.clone(),
+        command_to_engine_sender,
+    );
 
     thread::spawn(move || loop {
         match port_change_rx.recv() {
@@ -340,27 +437,15 @@ pub fn jack_main(
                         break;
                     }
                 };
-                pos.set_frame(time.0 as u32);
 
-                let mut bbt = pos.bbt().unwrap_or(jack::TransportBBT::default());
-
-                bbt.with_bpm(ms.tempo.bpm() as f64).with_timesig(
-                    ms.time_signature.upper as f32,
-                    ms.time_signature.lower as f32,
-                );
-
-                if let Err(e) = pos.set_bbt(Some(bbt)) {
-                    error!("Invalid metric structure: {}", e);
-                }
+                update_transport_position(&mut pos, time, ms);
 
                 if let Err(e) = transport.reposition(&pos) {
                     error!("Failed to reposition transport: {}", e);
                 }
             }
-            Ok(ClientChange::Shutdown) => {
-                break;
-            }
-            Err(_) => {
+            Ok(ClientChange::Shutdown) | Err(_) => {
+                stop_transport_listener.store(true, std::sync::atomic::Ordering::Relaxed);
                 break;
             }
         }

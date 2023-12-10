@@ -1235,9 +1235,9 @@ impl PlayPauseButton {
             |button| {
                 if button == MouseButton::Left {
                     let command = if data.engine_state.engine_state == EngineState::Active {
-                        Command::Pause
+                        Command::Pause(true)
                     } else {
-                        Command::Start
+                        Command::Start(true)
                     };
 
                     controller.send_command(command, "Failed to send command to engine");
@@ -1315,7 +1315,7 @@ impl StopButton {
             &bounds,
             |button| {
                 if button == MouseButton::Left {
-                    controller.send_command(Command::Stop, "Failed to stop engine");
+                    controller.send_command(Command::Stop(true), "Failed to stop engine");
                 }
             },
             last_event,

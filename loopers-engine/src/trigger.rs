@@ -33,17 +33,27 @@ mod tests {
             time_signature: TimeSignature::new(4, 4).unwrap(),
         };
 
-        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(0));
+        let t = Trigger::new(
+            TriggerCondition::Measure,
+            Command::Start(false),
+            ms,
+            FrameTime(0),
+        );
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Measure, Command::Start, ms, FrameTime(1));
+        let t = Trigger::new(
+            TriggerCondition::Measure,
+            Command::Start(false),
+            ms,
+            FrameTime(1),
+        );
 
         assert_eq!(FrameTime(88200), t.triggered_at());
 
         let t = Trigger::new(
             TriggerCondition::Measure,
-            Command::Start,
+            Command::Start(false),
             ms,
             FrameTime(-30000),
         );
@@ -52,7 +62,7 @@ mod tests {
 
         let t = Trigger::new(
             TriggerCondition::Measure,
-            Command::Start,
+            Command::Start(false),
             ms,
             FrameTime(88200),
         );
@@ -67,11 +77,21 @@ mod tests {
             time_signature: TimeSignature::new(4, 4).unwrap(),
         };
 
-        let t = Trigger::new(TriggerCondition::Beat, Command::Start, ms, FrameTime(0));
+        let t = Trigger::new(
+            TriggerCondition::Beat,
+            Command::Start(false),
+            ms,
+            FrameTime(0),
+        );
 
         assert_eq!(FrameTime(0), t.triggered_at());
 
-        let t = Trigger::new(TriggerCondition::Beat, Command::Start, ms, FrameTime(1));
+        let t = Trigger::new(
+            TriggerCondition::Beat,
+            Command::Start(false),
+            ms,
+            FrameTime(1),
+        );
 
         assert_eq!(FrameTime(22050), t.triggered_at);
     }
@@ -85,7 +105,7 @@ mod tests {
             };
 
             let t = Trigger::new(TriggerCondition::Measure,
-                                 Command::Start, ms, FrameTime(time));
+                                 Command::Start(false), ms, FrameTime(time));
 
 
             assert_eq!(correct_measure_trigger(&t), t.triggered_at());

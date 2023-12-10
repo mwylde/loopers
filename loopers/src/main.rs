@@ -99,12 +99,16 @@ fn main() {
         info!("Restoring previous session");
     }
 
-    let (gui_to_engine_sender, gui_to_engine_receiver) = bounded(100);
+    let (command_to_engine_sender, command_to_engine_receiver) = bounded(100);
 
     let (gui, gui_sender) = if !matches.get_flag("no-gui") {
         let (sender, receiver) = GuiSender::new();
         (
-            Some(Gui::new(receiver, gui_to_engine_sender, sender.clone())),
+            Some(Gui::new(
+                receiver,
+                command_to_engine_sender.clone(),
+                sender.clone(),
+            )),
             sender,
         )
     } else {
@@ -127,7 +131,8 @@ fn main() {
             jack_main(
                 gui,
                 gui_sender,
-                gui_to_engine_receiver,
+                command_to_engine_sender,
+                command_to_engine_receiver,
                 beat_normal,
                 beat_emphasis,
                 restore,
@@ -139,7 +144,7 @@ fn main() {
                 crate::looper_coreaudio::coreaudio_main(
                     gui,
                     gui_sender,
-                    gui_to_engine_receiver,
+                    command_to_engine_receiver,
                     beat_normal,
                     beat_emphasis,
                     restore,

@@ -15,7 +15,7 @@ mod tests {
     #[test]
     fn test_from_str() {
         assert_eq!(
-            Command::Start,
+            Command::Start(false),
             Command::from_str("Start", &[][..]).unwrap()(CommandData { data: 0 })
         );
 
@@ -224,12 +224,12 @@ impl LooperCommand {
 pub enum Command {
     Looper(LooperCommand, LooperTarget),
 
-    Start,
-    Stop,
-    Pause,
+    Start(bool), // set_transport
+    Stop(bool), // set_transport
+    Pause(bool), // set_transport
 
-    StartStop,
-    PlayPause,
+    StartStop(bool), // set_transport
+    PlayPause(bool), // set_transport
 
     Reset,
     SetTime(FrameTime),
@@ -244,6 +244,8 @@ pub enum Command {
     PreviousPart,
     NextPart,
     GoToPart(Part),
+    SetTransportPosition(FrameTime),
+    StartTransport,
 
     SetQuantizationMode(QuantizationMode),
 
@@ -262,11 +264,11 @@ impl Command {
         args: &[&str],
     ) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
         Ok(match command {
-            "Start" => Box::new(|_| Command::Start),
-            "Stop" => Box::new(|_| Command::Stop),
-            "Pause" => Box::new(|_| Command::Pause),
-            "StartStop" => Box::new(|_| Command::StartStop),
-            "PlayPause" => Box::new(|_| Command::PlayPause),
+            "Start" => Box::new(|_| Command::Start(false)),
+            "Stop" => Box::new(|_| Command::Stop(false)),
+            "Pause" => Box::new(|_| Command::Pause(false)),
+            "StartStop" => Box::new(|_| Command::StartStop(false)),
+            "PlayPause" => Box::new(|_| Command::PlayPause(false)),
             "Reset" => Box::new(|_| Command::Reset),
 
             "SetTime" => {

@@ -45,9 +45,9 @@ pub struct Engine {
 
     state: EngineState,
 
-    time: i64,
+    pub time: i64,
 
-    metric_structure: MetricStructure,
+    pub metric_structure: MetricStructure,
 
     command_input: Receiver<Command>,
 
@@ -117,6 +117,40 @@ pub fn read_config() -> Result<Config, String> {
     }
 
     Ok(config)
+}
+
+/// Starts host transport (e.g. jack transport), and sets the transport position to the current time
+/// In case the time is negative, use triggers at time 0 instead
+fn start_transport<'a, H: Host<'a>>(engine: &mut Engine, host: &mut H) {
+    if engine.time < 0 {
+        let start_time = FrameTime(0);
+        let set_position_trigger = Trigger::new(
+            TriggerCondition::Immediate,
+            Command::SetTransportPosition(start_time),
+            engine.metric_structure,
+            start_time,
+        );
+        let start_trigger = Trigger::new(
+            TriggerCondition::Immediate,
+            Command::StartTransport,
+            engine.metric_structure,
+            start_time,
+        );
+        // avoid weird behavior by removing previous start/position transport triggers
+        // TODO this currently removes all StartTransport/SetTransportPosition triggers,
+        // this could be more precise, by only removing start_time (0) triggers
+        engine.triggers.retain(|t| {
+            !matches!(
+                t.command,
+                Command::StartTransport | Command::SetTransportPosition(_)
+            )
+        });
+        Engine::add_trigger(&mut engine.triggers, set_position_trigger);
+        Engine::add_trigger(&mut engine.triggers, start_trigger);
+    } else {
+        host.set_transport_position(FrameTime(engine.time), engine.metric_structure);
+        host.start_transport();
+    }
 }
 
 impl Engine {
@@ -224,6 +258,10 @@ impl Engine {
         }
         self.triggers.clear();
         self.set_time(FrameTime(-self.measure_len().0), host);
+        host.stop_transport();
+        if self.state == EngineState::Active {
+            start_transport(self, host);
+        }
         for l in &mut self.loopers {
             l.handle_command(LooperCommand::Play);
         }
@@ -511,52 +549,51 @@ impl Engine {
             Looper(lc, target) => {
                 self.handle_loop_command(*lc, *target, triggered);
             }
-            Start => {
+            Start(set_transport) => {
                 self.state = EngineState::Active;
-                host.set_position(
-                    FrameTime(self.time + self.measure_len().0),
-                    self.metric_structure,
-                );
-                host.start_transport();
+                if *set_transport {
+                    start_transport(self, host);
+                }
             }
-            Pause => {
+            Pause(set_transport) => {
                 self.state = EngineState::Paused;
-                host.stop_transport();
+                if *set_transport {
+                    host.stop_transport();
+                }
             }
-            Stop => {
+            Stop(set_transport) => {
                 self.state = EngineState::Stopped;
+                if *set_transport {
+                    host.stop_transport();
+                }
                 self.reset(host);
-                host.stop_transport();
             }
-            StartStop => {
+            StartStop(set_transport) => {
                 self.state = match self.state {
                     EngineState::Stopped | EngineState::Paused => {
-                        host.set_position(
-                            FrameTime(self.time + self.measure_len().0),
-                            self.metric_structure,
-                        );
-                        host.start_transport();
+                        if *set_transport {
+                            start_transport(self, host);
+                        }
                         EngineState::Active
                     }
                     EngineState::Active => {
                         self.reset(host);
-                        host.stop_transport();
                         EngineState::Stopped
                     }
                 };
             }
-            PlayPause => {
+            PlayPause(set_transport) => {
                 self.state = match self.state {
                     EngineState::Stopped | EngineState::Paused => {
-                        host.set_position(
-                            FrameTime(self.time + self.measure_len().0),
-                            self.metric_structure,
-                        );
-                        host.start_transport();
+                        if *set_transport {
+                            start_transport(self, host);
+                        }
                         EngineState::Active
                     }
                     EngineState::Active => {
-                        host.stop_transport();
+                        if *set_transport {
+                            host.stop_transport();
+                        }
                         EngineState::Paused
                     }
                 }
@@ -739,6 +776,8 @@ impl Engine {
                     self.reset(host);
                 }
             }
+            SetTransportPosition(time) => host.set_transport_position(*time, self.metric_structure),
+            StartTransport => host.start_transport(),
         }
     }
 
@@ -776,7 +815,7 @@ impl Engine {
             for l in &mut self.loopers {
                 l.set_time(time);
             }
-            host.set_position(pos_time, self.metric_structure);
+            host.set_transport_position(pos_time, self.metric_structure);
         }
     }
 
@@ -1039,6 +1078,7 @@ impl Engine {
                         || l.local_mode() == LooperMode::Overdubbing
                 }))
         {
+            start_transport(self, host);
             self.state = EngineState::Active;
         }
 

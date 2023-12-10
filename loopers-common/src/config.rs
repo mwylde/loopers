@@ -58,7 +58,7 @@ mod tests {
         assert_eq!(24, mapping[2].controller);
         assert_eq!(DataValue::Value(6), mapping[2].data);
         assert_eq!(
-            Command::Start,
+            Command::Start(false),
             (mapping[2].command)(CommandData { data: 39 })
         );
 
