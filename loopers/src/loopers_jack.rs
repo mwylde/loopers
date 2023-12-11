@@ -223,7 +223,7 @@ pub extern "C" fn timebase_callback(
         .lock()
         .unwrap();
     let pos = unsafe { &mut *pos.cast::<jack::TransportPosition>() };
-    if new_pos != 0 {
+    if new_pos != 0 && (engine.time >= 0 || pos.frame() != 0) {
         engine.time = pos.frame() as i64;
     }
     update_transport_position(pos, FrameTime(engine.time), engine.metric_structure);
