@@ -6,6 +6,7 @@ use loopers_common::api::FrameTime;
 use std::sync::Arc;
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use loopers_common::music::Tempo;
     use super::*;

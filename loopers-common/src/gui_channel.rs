@@ -65,14 +65,15 @@ pub enum GuiCommand {
     AddGlobalTrigger(FrameTime, Command),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum LogLevel {
+    #[default]
     Info,
     Warn,
     Error,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct LogMessage {
     buffer: ArrayVec<u8, 256>,
     len: usize,
@@ -81,14 +82,6 @@ pub struct LogMessage {
 }
 
 impl LogMessage {
-    pub fn new() -> Self {
-        LogMessage {
-            buffer: ArrayVec::new(),
-            len: 0,
-            level: LogLevel::Info,
-        }
-    }
-
     pub fn error() -> Self {
         LogMessage {
             buffer: ArrayVec::new(),
@@ -131,7 +124,7 @@ impl GuiSender {
 
         let sender = GuiSender {
             cmd_channel: Some(tx),
-            cur_message: LogMessage::new(),
+            cur_message: LogMessage::default(),
             log_channel: Some(log_tx),
         };
 
@@ -146,7 +139,7 @@ impl GuiSender {
     pub fn disconnected() -> GuiSender {
         GuiSender {
             cmd_channel: None,
-            cur_message: LogMessage::new(),
+            cur_message: LogMessage::default(),
             log_channel: None,
         }
     }
@@ -165,7 +158,7 @@ impl GuiSender {
         }
     }
 
-    pub fn send_log(&mut self, message: LogMessage) -> () {
+    pub fn send_log(&mut self, message: LogMessage) {
         if let Err(e) = self.send_log_with_result(message) {
             warn!("Failed to send message to gui: {}", e);
         }

@@ -1,17 +1,28 @@
-use std::collections::HashMap;
-use std::{io, thread};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use jack::jack_sys::{
+    jack_nframes_t, jack_position_t, jack_set_timebase_callback, jack_transport_state_t,
+};
 use jack::{AudioOut, Port, ProcessScope};
-use crossbeam_channel::{bounded, Sender, Receiver};
 use loopers_common::api::Command;
+use loopers_common::api::FrameTime;
 use loopers_common::gui_channel::GuiSender;
-use loopers_common::Host;
 use loopers_common::midi::MidiEvent;
+use loopers_common::music::MetricStructure;
+use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::{io, thread};
 
 enum ClientChange {
     AddPort(u32),
     RemovePort(u32, Port<AudioOut>, Port<AudioOut>),
+    TransportStart,
+    TransportStop,
+    TransportPosition(FrameTime, MetricStructure),
     Shutdown,
 }
 
@@ -39,7 +50,10 @@ impl<'a> Host<'a> for JackHost<'a> {
 
     fn remove_looper(&mut self, id: u32) -> Result<(), String> {
         if let Some([l, r]) = self.looper_ports.remove(&id) {
-            if let Err(e) = self.port_change_tx.try_send(ClientChange::RemovePort(id, l, r)) {
+            if let Err(e) = self
+                .port_change_tx
+                .try_send(ClientChange::RemovePort(id, l, r))
+            {
                 warn!("Failed to send port remove request: {:?}", e);
             }
         }
@@ -48,19 +62,37 @@ impl<'a> Host<'a> for JackHost<'a> {
     }
 
     fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
-        where
-            'a: 'b,
+    where
+        'a: 'b,
     {
-        match self.port_change_resp.try_recv() {
-            Ok(ClientChangeResponse::PortAdded(id, l, r)) => {
-                self.looper_ports.insert(id, [l, r]);
-            }
-            Err(_) => {}
+        if let Ok(ClientChangeResponse::PortAdded(id, l, r)) = self.port_change_resp.try_recv() {
+            self.looper_ports.insert(id, [l, r]);
         }
 
         let ps = self.ps?;
         let [l, r] = self.looper_ports.get_mut(&id)?;
         Some([l.as_mut_slice(ps), r.as_mut_slice(ps)])
+    }
+
+    fn start_transport(&mut self) {
+        if let Err(e) = self.port_change_tx.try_send(ClientChange::TransportStart) {
+            warn!("Failed to send start transport request: {:?}", e);
+        }
+    }
+
+    fn stop_transport(&mut self) {
+        if let Err(e) = self.port_change_tx.try_send(ClientChange::TransportStop) {
+            warn!("Failed to send stop transport request: {:?}", e);
+        }
+    }
+
+    fn set_transport_position(&mut self, time: FrameTime, ms: MetricStructure) {
+        if let Err(e) = self
+            .port_change_tx
+            .try_send(ClientChange::TransportPosition(time, ms))
+        {
+            warn!("Failed to send position transport request: {:?}", e);
+        }
     }
 }
 
@@ -149,40 +181,107 @@ impl jack::NotificationHandler for Notifications {
     }
 }
 
-pub fn jack_main(gui: Option<Gui>,
-                 gui_sender: GuiSender,
-                 gui_to_engine_receiver: Receiver<Command>,
-                 beat_normal: Vec<f32>,
-                 beat_emphasis: Vec<f32>,
-                 restore: bool) {
+fn update_transport_position(
+    pos: &mut jack::TransportPosition,
+    time: FrameTime,
+    ms: MetricStructure,
+) {
+    pos.set_frame(time.0 as u32);
+
+    let mut bbt = pos.bbt().unwrap_or_default();
+
+    let beat = ms.tempo.beat(time);
+    let beats_per_bar = ms.time_signature.upper;
+
+    if beats_per_bar != 0 && beat >= 0 {
+        bbt.bar = (beat / beats_per_bar as i64) as usize + 1;
+        bbt.beat = (beat % beats_per_bar as i64) as usize + 1;
+    }
+
+    bbt.with_ticks_per_beat(ms.tempo.samples_per_beat() as f64);
+    bbt.tick = (time.0 - beat * ms.tempo.samples_per_beat() as i64) as usize;
+
+    bbt.with_bpm(ms.tempo.bpm() as f64).with_timesig(
+        ms.time_signature.upper as f32,
+        ms.time_signature.lower as f32,
+    );
+
+    if let Err(e) = pos.set_bbt(Some(bbt)) {
+        error!("Invalid metric structure: {}", e);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn timebase_callback(
+    _state: jack_transport_state_t,
+    _nframes: jack_nframes_t,
+    pos: *mut jack_position_t,
+    new_pos: std::ffi::c_int,
+    arg: *mut std::ffi::c_void,
+) {
+    let mut engine = unsafe { &mut *(arg as *mut Arc<Mutex<Engine>>) }
+        .lock()
+        .unwrap();
+    let pos = unsafe { &mut *pos.cast::<jack::TransportPosition>() };
+    if new_pos != 0 && (engine.time >= 0 || pos.frame() != 0) {
+        engine.time = pos.frame() as i64;
+    }
+    update_transport_position(pos, FrameTime(engine.time), engine.metric_structure);
+}
+
+fn transport_listener(
+    transport: jack::Transport,
+    stop: Arc<AtomicBool>,
+    command_sender: Sender<Command>,
+) {
+    std::thread::spawn(move || {
+        let mut state_last: Option<jack::TransportState> = None;
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            if let Ok(jack::TransportStatePosition { state, .. }) = transport.query() {
+                if Some(state) != state_last {
+                    let _ = match state {
+                        jack::TransportState::Starting | jack::TransportState::Rolling => {
+                            command_sender.send(Command::Start(false))
+                        }
+                        jack::TransportState::Stopped => command_sender.send(Command::Pause(false)),
+                    };
+                    state_last = Some(state);
+                }
+            }
+        }
+    });
+}
+
+pub fn jack_main(
+    gui: Option<Gui>,
+    gui_sender: GuiSender,
+    command_to_engine_sender: Sender<Command>,
+    command_to_engine_receiver: Receiver<Command>,
+    beat_normal: Vec<f32>,
+    beat_emphasis: Vec<f32>,
+    restore: bool,
+) {
     // Create client
     let (client, _status) = jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
         .expect("Jack server is not running");
 
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
-    let in_a = client
-        .register_port("in_l", jack::AudioIn::default())
-        .unwrap();
-    let in_b = client
-        .register_port("in_r", jack::AudioIn::default())
-        .unwrap();
-    let mut out_a = client
-        .register_port("main_out_l", jack::AudioOut::default())
-        .unwrap();
-    let mut out_b = client
-        .register_port("main_out_r", jack::AudioOut::default())
-        .unwrap();
+    let in_a = client.register_port("in_l", jack::AudioIn).unwrap();
+    let in_b = client.register_port("in_r", jack::AudioIn).unwrap();
+    let mut out_a = client.register_port("main_out_l", jack::AudioOut).unwrap();
+    let mut out_b = client.register_port("main_out_r", jack::AudioOut).unwrap();
 
     let mut met_out_a = client
-        .register_port("metronome_out_l", jack::AudioOut::default())
+        .register_port("metronome_out_l", jack::AudioOut)
         .unwrap();
     let mut met_out_b = client
-        .register_port("metronome_out_r", jack::AudioOut::default())
+        .register_port("metronome_out_r", jack::AudioOut)
         .unwrap();
 
     let midi_in = client
-        .register_port("loopers_midi_in", jack::MidiIn::default())
+        .register_port("loopers_midi_in", jack::MidiIn)
         .unwrap();
 
     let mut looper_ports: HashMap<u32, [Port<AudioOut>; 2]> = HashMap::new();
@@ -197,16 +296,25 @@ pub fn jack_main(gui: Option<Gui>,
         port_change_resp: port_change_resp_rx.clone(),
     };
 
-    let mut engine = Engine::new(
+    let engine = Arc::new(Mutex::new(Engine::new(
         &mut host,
         gui_sender,
-        gui_to_engine_receiver,
+        command_to_engine_receiver,
         beat_normal,
         beat_emphasis,
         restore,
         client.sample_rate(),
-    );
+    )));
 
+    let mut engine_clone = engine.clone();
+    unsafe {
+        jack_set_timebase_callback(
+            client.raw(),
+            0,
+            Some(timebase_callback),
+            &mut engine_clone as *mut _ as *mut c_void,
+        );
+    }
     let process_port_change = port_change_tx.clone();
 
     let process_callback =
@@ -248,7 +356,7 @@ pub fn jack_main(gui: Option<Gui>,
                 .filter_map(|e| MidiEvent::from_bytes(e.bytes))
                 .collect();
 
-            engine.process(
+            engine.lock().unwrap().process(
                 &mut host,
                 in_bufs,
                 out_l,
@@ -265,46 +373,80 @@ pub fn jack_main(gui: Option<Gui>,
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
 
-    thread::spawn(move || {
-        loop {
-            match port_change_rx.recv() {
-                Ok(ClientChange::AddPort(id)) => {
-                    let l = active_client
-                        .as_client()
-                        .register_port(&format!("loop{}_out_l", id), jack::AudioOut::default())
-                        .map_err(|e| format!("could not create jack port: {:?}", e));
-                    let r = active_client
-                        .as_client()
-                        .register_port(&format!("loop{}_out_r", id), jack::AudioOut::default())
-                        .map_err(|e| format!("could not create jack port: {:?}", e));
+    let transport = active_client.as_client().transport();
+    let stop_transport_listener = Arc::new(AtomicBool::new(false));
 
-                    match (l, r) {
-                        (Ok(l), Ok(r)) => {
-                            if let Err(_) = port_change_resp_tx.send(ClientChangeResponse::PortAdded(id, l, r)) {
-                                break;
-                            }
-                        }
-                        (Err(e), _) | (_, Err(e)) => {
-                            error!("Failed to register port with jack: {:?}", e);
+    transport_listener(
+        transport,
+        stop_transport_listener.clone(),
+        command_to_engine_sender,
+    );
+
+    thread::spawn(move || loop {
+        match port_change_rx.recv() {
+            Ok(ClientChange::AddPort(id)) => {
+                let l = active_client
+                    .as_client()
+                    .register_port(&format!("loop{}_out_l", id), jack::AudioOut)
+                    .map_err(|e| format!("could not create jack port: {:?}", e));
+                let r = active_client
+                    .as_client()
+                    .register_port(&format!("loop{}_out_r", id), jack::AudioOut)
+                    .map_err(|e| format!("could not create jack port: {:?}", e));
+
+                match (l, r) {
+                    (Ok(l), Ok(r)) => {
+                        if port_change_resp_tx
+                            .send(ClientChangeResponse::PortAdded(id, l, r))
+                            .is_err()
+                        {
+                            break;
                         }
                     }
-                }
-                Ok(ClientChange::RemovePort(id, l, r)) => {
-                    if let Err(e) = active_client.as_client()
-                        .unregister_port(l).and_then(|()| {
-                        active_client.as_client()
-                            .unregister_port(r)
-                    }) {
-                        error!("Unable to remove jack outputs: {:?}", e);
+                    (Err(e), _) | (_, Err(e)) => {
+                        error!("Failed to register port with jack: {:?}", e);
                     }
-                    info!("removed ports for looper {}", id);
                 }
-                Ok(ClientChange::Shutdown) => {
-                    break;
+            }
+            Ok(ClientChange::RemovePort(id, l, r)) => {
+                if let Err(e) = active_client
+                    .as_client()
+                    .unregister_port(l)
+                    .and_then(|()| active_client.as_client().unregister_port(r))
+                {
+                    error!("Unable to remove jack outputs: {:?}", e);
                 }
-                Err(_) => {
-                    break;
+                info!("removed ports for looper {}", id);
+            }
+            Ok(ClientChange::TransportStart) => {
+                if let Err(e) = active_client.as_client().transport().start() {
+                    error!("Failed to start jack transport: {:?}", e);
                 }
+            }
+            Ok(ClientChange::TransportStop) => {
+                if let Err(e) = active_client.as_client().transport().stop() {
+                    error!("Failed to stop jack transport: {:?}", e);
+                }
+            }
+            Ok(ClientChange::TransportPosition(time, ms)) => {
+                let transport = active_client.as_client().transport();
+                let mut pos = match transport.query() {
+                    Ok(jack::TransportStatePosition { pos, state: _ }) => pos,
+                    Err(e) => {
+                        error!("Failed to query transport position: {}", e);
+                        break;
+                    }
+                };
+
+                update_transport_position(&mut pos, time, ms);
+
+                if let Err(e) = transport.reposition(&pos) {
+                    error!("Failed to reposition transport: {}", e);
+                }
+            }
+            Ok(ClientChange::Shutdown) | Err(_) => {
+                stop_transport_listener.store(true, std::sync::atomic::Ordering::Relaxed);
+                break;
             }
         }
     });
@@ -322,7 +464,7 @@ pub fn jack_main(gui: Option<Gui>,
         }
     }
 
-    if let Err(_) = port_change_tx.send(ClientChange::Shutdown) {
+    if port_change_tx.send(ClientChange::Shutdown).is_err() {
         warn!("Failed to shutdown worker thread");
     }
 

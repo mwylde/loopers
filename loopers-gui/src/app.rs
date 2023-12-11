@@ -8,6 +8,7 @@ use loopers_common::api::{
     get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
     Part, QuantizationMode, PARTS,
 };
+use loopers_common::clamp;
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
@@ -23,7 +24,6 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use loopers_common::clamp;
 
 const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
 const METRONOME_ICON: &[u8] = include_bytes!("../resources/icons/metronome.png");
@@ -155,7 +155,7 @@ impl AddButton {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         _: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -213,7 +213,7 @@ impl DeleteButton {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         looper: &LooperData,
         size: f32,
         controller: &mut Controller,
@@ -320,7 +320,7 @@ impl MainPage {
 
     pub fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         w: f32,
         h: f32,
@@ -339,7 +339,7 @@ impl MainPage {
             .loopers
             .keys()
             .filter(|id| !data.loopers.contains_key(id))
-            .map(|id| *id)
+            .copied()
             .collect();
 
         for id in remove {
@@ -347,7 +347,7 @@ impl MainPage {
         }
 
         self.modal_manager
-            .draw(canvas, w as f32, h as f32, data, controller, last_event);
+            .draw(canvas, w, h, data, controller, last_event);
 
         let mut y = 0.0;
         let mut visible_loopers = 0;
@@ -440,12 +440,12 @@ impl MainPage {
             canvas.restore();
         }
 
-        let mut bottom = h as f32;
+        let mut bottom = h;
 
         // draw the message view if one exists
         canvas.save();
         canvas.translate((0.0, bottom - 90.0));
-        LogMessageView::draw(canvas, data).width;
+        LogMessageView::draw(canvas, data);
         canvas.restore();
 
         // draw the bottom bars
@@ -463,7 +463,7 @@ impl MainPage {
         canvas.translate(Vector::new(0.0, bottom - bar_height));
         self.bottom_bar.draw(
             data,
-            w as f32,
+            w,
             30.0,
             canvas,
             &mut self.modal_manager,
@@ -493,12 +493,13 @@ impl BottomBarView {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         data: &AppData,
         _w: f32,
         h: f32,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         _modal_manager: &mut ModalManager,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -520,9 +521,15 @@ impl BottomBarView {
         let size = self.time_view.draw(h, data, canvas, controller, last_event);
         canvas.translate((size.width.round() + 20.0, 0.0));
 
-        self.peak_view
-            .draw(canvas, data.engine_state.input_levels, None, 160.0, h,
-                  |_| {}, last_event);
+        self.peak_view.draw(
+            canvas,
+            data.engine_state.input_levels,
+            None,
+            160.0,
+            h,
+            |_| {},
+            last_event,
+        );
 
         canvas.restore();
     }
@@ -543,7 +550,7 @@ impl TempoView {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -613,7 +620,7 @@ impl Button for TempoView {
 impl TextEditable for TempoView {
     fn commit(&mut self, controller: &mut Controller) {
         if let TextEditState::Editing(_, s) = &self.edit_state {
-            if let Ok(tempo) = f32::from_str(&s) {
+            if let Ok(tempo) = f32::from_str(s) {
                 controller.send_command(Command::SetTempoBPM(tempo), "Failed to set tempo");
             } else if !s.is_empty() {
                 controller.log(&format!("Tempo {} is not valid", s));
@@ -651,7 +658,7 @@ impl MetronomeView {
         &mut self,
         h: f32,
         data: &AppData,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
@@ -826,7 +833,7 @@ struct MetronomeButton {
 
 impl MetronomeButton {
     fn new() -> Self {
-        let icon_data = Data::new_copy(&METRONOME_ICON);
+        let icon_data = Data::new_copy(METRONOME_ICON);
         let icon = Image::from_encoded(icon_data).expect("could not decode metronome icon");
 
         Self {
@@ -837,7 +844,7 @@ impl MetronomeButton {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -877,15 +884,18 @@ impl MetronomeButton {
                 ButtonState::Default => unreachable!(),
             };
 
-            canvas.draw_rect(&bounds.with_outset((3.0, 3.0)), &paint);
+            canvas.draw_rect(bounds.with_outset((3.0, 3.0)), &paint);
         }
 
         paint.set_alpha_f(data.engine_state.metronome_volume.min(1.0).max(0.3));
 
         canvas.draw_image_rect_with_sampling_options(
-            &self.icon, None, bounds,
+            &self.icon,
+            None,
+            bounds,
             CubicResampler::catmull_rom(),
-            &paint);
+            &paint,
+        );
 
         Size::new(25.0, 25.0)
     }
@@ -918,7 +928,7 @@ impl TimeView {
         &mut self,
         h: f32,
         data: &AppData,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
@@ -942,7 +952,7 @@ impl TimeView {
         text_paint.set_anti_alias(true);
 
         let time_blob = TextBlob::new(
-            &format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
+            format!("{}{:02}:{:02}:{:02}", negative, hours, minutes, seconds),
             &font,
         )
         .unwrap();
@@ -1035,7 +1045,7 @@ impl PeakMeterView {
         2.0 + i as f32 * (h / 2.0 - 3.0)
     }
 
-    fn redraw_if_needed(&mut self, canvas: &mut Canvas, paint: &mut Paint, w: f32, h: f32) {
+    fn redraw_if_needed(&mut self, canvas: &Canvas, paint: &mut Paint, w: f32, h: f32) {
         if let Some((_, instant)) = &self.image {
             if instant.elapsed() < self.update_time {
                 return;
@@ -1044,12 +1054,13 @@ impl PeakMeterView {
 
         let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
 
-        let mut surface = Surface::new_render_target(
+        let mut surface = gpu::surfaces::render_target(
             &mut canvas.recording_context().unwrap(),
-            Budgeted::Yes,
+            gpu::Budgeted::Yes,
             &image_info,
             None,
             SurfaceOrigin::TopLeft,
+            None,
             None,
             None,
         )
@@ -1070,7 +1081,7 @@ impl PeakMeterView {
 
                 path.move_to((x, y));
                 path.line_to((x, y + h / 2.0 - 7.0));
-                surface.canvas().draw_path(&path, &paint);
+                surface.canvas().draw_path(&path, paint);
             }
         }
         self.levels = [0, 0];
@@ -1078,8 +1089,17 @@ impl PeakMeterView {
         self.image = Some((surface.image_snapshot(), Instant::now()));
     }
 
-    fn draw<F: FnOnce(f32)>(&mut self, canvas: &mut Canvas, levels: [u8; 2], set_level: Option<f32>,
-                            w: f32, h: f32, new_level: F, last_event: Option<GuiEvent>) -> Size {
+    #[allow(clippy::too_many_arguments)]
+    fn draw<F: FnOnce(f32)>(
+        &mut self,
+        canvas: &Canvas,
+        levels: [u8; 2],
+        set_level: Option<f32>,
+        w: f32,
+        h: f32,
+        new_level: F,
+        last_event: Option<GuiEvent>,
+    ) -> Size {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke_width(1.5);
@@ -1119,9 +1139,11 @@ impl PeakMeterView {
             paint.set_anti_alias(true);
 
             canvas.draw_image_with_sampling_options(
-                &image, (0.0, 0.0),
+                image,
+                (0.0, 0.0),
                 CubicResampler::catmull_rom(),
-                Some(&paint));
+                Some(&paint),
+            );
         }
 
         // draw peak
@@ -1155,7 +1177,10 @@ impl PeakMeterView {
 
             // handle clicks
             let bounds = Rect::from_size((w, h));
-            if let Some(GuiEvent::MouseEvent(MouseEventType::MouseDown(MouseButton::Left), (x, y))) = last_event
+            if let Some(GuiEvent::MouseEvent(
+                MouseEventType::MouseDown(MouseButton::Left),
+                (x, y),
+            )) = last_event
             {
                 let point = canvas
                     .local_to_device_as_3x3()
@@ -1180,7 +1205,6 @@ impl PeakMeterView {
             }
         }
 
-
         Size::new(w, h)
     }
 }
@@ -1198,7 +1222,7 @@ impl PlayPauseButton {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -1211,9 +1235,9 @@ impl PlayPauseButton {
             |button| {
                 if button == MouseButton::Left {
                     let command = if data.engine_state.engine_state == EngineState::Active {
-                        Command::Pause
+                        Command::Pause(true)
                     } else {
-                        Command::Start
+                        Command::Start(true)
                     };
 
                     controller.send_command(command, "Failed to send command to engine");
@@ -1239,8 +1263,8 @@ impl PlayPauseButton {
             // draw pause button
             let rect1 = Rect::new(0.0, 0.0, 7.5, 20.0);
             let rect2 = Rect::new(12.5, 0.0, 20.0, 20.0);
-            canvas.draw_rect(&rect1, &paint);
-            canvas.draw_rect(&rect2, &paint);
+            canvas.draw_rect(rect1, &paint);
+            canvas.draw_rect(rect2, &paint);
         } else {
             // draw play icon
             let mut path = Path::new();
@@ -1279,7 +1303,7 @@ impl StopButton {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         _data: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -1291,7 +1315,7 @@ impl StopButton {
             &bounds,
             |button| {
                 if button == MouseButton::Left {
-                    controller.send_command(Command::Stop, "Failed to stop engine");
+                    controller.send_command(Command::Stop(true), "Failed to stop engine");
                 }
             },
             last_event,
@@ -1311,7 +1335,7 @@ impl StopButton {
         }
 
         let rect = Rect::new(0.0, 0.0, 20.0, 20.0);
-        canvas.draw_rect(&rect, &paint);
+        canvas.draw_rect(rect, &paint);
 
         Size::new(25.0, 25.0)
     }
@@ -1420,11 +1444,11 @@ impl BottomButtonView {
                 ),
                 (
                     BottomButtonBehavior::Undo,
-                    ControlButton::new("Undo", c, None, 22.0)
+                    ControlButton::new("Undo", c, None, 22.0),
                 ),
                 (
                     BottomButtonBehavior::Redo,
-                    ControlButton::new("Redo", c, None, 22.0)
+                    ControlButton::new("Redo", c, None, 22.0),
                 ),
             ],
             load_window: LoadWindow {
@@ -1435,7 +1459,7 @@ impl BottomButtonView {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
@@ -1446,7 +1470,7 @@ impl BottomButtonView {
             canvas.save();
             canvas.translate((x, 0.0));
 
-            let behavior = behavior.clone();
+            let behavior = *behavior;
 
             let on_click = |button: MouseButton| {
                 if button == MouseButton::Left {
@@ -1478,26 +1502,30 @@ impl BottomButtonView {
                         BottomButtonBehavior::Undo => {
                             controller.send_command(
                                 Command::Looper(LooperCommand::Undo, LooperTarget::Selected),
-                                "Failed to undo");
+                                "Failed to undo",
+                            );
                         }
                         BottomButtonBehavior::Redo => {
                             controller.send_command(
                                 Command::Looper(LooperCommand::Redo, LooperTarget::Selected),
-                                "Failed to redo");
+                                "Failed to redo",
+                            );
                         }
                     };
                 }
             };
 
             let disabled = match behavior {
-                BottomButtonBehavior::Undo => {
-                    data.loopers.get(&data.engine_state.active_looper).map(|l| !l.has_undos)
-                        .unwrap_or(false)
-                }
-                BottomButtonBehavior::Redo => {
-                    data.loopers.get(&data.engine_state.active_looper).map(|l| !l.has_redos)
-                        .unwrap_or(true)
-                }
+                BottomButtonBehavior::Undo => data
+                    .loopers
+                    .get(&data.engine_state.active_looper)
+                    .map(|l| !l.has_undos)
+                    .unwrap_or(false),
+                BottomButtonBehavior::Redo => data
+                    .loopers
+                    .get(&data.engine_state.active_looper)
+                    .map(|l| !l.has_redos)
+                    .unwrap_or(true),
                 _ => false,
             };
 
@@ -1556,7 +1584,7 @@ impl BottomButtonView {
 struct LogMessageView {}
 
 impl LogMessageView {
-    fn draw(canvas: &mut Canvas, data: &AppData) -> Size {
+    fn draw(canvas: &Canvas, data: &AppData) -> Size {
         let msg = data.messages.cur.as_ref().map(|(_, l)| l.as_str());
         if let Some(msg) = msg.as_ref() {
             let font = Font::new(Typeface::default(), Some(14.0));
@@ -1583,9 +1611,10 @@ impl LogMessageView {
 struct LooperView {
     id: u32,
     waveform_view: WaveformView,
+    #[allow(clippy::type_complexity)]
     buttons: Vec<
         Vec<(
-            Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size>,
+            Box<dyn FnMut(&Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size>,
             f32,
         )>,
     >,
@@ -1638,23 +1667,13 @@ impl LooperView {
                         15.0,
                     ),
                     (
-                        Self::new_speed_button(
-                            "½x",
-                            LooperSpeed::Half,
-                            button_height,
-                            45.0
-                        ),
-                        10.0
+                        Self::new_speed_button("½x", LooperSpeed::Half, button_height, 45.0),
+                        10.0,
                     ),
                     (
-                        Self::new_speed_button(
-                            "2x",
-                            LooperSpeed::Double,
-                            button_height,
-                            45.0
-                        ),
-                        15.0
-                    )
+                        Self::new_speed_button("2x", LooperSpeed::Double, button_height, 45.0),
+                        15.0,
+                    ),
                 ],
             ],
             state: ButtonState::Default,
@@ -1665,13 +1684,14 @@ impl LooperView {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn new_command_button(
         name: &str,
         color: Color,
         command: Command,
         h: f32,
         w: f32,
-    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+    ) -> Box<dyn FnMut(&Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
         let mut button = ControlButton::new(name, color, Some(w), h);
 
         Box::new(move |canvas, _, controller, last_event| {
@@ -1690,12 +1710,13 @@ impl LooperView {
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn new_speed_button(
         name: &str,
         speed: LooperSpeed,
         h: f32,
         w: f32,
-    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+    ) -> Box<dyn FnMut(&Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
         let mut button = ControlButton::new(name, Color::LIGHT_GRAY, Some(w), h);
 
         Box::new(move |canvas, data, controller, last_event| {
@@ -1705,11 +1726,14 @@ impl LooperView {
                 false,
                 |button| {
                     if button == MouseButton::Left {
-                        let command = Command::Looper(LooperCommand::SetSpeed(if data.speed == speed {
-                            LooperSpeed::One
-                        } else {
-                            speed
-                        }), LooperTarget::Id(data.id));
+                        let command = Command::Looper(
+                            LooperCommand::SetSpeed(if data.speed == speed {
+                                LooperSpeed::One
+                            } else {
+                                speed
+                            }),
+                            LooperTarget::Id(data.id),
+                        );
 
                         controller.send_command(command, "Failed to send command to engine");
                     }
@@ -1719,10 +1743,11 @@ impl LooperView {
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn new_part_button(
         part: Part,
         h: f32,
-    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+    ) -> Box<dyn FnMut(&Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
         let mut button =
             ControlButton::new(part.name(), Color::from_rgb(78, 78, 78), Some(28.0), h);
 
@@ -1750,11 +1775,12 @@ impl LooperView {
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn new_state_button(
         mode: LooperMode,
         name: &str,
         h: f32,
-    ) -> Box<dyn FnMut(&mut Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
+    ) -> Box<dyn FnMut(&Canvas, &LooperData, &mut Controller, Option<GuiEvent>) -> Size> {
         let mut button = ControlButton::new(name, color_for_mode(mode), Some(100.0), h);
 
         Box::new(move |canvas, looper, controller, last_event| {
@@ -1795,7 +1821,7 @@ impl LooperView {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         looper: &LooperData,
         w: f32,
@@ -1848,7 +1874,6 @@ impl LooperView {
             canvas.draw_str(text, Point::new(x, 55.0), &font, &paint);
         }
 
-
         let waveform_width = w - WAVEFORM_OFFSET_X - WAVEFORM_RIGHT_MARGIN;
 
         let bounds = Rect::from_size((waveform_width, LOOPER_HEIGHT))
@@ -1879,11 +1904,20 @@ impl LooperView {
             last_event,
         );
         canvas.translate((0.0, 40.0));
-        self.peak.draw(canvas, looper.levels, Some(looper.level), 70.0, 30.0,
-                       |level| controller.send_command(
-                           Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
-                           "Failed to set level"
-                       ), last_event);
+        self.peak.draw(
+            canvas,
+            looper.levels,
+            Some(looper.level),
+            70.0,
+            30.0,
+            |level| {
+                controller.send_command(
+                    Command::Looper(LooperCommand::SetLevel(level), LooperTarget::Id(looper.id)),
+                    "Failed to set level",
+                )
+            },
+            last_event,
+        );
 
         canvas.restore();
 
@@ -1928,7 +1962,7 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::from_argb(200, 0, 0, 0));
-            canvas.draw_rect(&bounds, &paint);
+            canvas.draw_rect(bounds, &paint);
 
             // draw delete button
             let delete_size = 10.0;
@@ -1961,7 +1995,7 @@ impl LooperView {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_blend_mode(BlendMode::Darken);
-            paint.set_color(BACKGROUND_COLOR.clone().with_a(200));
+            paint.set_color((*BACKGROUND_COLOR).with_a(200));
             canvas.draw_rect(
                 Rect::new(
                     WAVEFORM_OFFSET_X,
@@ -1991,14 +2025,8 @@ impl Button for LooperView {
 
 const IMAGE_SCALE: f32 = 4.0;
 
-type CacheUpdaterFn = fn(
-    data: &AppData,
-    looper: &LooperData,
-    w: f32,
-    h: f32,
-    scale: f32,
-    canvas: &mut Canvas,
-) -> Size;
+type CacheUpdaterFn =
+    fn(data: &AppData, looper: &LooperData, w: f32, h: f32, scale: f32, canvas: &Canvas) -> Size;
 
 struct DrawCache<T: Eq + Copy> {
     image: Option<(Image, Size)>,
@@ -2024,7 +2052,7 @@ impl<T: Eq + Copy> DrawCache<T> {
         looper: &LooperData,
         w: f32,
         h: f32,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
     ) -> Option<Size> {
         let size = ((w * IMAGE_SCALE) as i32, (h * IMAGE_SCALE) as i32);
 
@@ -2040,12 +2068,13 @@ impl<T: Eq + Copy> DrawCache<T> {
             != size
         {
             let image_info = ImageInfo::new_n32(size, AlphaType::Premul, None);
-            let mut surface = Surface::new_render_target(
+            let mut surface = gpu::surfaces::render_target(
                 &mut canvas.recording_context()?,
-                Budgeted::Yes,
+                gpu::Budgeted::Yes,
                 &image_info,
                 None,
                 SurfaceOrigin::TopLeft,
+                None,
                 None,
                 None,
             )?;
@@ -2056,7 +2085,7 @@ impl<T: Eq + Copy> DrawCache<T> {
                 w * IMAGE_SCALE,
                 h * IMAGE_SCALE,
                 IMAGE_SCALE,
-                &mut surface.canvas(),
+                surface.canvas(),
             );
 
             let image = surface.image_snapshot();
@@ -2076,14 +2105,17 @@ impl<T: Eq + Copy> DrawCache<T> {
         paint.set_color(Color::from_rgb(255, 255, 0));
         canvas.scale((1.0 / IMAGE_SCALE, 1.0 / IMAGE_SCALE));
         canvas.draw_image_with_sampling_options(
-            image, (0.0, 0.0),
+            image,
+            (0.0, 0.0),
             CubicResampler::catmull_rom(),
-            Some(&paint));
+            Some(&paint),
+        );
         canvas.restore();
 
         Some(*size)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         key: T,
@@ -2092,7 +2124,7 @@ impl<T: Eq + Copy> DrawCache<T> {
         w: f32,
         h: f32,
         use_cache: bool,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
     ) -> Size {
         if use_cache {
             if let Some(size) = self.draw_with_cache(key, data, looper, w, h, canvas) {
@@ -2100,7 +2132,7 @@ impl<T: Eq + Copy> DrawCache<T> {
             }
         }
 
-        return (self.draw_fn)(data, looper, w, h, 1.0, canvas);
+        (self.draw_fn)(data, looper, w, h, 1.0, canvas)
     }
 }
 
@@ -2115,9 +2147,9 @@ impl ActiveButton {
         }
     }
 
-    fn draw<F: FnOnce(MouseButton) -> ()>(
+    fn draw<F: FnOnce(MouseButton)>(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         is_active: bool,
         on_click: F,
         last_event: Option<GuiEvent>,
@@ -2167,7 +2199,7 @@ struct WaveformView {
 
 impl WaveformView {
     fn new() -> Self {
-        let loop_icon_data = Data::new_copy(&LOOP_ICON);
+        let loop_icon_data = Data::new_copy(LOOP_ICON);
         let loop_icon = Image::from_encoded(loop_icon_data).expect("could not decode loop icon");
 
         Self {
@@ -2228,7 +2260,7 @@ impl WaveformView {
         w: f32,
         h: f32,
         _: f32,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
     ) -> Size {
         let p = Self::path_for_waveform([&looper.waveform[0], &looper.waveform[1]], w, h);
 
@@ -2248,7 +2280,7 @@ impl WaveformView {
         w: f32,
         h: f32,
         scale: f32,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
     ) -> Size {
         let mut beat_p = Path::new();
         let mut bar_p = Path::new();
@@ -2304,7 +2336,7 @@ impl WaveformView {
 
     fn draw(
         &mut self,
-        canvas: &mut Canvas,
+        canvas: &Canvas,
         data: &AppData,
         looper: &LooperData,
         w: f32,
@@ -2512,7 +2544,7 @@ impl WaveformView {
 
                 let x = -self.time_to_x(data.engine_state.time - time) as f32;
                 let rect = Rect::new(x, 15.0, w, h - 15.0);
-                canvas.draw_rect(&rect, &paint);
+                canvas.draw_rect(rect, &paint);
 
                 if let Some(text) = text {
                     let font = Font::new(Typeface::default(), 24.0);
@@ -2520,7 +2552,7 @@ impl WaveformView {
                     text_paint.set_color(Color::BLACK);
                     text_paint.set_anti_alias(true);
 
-                    let time_blob = TextBlob::new(&text, &font).unwrap();
+                    let time_blob = TextBlob::new(text, &font).unwrap();
                     canvas.draw_text_blob(
                         &time_blob,
                         Point::new(x + 10.0, h / 2.0 + 6.0),

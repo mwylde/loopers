@@ -45,9 +45,9 @@ pub struct Engine {
 
     state: EngineState,
 
-    time: i64,
+    pub time: i64,
 
-    metric_structure: MetricStructure,
+    pub metric_structure: MetricStructure,
 
     command_input: Receiver<Command>,
 
@@ -87,7 +87,7 @@ fn max_abs(b: &[f32]) -> f32 {
 }
 
 pub fn last_session_path() -> io::Result<PathBuf> {
-    let mut config_path = dirs::config_dir().unwrap_or(PathBuf::new());
+    let mut config_path = dirs::config_dir().unwrap_or_default();
     config_path.push("loopers");
     create_dir_all(&config_path)?;
     config_path.push(".last-session");
@@ -95,10 +95,10 @@ pub fn last_session_path() -> io::Result<PathBuf> {
 }
 
 pub fn read_config() -> Result<Config, String> {
-    let mut mapping_path = dirs::config_dir().unwrap_or(PathBuf::new());
+    let mut mapping_path = dirs::config_dir().unwrap_or_default();
     mapping_path.push("loopers/midi_mappings.tsv");
 
-    let mut config = Config::new();
+    let mut config = Config::default();
 
     match File::open(&mapping_path) {
         Ok(file) => match MidiMapping::from_file(&mapping_path.to_string_lossy(), &file) {
@@ -117,6 +117,40 @@ pub fn read_config() -> Result<Config, String> {
     }
 
     Ok(config)
+}
+
+/// Starts host transport (e.g. jack transport), and sets the transport position to the current time
+/// In case the time is negative, use triggers at time 0 instead
+fn start_transport<'a, H: Host<'a>>(engine: &mut Engine, host: &mut H) {
+    if engine.time < 0 {
+        let start_time = FrameTime(0);
+        let set_position_trigger = Trigger::new(
+            TriggerCondition::Immediate,
+            Command::SetTransportPosition(start_time),
+            engine.metric_structure,
+            start_time,
+        );
+        let start_trigger = Trigger::new(
+            TriggerCondition::Immediate,
+            Command::StartTransport,
+            engine.metric_structure,
+            start_time,
+        );
+        // avoid weird behavior by removing previous start/position transport triggers
+        // TODO this currently removes all StartTransport/SetTransportPosition triggers,
+        // this could be more precise, by only removing start_time (0) triggers
+        engine.triggers.retain(|t| {
+            !matches!(
+                t.command,
+                Command::StartTransport | Command::SetTransportPosition(_)
+            )
+        });
+        Engine::add_trigger(&mut engine.triggers, set_position_trigger);
+        Engine::add_trigger(&mut engine.triggers, start_trigger);
+    } else {
+        host.set_transport_position(FrameTime(engine.time), engine.metric_structure);
+        host.start_transport();
+    }
 }
 
 impl Engine {
@@ -141,7 +175,7 @@ impl Engine {
                     gui_sender.send_log(error);
                 }
 
-                Config::new()
+                Config::default()
             }
         };
 
@@ -185,7 +219,7 @@ impl Engine {
 
         set_sample_rate(sample_rate);
 
-        engine.reset();
+        engine.reset(host);
 
         for l in &engine.loopers {
             engine.session_saver.add_looper(l);
@@ -218,12 +252,16 @@ impl Engine {
         triggers.push_back(t);
     }
 
-    fn reset(&mut self) {
+    fn reset<'a, H: Host<'a>>(&mut self, host: &mut H) {
         if let Some(m) = &mut self.metronome {
             m.reset();
         }
         self.triggers.clear();
-        self.set_time(FrameTime(-(self.measure_len().0 as i64)));
+        self.set_time(FrameTime(-self.measure_len().0), host);
+        host.stop_transport();
+        if self.state == EngineState::Active {
+            start_transport(self, host);
+        }
         for l in &mut self.loopers {
             l.handle_command(LooperCommand::Play);
         }
@@ -233,8 +271,7 @@ impl Engine {
         self.loopers
             .iter_mut()
             .filter(|l| !l.deleted)
-            .skip(idx as usize)
-            .next()
+            .nth(idx as usize)
     }
 
     fn commands_from_midi<'a, H: Host<'a>>(&mut self, host: &mut H, events: &[MidiEvent]) {
@@ -259,7 +296,13 @@ impl Engine {
         looper: &Looper,
     ) -> Option<Trigger> {
         let trigger_condition = match sync_mode {
-            Free => if time.0 < 0 { Some(TriggerCondition::Beat) } else { None },
+            Free => {
+                if time.0 < 0 {
+                    Some(TriggerCondition::Beat)
+                } else {
+                    None
+                }
+            }
             QuantizationMode::Beat => Some(TriggerCondition::Beat),
             QuantizationMode::Measure => Some(TriggerCondition::Measure),
         }?;
@@ -298,6 +341,7 @@ impl Engine {
         let triggers = &mut self.triggers;
         let gui_sender = &mut self.gui_sender;
 
+        #[allow(clippy::too_many_arguments)]
         fn handle_or_trigger(
             triggered: bool,
             ms: MetricStructure,
@@ -345,8 +389,7 @@ impl Engine {
                     .loopers
                     .iter_mut()
                     .filter(|l| !l.deleted)
-                    .skip(idx as usize)
-                    .next()
+                    .nth(idx as usize)
                 {
                     selected = Some(l.id);
                     handle_or_trigger(
@@ -388,7 +431,7 @@ impl Engine {
         host: &mut H,
         path: &Path,
     ) -> Result<(), SaveLoadError> {
-        let mut file = File::open(&path)?;
+        let mut file = File::open(path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
 
@@ -402,13 +445,15 @@ impl Engine {
 
         if session.sample_rate != get_sample_rate() {
             let mut error = LogMessage::error();
-            if let Err(_) = write!(
+            if write!(
                 &mut error,
                 "Session was saved with sample rate {}, but system rate \
             is set to {}, playback will be affected",
                 session.sample_rate,
                 get_sample_rate()
-            ) {
+            )
+            .is_err()
+            {
                 error!("Different sample rate");
             };
             self.gui_sender.send_log(error);
@@ -416,8 +461,10 @@ impl Engine {
 
         debug!("Restoring session: {:?}", session);
 
-        self.metric_structure = session.metric_structure.to_ms()
-            .map_err(|e| SaveLoadError::OtherError(e))?;
+        self.metric_structure = session
+            .metric_structure
+            .to_ms()
+            .map_err(SaveLoadError::OtherError)?;
         self.sync_mode = session.sync_mode;
 
         if let Some(metronome) = &mut self.metronome {
@@ -444,7 +491,7 @@ impl Engine {
 
         self.id_counter = self.loopers.iter().map(|l| l.id).max().unwrap_or(0) + 1;
 
-        self.reset();
+        self.reset(host);
 
         Ok(())
     }
@@ -502,35 +549,59 @@ impl Engine {
             Looper(lc, target) => {
                 self.handle_loop_command(*lc, *target, triggered);
             }
-            Start => {
+            Start(set_transport) => {
                 self.state = EngineState::Active;
+                if *set_transport {
+                    start_transport(self, host);
+                }
             }
-            Pause => {
+            Pause(set_transport) => {
                 self.state = EngineState::Paused;
+                if *set_transport {
+                    host.stop_transport();
+                }
             }
-            Stop => {
+            Stop(set_transport) => {
                 self.state = EngineState::Stopped;
-                self.reset();
+                if *set_transport {
+                    host.stop_transport();
+                }
+                self.reset(host);
             }
-            StartStop => {
+            StartStop(set_transport) => {
                 self.state = match self.state {
-                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
+                    EngineState::Stopped | EngineState::Paused => {
+                        if *set_transport {
+                            start_transport(self, host);
+                        }
+                        EngineState::Active
+                    }
                     EngineState::Active => {
-                        self.reset();
+                        self.reset(host);
                         EngineState::Stopped
                     }
                 };
             }
-            PlayPause => {
+            PlayPause(set_transport) => {
                 self.state = match self.state {
-                    EngineState::Stopped | EngineState::Paused => EngineState::Active,
-                    EngineState::Active => EngineState::Paused,
+                    EngineState::Stopped | EngineState::Paused => {
+                        if *set_transport {
+                            start_transport(self, host);
+                        }
+                        EngineState::Active
+                    }
+                    EngineState::Active => {
+                        if *set_transport {
+                            host.stop_transport();
+                        }
+                        EngineState::Paused
+                    }
                 }
             }
             Reset => {
-                self.reset();
+                self.reset(host);
             }
-            SetTime(time) => self.set_time(*time),
+            SetTime(time) => self.set_time(*time, host),
             AddLooper => {
                 // TODO: make this non-allocating
                 let looper = crate::Looper::new(
@@ -593,21 +664,17 @@ impl Engine {
                             .iter()
                             .filter(|l| l.parts[engine.current_part])
                             .filter(|l| !l.deleted)
-                            .skip(next)
-                            .next()
+                            .nth(next)
                         {
                             engine.active = l.id;
                         }
-                    } else {
-                        if let Some(l) = engine
-                            .loopers
-                            .iter()
-                            .filter(|l| !l.deleted)
-                            .filter(|l| l.parts[engine.current_part])
-                            .next()
-                        {
-                            engine.active = l.id;
-                        }
+                    } else if let Some(l) = engine
+                        .loopers
+                        .iter()
+                        .filter(|l| !l.deleted)
+                        .find(|l| l.parts[engine.current_part])
+                    {
+                        engine.active = l.id;
                     }
                 });
             }
@@ -698,7 +765,7 @@ impl Engine {
                 if let Some(met) = &mut self.metronome {
                     met.set_metric_structure(self.metric_structure);
                 }
-                self.reset();
+                self.reset(host);
             }
             SetTimeSignature(upper, lower) => {
                 if let Some(ts) = TimeSignature::new(*upper, *lower) {
@@ -706,9 +773,11 @@ impl Engine {
                     if let Some(met) = &mut self.metronome {
                         met.set_metric_structure(self.metric_structure);
                     }
-                    self.reset();
+                    self.reset(host);
                 }
             }
+            SetTransportPosition(time) => host.set_transport_position(*time, self.metric_structure),
+            StartTransport => host.start_transport(),
         }
     }
 
@@ -717,13 +786,11 @@ impl Engine {
         if let Some(l) = self
             .loopers
             .iter()
-            .filter(|l| l.id == self.active && l.parts[self.current_part])
-            .next()
+            .find(|l| l.id == self.active && l.parts[self.current_part])
             .or(self
                 .loopers
                 .iter()
-                .filter(|l| !l.deleted && l.parts[self.current_part])
-                .next())
+                .find(|l| !l.deleted && l.parts[self.current_part]))
         {
             self.active = l.id;
         }
@@ -731,17 +798,24 @@ impl Engine {
 
     // returns length
     fn measure_len(&self) -> FrameTime {
-        let bps = self.metric_structure.tempo.bpm() as f32 / 60.0;
+        let bps = self.metric_structure.tempo.bpm() / 60.0;
         let mspb = 1000.0 / bps;
         let mspm = mspb * self.metric_structure.time_signature.upper as f32;
 
         FrameTime::from_ms(mspm as f64)
     }
 
-    fn set_time(&mut self, time: FrameTime) {
-        self.time = time.0;
-        for l in &mut self.loopers {
-            l.set_time(time);
+    fn set_time<'a, H: Host<'a>>(&mut self, time: FrameTime, host: &mut H) {
+        // for now, always send a positive time to the host
+        let pos_time = time + self.measure_len();
+        if pos_time.0 < 0 {
+            error!("Tried to set time too far back into past, ignoring")
+        } else {
+            self.time = time.0;
+            for l in &mut self.loopers {
+                l.set_time(time);
+            }
+            host.set_transport_position(pos_time, self.metric_structure);
         }
     }
 
@@ -818,7 +892,13 @@ impl Engine {
         }
     }
 
-    fn process_loopers<'a, H: Host<'a>>(&mut self, host: &mut H, in_bufs: &[&[f32]], frames: u64, solo: bool) {
+    fn process_loopers<'a, H: Host<'a>>(
+        &mut self,
+        host: &mut H,
+        in_bufs: &[&[f32]],
+        frames: u64,
+        solo: bool,
+    ) {
         let mut time = self.time;
         let mut idx = 0usize;
 
@@ -834,12 +914,13 @@ impl Engine {
 
         let next_time = (self.time + frames as i64) as u64;
         while time < next_time {
-            if let Some(_) = self
+            if self
                 .triggers
                 .iter()
                 .peekable()
                 .peek()
                 .filter(|t| t.triggered_at().0 < next_time as i64)
+                .is_some()
             {
                 // The unwrap is safe due to the preceding peek
                 let trigger = self.triggers.pop_front().unwrap();
@@ -873,7 +954,7 @@ impl Engine {
 
                     self.perform_looper_io(
                         host,
-                        &in_bufs,
+                        in_bufs,
                         FrameTime(time as i64),
                         idx_range.clone(),
                         solo,
@@ -887,7 +968,7 @@ impl Engine {
                 // there are no more triggers for this period, so just process the rest and finish
                 self.perform_looper_io(
                     host,
-                    &in_bufs,
+                    in_bufs,
                     FrameTime(time as i64),
                     idx..frames as usize,
                     solo,
@@ -943,6 +1024,7 @@ impl Engine {
     // Step 3: Play current samples
     // Step 4: Record
     // Step 5: Update GUI
+    #[allow(clippy::too_many_arguments)]
     pub fn process<'a, H: Host<'a>>(
         &mut self,
         host: &mut H,
@@ -957,13 +1039,8 @@ impl Engine {
         self.commands_from_midi(host, midi_events);
 
         // Handle commands from the gui
-        loop {
-            match self.command_input.try_recv() {
-                Ok(c) => {
-                    self.handle_command(host, &c, false);
-                }
-                Err(_) => break,
-            }
+        while let Ok(c) = self.command_input.try_recv() {
+            self.handle_command(host, &c, false);
         }
 
         // Remove any deleted loopers
@@ -994,13 +1071,20 @@ impl Engine {
             self.output_right[i] = *r as f64;
         }
 
-        if (self.state != EngineState::Active && self.state != EngineState::Paused) && (!self.triggers.is_empty() ||
-            self.loopers.iter().any(|l| l.local_mode() == LooperMode::Recording ||
-                l.local_mode() == LooperMode::Overdubbing)) {
+        if (self.state != EngineState::Active && self.state != EngineState::Paused)
+            && (!self.triggers.is_empty()
+                || self.loopers.iter().any(|l| {
+                    l.local_mode() == LooperMode::Recording
+                        || l.local_mode() == LooperMode::Overdubbing
+                }))
+        {
+            start_transport(self, host);
             self.state = EngineState::Active;
         }
 
-        let solo = self.loopers.iter()
+        let solo = self
+            .loopers
+            .iter()
             .any(|l| l.parts[self.current_part] && !l.deleted && l.mode() == LooperMode::Soloed);
 
         if self.state == EngineState::Active {
@@ -1015,9 +1099,11 @@ impl Engine {
             self.time += frames as i64;
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..frames as usize {
             out_l[i] = self.output_left[i] as f32;
         }
+        #[allow(clippy::needless_range_loop)]
         for i in 0..frames as usize {
             out_r[i] = self.output_right[i] as f32;
         }

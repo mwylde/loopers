@@ -34,7 +34,7 @@ mod tests {
 
         let mapping = MidiMapping::from_file(
             &file.path().to_string_lossy(),
-            &File::open(&file.path()).unwrap(),
+            &File::open(file.path()).unwrap(),
         )
         .unwrap();
 
@@ -58,7 +58,7 @@ mod tests {
         assert_eq!(24, mapping[2].controller);
         assert_eq!(DataValue::Value(6), mapping[2].data);
         assert_eq!(
-            Command::Start,
+            Command::Start(false),
             (mapping[2].command)(CommandData { data: 39 })
         );
 
@@ -74,16 +74,9 @@ mod tests {
 
 pub static FILE_HEADER: &str = "Channel\tController\tData\tCommand\tArg1\tArg2\tArg3";
 
+#[derive(Default)]
 pub struct Config {
     pub midi_mappings: Vec<MidiMapping>,
-}
-
-impl Config {
-    pub fn new() -> Config {
-        Config {
-            midi_mappings: vec![],
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -105,7 +98,7 @@ impl DataValue {
             }
         }
 
-        let split: Vec<u8> = s.split("-").filter_map(|s| u8::from_str(s).ok()).collect();
+        let split: Vec<u8> = s.split('-').filter_map(|s| u8::from_str(s).ok()).collect();
 
         if split.len() == 2 && split[0] <= 127 && split[1] <= 127 && split[0] < split[1] {
             return Some(DataValue::Range(split[0], split[1]));
@@ -180,7 +173,7 @@ impl MidiMapping {
                 u8::from_str(c)
                     .map_err(|_| "Channel must be * or a number".to_string())
                     .and_then(|c| {
-                        if c >= 1 && c <= 16 {
+                        if (1..=16).contains(&c) {
                             Ok(c)
                         } else {
                             Err("Channel must be between 1 and 16".to_string())

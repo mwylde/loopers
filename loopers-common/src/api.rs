@@ -1,5 +1,5 @@
 use crate::gui_channel::WAVEFORM_DOWNSAMPLE;
-use crate::music::{SavedMetricStructure};
+use crate::music::SavedMetricStructure;
 use derive_more::{Add, Div, Mul, Sub};
 use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
@@ -15,7 +15,7 @@ mod tests {
     #[test]
     fn test_from_str() {
         assert_eq!(
-            Command::Start,
+            Command::Start(false),
             Command::from_str("Start", &[][..]).unwrap()(CommandData { data: 0 })
         );
 
@@ -140,7 +140,9 @@ impl LooperCommand {
         use Command::Looper;
         use LooperCommand::*;
 
-        let target_type = args.get(0).ok_or(format!("{} expects a target", command))?;
+        let target_type = args
+            .first()
+            .ok_or(format!("{} expects a target", command))?;
 
         let target = match *target_type {
             "All" => LooperTarget::All,
@@ -173,7 +175,7 @@ impl LooperCommand {
                 } else {
                     let f = f32::from_str(v)
                         .map_err(|_| format!("Invalid value for SetPan: '{}'", v))?;
-                    if f < -1.0 || f > 1.0 {
+                    if !(-1.0..=1.0).contains(&f) {
                         return Err("Value for SetPan must be between -1 and 1".to_string());
                     }
                     Some(f)
@@ -185,7 +187,7 @@ impl LooperCommand {
                         target,
                     )
                 })
-            },
+            }
 
             "SetLevel" => {
                 let v = args.get(1).ok_or(
@@ -197,20 +199,14 @@ impl LooperCommand {
                 } else {
                     let f = f32::from_str(v)
                         .map_err(|_| format!("Invalid value for SetLevel: '{}'", v))?;
-                    if f < 0.0 || f > 1.0 {
+                    if !(0.0..=1.0).contains(&f) {
                         return Err("Value for SetLevel must be between 0 and 1".to_string());
                     }
                     Some(f)
                 };
 
-                Box::new(move |d| {
-                    Looper(
-                        SetLevel(arg.unwrap_or(d.data as f32 / 127.0)),
-                        target,
-                    )
-                })
+                Box::new(move |d| Looper(SetLevel(arg.unwrap_or(d.data as f32 / 127.0)), target))
             }
-
 
             "1/2x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::Half), target)),
             "1x" => Box::new(move |_| Looper(SetSpeed(LooperSpeed::One), target)),
@@ -228,12 +224,12 @@ impl LooperCommand {
 pub enum Command {
     Looper(LooperCommand, LooperTarget),
 
-    Start,
-    Stop,
-    Pause,
+    Start(bool), // set_transport
+    Stop(bool), // set_transport
+    Pause(bool), // set_transport
 
-    StartStop,
-    PlayPause,
+    StartStop(bool), // set_transport
+    PlayPause(bool), // set_transport
 
     Reset,
     SetTime(FrameTime),
@@ -248,6 +244,8 @@ pub enum Command {
     PreviousPart,
     NextPart,
     GoToPart(Part),
+    SetTransportPosition(FrameTime),
+    StartTransport,
 
     SetQuantizationMode(QuantizationMode),
 
@@ -266,18 +264,18 @@ impl Command {
         args: &[&str],
     ) -> Result<Box<dyn Fn(CommandData) -> Command + Send>, String> {
         Ok(match command {
-            "Start" => Box::new(|_| Command::Start),
-            "Stop" => Box::new(|_| Command::Stop),
-            "Pause" => Box::new(|_| Command::Pause),
-            "StartStop" => Box::new(|_| Command::StartStop),
-            "PlayPause" => Box::new(|_| Command::PlayPause),
+            "Start" => Box::new(|_| Command::Start(false)),
+            "Stop" => Box::new(|_| Command::Stop(false)),
+            "Pause" => Box::new(|_| Command::Pause(false)),
+            "StartStop" => Box::new(|_| Command::StartStop(false)),
+            "PlayPause" => Box::new(|_| Command::PlayPause(false)),
             "Reset" => Box::new(|_| Command::Reset),
 
             "SetTime" => {
                 let arg = args
-                    .get(0)
+                    .first()
                     .and_then(|s| i64::from_str(s).ok())
-                    .map(|t| FrameTime(t))
+                    .map(FrameTime)
                     .ok_or("SetTime expects a single numeric argument, time".to_string())?;
                 Box::new(move |_| Command::SetTime(arg))
             }
@@ -285,7 +283,7 @@ impl Command {
             "AddLooper" => Box::new(|_| Command::AddLooper),
             "SelectLooperById" => {
                 let arg = args
-                    .get(0)
+                    .first()
                     .and_then(|s| u32::from_str(s).ok())
                     .ok_or(
                         "SelectLooperById expects a single numeric argument, the looper id"
@@ -297,7 +295,7 @@ impl Command {
             }
 
             "SelectLooperByIndex" => {
-                let arg = args.get(0).and_then(|s| u8::from_str(s).ok()).ok_or(
+                let arg = args.first().and_then(|s| u8::from_str(s).ok()).ok_or(
                     "SelectLooperByIndex expects a single numeric argument, the looper index"
                         .to_string(),
                 )?;
@@ -311,8 +309,8 @@ impl Command {
             "NextPart" => Box::new(|_| Command::NextPart),
             "GoToPart" => {
                 let arg = args
-                    .get(0)
-                    .and_then(|s| match s.as_ref() {
+                    .first()
+                    .and_then(|s| match *s {
                         "A" => Some(Part::A),
                         "B" => Some(Part::B),
                         "C" => Some(Part::C),
@@ -326,8 +324,8 @@ impl Command {
 
             "SetQuantizationMode" => {
                 let arg = args
-                    .get(0)
-                    .and_then(|s| match s.as_ref() {
+                    .first()
+                    .and_then(|s| match *s {
                         "Free" => Some(QuantizationMode::Free),
                         "Beat" => Some(QuantizationMode::Beat),
                         "Measure" => Some(QuantizationMode::Measure),
@@ -341,7 +339,7 @@ impl Command {
             }
 
             "SetMetronomeLevel" => {
-                let arg = args.get(0).and_then(|s| u8::from_str(s).ok()).ok_or(
+                let arg = args.first().and_then(|s| u8::from_str(s).ok()).ok_or(
                     "SetMetronomeLevel expects a single numeric argument, the level between 0-100"
                         .to_string(),
                 )?;
@@ -404,6 +402,7 @@ impl PartSet {
     }
 
     pub fn is_empty(&self) -> bool {
+        #[allow(clippy::nonminimal_bool)]
         !(self.a || self.b || self.c || self.c)
     }
 }
@@ -440,7 +439,8 @@ impl IndexMut<Part> for PartSet {
 
 pub static PARTS: [Part; 4] = [Part::A, Part::B, Part::C, Part::D];
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(bytemuck::NoUninit, Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[repr(u8)]
 pub enum LooperMode {
     Recording,
     Overdubbing,
