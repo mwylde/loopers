@@ -7,7 +7,7 @@ mod app;
 mod skia;
 mod widgets;
 
-use skia_safe::{Canvas, Font, FontMgr, FontStyle, Size};
+use skia_safe::{Canvas, Font, FontMgr, FontStyle, Size, Typeface};
 
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
@@ -28,10 +28,14 @@ const SHOW_BUTTONS: bool = true;
 
 pub const MESSAGE_DISPLAY_TIME_SECS: u64 = 4;
 
+lazy_static! {
+    static ref DEFAULT_TYPEFACE: Option<Typeface> =
+        FontMgr::default().legacy_make_typeface(None, FontStyle::normal());
+}
+
 pub fn default_font(size: f32) -> Font {
-    let typeface = FontMgr::default().legacy_make_typeface(None, FontStyle::normal());
-    match typeface {
-        Some(typeface) => Font::new(typeface, size),
+    match DEFAULT_TYPEFACE.as_ref() {
+        Some(typeface) => Font::new(typeface.clone(), size),
         None => {
             let mut font = Font::default();
             font.set_size(size);
