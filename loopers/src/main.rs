@@ -16,7 +16,7 @@ mod loopers_jack;
 mod looper_coreaudio;
 
 use crate::loopers_jack::jack_main;
-use clap::{arg, Command};
+use clap::{Command, arg};
 use crossbeam_channel::bounded;
 use loopers_common::gui_channel::GuiSender;
 use loopers_gui::Gui;

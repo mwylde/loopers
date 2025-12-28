@@ -15,8 +15,8 @@ use loopers_common::api::{
     Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, Part, PartSet, QuantizationMode,
 };
 use loopers_common::gui_channel::{
-    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage, Waveform,
-    WAVEFORM_DOWNSAMPLE,
+    EngineState, EngineStateSnapshot, GuiCommand, GuiReceiver, GuiSender, LogMessage,
+    WAVEFORM_DOWNSAMPLE, Waveform,
 };
 use loopers_common::music::{MetricStructure, Tempo, TimeSignature};
 use sdl2::mouse::MouseButton;
@@ -118,10 +118,10 @@ impl Log {
     }
 
     fn update(&mut self) {
-        if let Some((t, _)) = &self.cur {
-            if Instant::now() - *t > Duration::from_secs(MESSAGE_DISPLAY_TIME_SECS) {
-                self.cur = self.queue.pop_front().map(|m| (Instant::now(), m));
-            }
+        if let Some((t, _)) = &self.cur
+            && Instant::now() - *t > Duration::from_secs(MESSAGE_DISPLAY_TIME_SECS)
+        {
+            self.cur = self.queue.pop_front().map(|m| (Instant::now(), m));
         }
     }
 }
@@ -238,10 +238,10 @@ impl Gui {
 
                     // clear past triggers
                     for l in self.state.loopers.values_mut() {
-                        if let Some((time, _)) = l.trigger {
-                            if time < state.time {
-                                l.trigger = None;
-                            }
+                        if let Some((time, _)) = l.trigger
+                            && time < state.time
+                        {
+                            l.trigger = None;
                         }
                     }
                 }

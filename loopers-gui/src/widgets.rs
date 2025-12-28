@@ -453,12 +453,12 @@ impl PotWidget {
             }
         }
 
-        if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (_, y))) = last_event {
-            if let Some(p_y) = self.last_mouse_value {
-                let lv = clamp(level + (p_y - y as f32) / 100.0, -1.0, 1.0);
-                new_level(lv);
-                self.last_mouse_value = Some(y as f32);
-            }
+        if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (_, y))) = last_event
+            && let Some(p_y) = self.last_mouse_value
+        {
+            let lv = clamp(level + (p_y - y as f32) / 100.0, -1.0, 1.0);
+            new_level(lv);
+            self.last_mouse_value = Some(y as f32);
         }
 
         if let Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(_), _)) = last_event {

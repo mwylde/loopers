@@ -1,9 +1,9 @@
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use jack::{AudioOut, Port, ProcessScope};
+use loopers_common::Host;
 use loopers_common::api::Command;
 use loopers_common::gui_channel::GuiSender;
 use loopers_common::midi::MidiEvent;
-use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
 use std::collections::HashMap;
@@ -28,23 +28,22 @@ pub struct JackHost<'a> {
 
 impl<'a> Host<'a> for JackHost<'a> {
     fn add_looper(&mut self, id: u32) -> Result<(), String> {
-        if !self.looper_ports.contains_key(&id) {
-            if let Err(e) = self.port_change_tx.try_send(ClientChange::AddPort(id)) {
-                warn!("Failed to send port add request: {:?}", e);
-            }
+        if !self.looper_ports.contains_key(&id)
+            && let Err(e) = self.port_change_tx.try_send(ClientChange::AddPort(id))
+        {
+            warn!("Failed to send port add request: {:?}", e);
         }
 
         Ok(())
     }
 
     fn remove_looper(&mut self, id: u32) -> Result<(), String> {
-        if let Some([l, r]) = self.looper_ports.remove(&id) {
-            if let Err(e) = self
+        if let Some([l, r]) = self.looper_ports.remove(&id)
+            && let Err(e) = self
                 .port_change_tx
                 .try_send(ClientChange::RemovePort(id, l, r))
-            {
-                warn!("Failed to send port remove request: {:?}", e);
-            }
+        {
+            warn!("Failed to send port remove request: {:?}", e);
         }
 
         Ok(())
@@ -259,47 +258,49 @@ pub fn jack_main(
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
 
-    thread::spawn(move || loop {
-        match port_change_rx.recv() {
-            Ok(ClientChange::AddPort(id)) => {
-                let l = active_client
-                    .as_client()
-                    .register_port(&format!("loop{}_out_l", id), jack::AudioOut)
-                    .map_err(|e| format!("could not create jack port: {:?}", e));
-                let r = active_client
-                    .as_client()
-                    .register_port(&format!("loop{}_out_r", id), jack::AudioOut)
-                    .map_err(|e| format!("could not create jack port: {:?}", e));
+    thread::spawn(move || {
+        loop {
+            match port_change_rx.recv() {
+                Ok(ClientChange::AddPort(id)) => {
+                    let l = active_client
+                        .as_client()
+                        .register_port(&format!("loop{}_out_l", id), jack::AudioOut)
+                        .map_err(|e| format!("could not create jack port: {:?}", e));
+                    let r = active_client
+                        .as_client()
+                        .register_port(&format!("loop{}_out_r", id), jack::AudioOut)
+                        .map_err(|e| format!("could not create jack port: {:?}", e));
 
-                match (l, r) {
-                    (Ok(l), Ok(r)) => {
-                        if port_change_resp_tx
-                            .send(ClientChangeResponse::PortAdded(id, l, r))
-                            .is_err()
-                        {
-                            break;
+                    match (l, r) {
+                        (Ok(l), Ok(r)) => {
+                            if port_change_resp_tx
+                                .send(ClientChangeResponse::PortAdded(id, l, r))
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        (Err(e), _) | (_, Err(e)) => {
+                            error!("Failed to register port with jack: {:?}", e);
                         }
                     }
-                    (Err(e), _) | (_, Err(e)) => {
-                        error!("Failed to register port with jack: {:?}", e);
+                }
+                Ok(ClientChange::RemovePort(id, l, r)) => {
+                    if let Err(e) = active_client
+                        .as_client()
+                        .unregister_port(l)
+                        .and_then(|()| active_client.as_client().unregister_port(r))
+                    {
+                        error!("Unable to remove jack outputs: {:?}", e);
                     }
+                    info!("removed ports for looper {}", id);
                 }
-            }
-            Ok(ClientChange::RemovePort(id, l, r)) => {
-                if let Err(e) = active_client
-                    .as_client()
-                    .unregister_port(l)
-                    .and_then(|()| active_client.as_client().unregister_port(r))
-                {
-                    error!("Unable to remove jack outputs: {:?}", e);
+                Ok(ClientChange::Shutdown) => {
+                    break;
                 }
-                info!("removed ports for looper {}", id);
-            }
-            Ok(ClientChange::Shutdown) => {
-                break;
-            }
-            Err(_) => {
-                break;
+                Err(_) => {
+                    break;
+                }
             }
         }
     });

@@ -1,6 +1,6 @@
+use crate::MetricStructure;
 use crate::sample::PlayOutput::Done;
 use crate::sample::{Sample, SamplePlayer};
-use crate::MetricStructure;
 
 use loopers_common::api::FrameTime;
 use std::sync::Arc;
@@ -160,10 +160,10 @@ impl Metronome {
 
         // TODO: it would be more accurate to do this analytically, i.e., use the current
         //   time without relying on the exact timing of the calls
-        if let Some(player) = &mut self.player {
-            if player.play(out, self.volume / 2.0) == Done {
-                self.player = None;
-            }
+        if let Some(player) = &mut self.player
+            && player.play(out, self.volume / 2.0) == Done
+        {
+            self.player = None;
         }
 
         let len = out[0].len();

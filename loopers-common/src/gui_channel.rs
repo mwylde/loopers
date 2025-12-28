@@ -3,7 +3,7 @@ use crate::api::{
 };
 use crate::music::MetricStructure;
 use arrayvec::ArrayVec;
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use std::borrow::Cow;
 use std::io;
 use std::io::{ErrorKind, Write};

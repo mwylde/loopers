@@ -1,28 +1,28 @@
-use crate::{skia::BACKGROUND_COLOR, AppData, Controller, GuiEvent, LooperData, MouseEventType};
+use crate::{AppData, Controller, GuiEvent, LooperData, MouseEventType, skia::BACKGROUND_COLOR};
 
 use crate::widgets::{
-    draw_circle_indicator, Button, ButtonState, ControlButton, ModalManager, PotWidget,
-    TextEditState, TextEditable,
+    Button, ButtonState, ControlButton, ModalManager, PotWidget, TextEditState, TextEditable,
+    draw_circle_indicator,
 };
 use loopers_common::api::{
-    get_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget,
-    Part, QuantizationMode, PARTS,
+    Command, FrameTime, LooperCommand, LooperMode, LooperSpeed, LooperTarget, PARTS, Part,
+    QuantizationMode, get_sample_rate,
 };
 use loopers_common::clamp;
 use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
 use sdl2::mouse::MouseButton;
+use skia_safe::Rect;
 use skia_safe::gpu::ganesh;
 use skia_safe::gpu::ganesh::SurfaceOrigin;
 use skia_safe::paint::Style;
-use skia_safe::Rect;
 use skia_safe::*;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 const LOOP_ICON: &[u8] = include_bytes!("../resources/icons/loop.png");
@@ -1047,10 +1047,10 @@ impl PeakMeterView {
     }
 
     fn redraw_if_needed(&mut self, canvas: &Canvas, paint: &mut Paint, w: f32, h: f32) {
-        if let Some((_, instant)) = &self.image {
-            if instant.elapsed() < self.update_time {
-                return;
-            }
+        if let Some((_, instant)) = &self.image
+            && instant.elapsed() < self.update_time
+        {
+            return;
         }
 
         let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
@@ -1196,12 +1196,12 @@ impl PeakMeterView {
                     new_level(point.x / w);
                     self.last_mouse_value = Some(x as f32);
                 }
-            } else if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, _))) = last_event {
-                if let Some(p_x) = self.last_mouse_value {
-                    let lv = clamp(level + (x as f32 - p_x) / w, 0.0, 1.0);
-                    new_level(lv);
-                    self.last_mouse_value = Some(x as f32);
-                }
+            } else if let Some(GuiEvent::MouseEvent(MouseEventType::Moved, (x, _))) = last_event
+                && let Some(p_x) = self.last_mouse_value
+            {
+                let lv = clamp(level + (x as f32 - p_x) / w, 0.0, 1.0);
+                new_level(lv);
+                self.last_mouse_value = Some(x as f32);
             }
 
             if let Some(GuiEvent::MouseEvent(MouseEventType::MouseUp(_), _)) = last_event {
@@ -2131,10 +2131,8 @@ impl<T: Eq + Copy> DrawCache<T> {
         use_cache: bool,
         canvas: &Canvas,
     ) -> Size {
-        if use_cache {
-            if let Some(size) = self.draw_with_cache(key, data, looper, w, h, canvas) {
-                return size;
-            }
+        if use_cache && let Some(size) = self.draw_with_cache(key, data, looper, w, h, canvas) {
+            return size;
         }
 
         (self.draw_fn)(data, looper, w, h, 1.0, canvas)
@@ -2504,69 +2502,65 @@ impl WaveformView {
         }
 
         // draw trigger if present and in future
-        if let Some((time, lc)) = looper.trigger {
-            if time > data.engine_state.time {
-                let mut paint = Paint::default();
-                paint.set_anti_alias(true);
+        if let Some((time, lc)) = looper.trigger
+            && time > data.engine_state.time
+        {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
 
-                let mut text = None;
-                match lc {
-                    LooperCommand::Record => {
+            let mut text = None;
+            match lc {
+                LooperCommand::Record => {
+                    paint.set_color(color_for_mode(LooperMode::Recording));
+                    text = Some("recording");
+                }
+                LooperCommand::Overdub => {
+                    paint.set_color(color_for_mode(LooperMode::Overdubbing));
+                    text = Some("overdubbing");
+                }
+                LooperCommand::Play => {
+                    paint.set_color(color_for_mode(LooperMode::Playing));
+                    text = Some("playing");
+                }
+                LooperCommand::Mute => {
+                    paint.set_color(color_for_mode(LooperMode::Muted));
+                    text = Some("muting");
+                }
+                LooperCommand::Solo => {
+                    paint.set_color(color_for_mode(LooperMode::Soloed));
+                    text = Some("soloing");
+                }
+                LooperCommand::RecordOverdubPlay => {
+                    if looper.length == 0 {
                         paint.set_color(color_for_mode(LooperMode::Recording));
                         text = Some("recording");
-                    }
-                    LooperCommand::Overdub => {
+                    } else if looper.mode == LooperMode::Recording
+                        || looper.mode == LooperMode::Playing
+                    {
                         paint.set_color(color_for_mode(LooperMode::Overdubbing));
                         text = Some("overdubbing");
-                    }
-                    LooperCommand::Play => {
+                    } else {
                         paint.set_color(color_for_mode(LooperMode::Playing));
                         text = Some("playing");
                     }
-                    LooperCommand::Mute => {
-                        paint.set_color(color_for_mode(LooperMode::Muted));
-                        text = Some("muting");
-                    }
-                    LooperCommand::Solo => {
-                        paint.set_color(color_for_mode(LooperMode::Soloed));
-                        text = Some("soloing");
-                    }
-                    LooperCommand::RecordOverdubPlay => {
-                        if looper.length == 0 {
-                            paint.set_color(color_for_mode(LooperMode::Recording));
-                            text = Some("recording");
-                        } else if looper.mode == LooperMode::Recording
-                            || looper.mode == LooperMode::Playing
-                        {
-                            paint.set_color(color_for_mode(LooperMode::Overdubbing));
-                            text = Some("overdubbing");
-                        } else {
-                            paint.set_color(color_for_mode(LooperMode::Playing));
-                            text = Some("playing");
-                        }
-                    }
-                    _ => {}
                 }
+                _ => {}
+            }
 
-                paint.set_alpha_f(0.9);
+            paint.set_alpha_f(0.9);
 
-                let x = -self.time_to_x(data.engine_state.time - time) as f32;
-                let rect = Rect::new(x, 15.0, w, h - 15.0);
-                canvas.draw_rect(rect, &paint);
+            let x = -self.time_to_x(data.engine_state.time - time) as f32;
+            let rect = Rect::new(x, 15.0, w, h - 15.0);
+            canvas.draw_rect(rect, &paint);
 
-                if let Some(text) = text {
-                    let font = crate::default_font(24.0);
-                    let mut text_paint = Paint::default();
-                    text_paint.set_color(Color::BLACK);
-                    text_paint.set_anti_alias(true);
+            if let Some(text) = text {
+                let font = crate::default_font(24.0);
+                let mut text_paint = Paint::default();
+                text_paint.set_color(Color::BLACK);
+                text_paint.set_anti_alias(true);
 
-                    let time_blob = TextBlob::new(text, &font).unwrap();
-                    canvas.draw_text_blob(
-                        &time_blob,
-                        Point::new(x + 10.0, h / 2.0 + 6.0),
-                        &text_paint,
-                    );
-                }
+                let time_blob = TextBlob::new(text, &font).unwrap();
+                canvas.draw_text_blob(&time_blob, Point::new(x + 10.0, h / 2.0 + 6.0), &text_paint);
             }
         }
 

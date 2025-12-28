@@ -1,10 +1,10 @@
 use crate::looper;
 use crate::looper::Looper;
-use crate::{last_session_path, MetricStructure};
+use crate::{MetricStructure, last_session_path};
 use chrono::Local;
-use crossbeam_channel::{bounded, Sender, TrySendError};
+use crossbeam_channel::{Sender, TrySendError, bounded};
 use std::collections::HashMap;
-use std::fs::{create_dir_all, File};
+use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::path::PathBuf;
 use std::thread;

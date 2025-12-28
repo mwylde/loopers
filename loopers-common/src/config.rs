@@ -9,7 +9,7 @@ use std::str::FromStr;
 mod tests {
     use crate::api::LooperCommand::{RecordOverdubPlay, SetPan};
     use crate::api::{Command, CommandData, LooperTarget};
-    use crate::config::{DataValue, MidiMapping, FILE_HEADER};
+    use crate::config::{DataValue, FILE_HEADER, MidiMapping};
     use std::fs::File;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -92,10 +92,10 @@ impl DataValue {
             return Some(DataValue::Any);
         }
 
-        if let Ok(v) = u8::from_str(s) {
-            if v <= 127 {
-                return Some(DataValue::Value(v));
-            }
+        if let Ok(v) = u8::from_str(s)
+            && v <= 127
+        {
+            return Some(DataValue::Value(v));
         }
 
         let split: Vec<u8> = s.split('-').filter_map(|s| u8::from_str(s).ok()).collect();
@@ -155,9 +155,10 @@ impl MidiMapping {
         }
 
         if caught_error {
-            Err(io::Error::other(
-                format!("Failed to parse midi mappings from {}", name),
-            ))
+            Err(io::Error::other(format!(
+                "Failed to parse midi mappings from {}",
+                name
+            )))
         } else {
             Ok(mappings)
         }

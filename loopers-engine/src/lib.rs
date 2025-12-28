@@ -4,7 +4,7 @@ extern crate lazy_static;
 extern crate log;
 
 use std::collections::VecDeque;
-use std::fs::{create_dir_all, read_to_string, File};
+use std::fs::{File, create_dir_all, read_to_string};
 use std::io;
 use std::io::{Read, Write};
 use std::ops::Range;
@@ -13,18 +13,18 @@ use std::sync::Arc;
 
 use crossbeam_channel::Receiver;
 
+use loopers_common::Host;
 use loopers_common::api::QuantizationMode::Free;
 use loopers_common::api::{
-    get_sample_rate, set_sample_rate, Command, FrameTime, LooperCommand, LooperMode, LooperTarget,
-    Part, PartSet, QuantizationMode, SavedSession,
+    Command, FrameTime, LooperCommand, LooperMode, LooperTarget, Part, PartSet, QuantizationMode,
+    SavedSession, get_sample_rate, set_sample_rate,
 };
-use loopers_common::config::{Config, MidiMapping, FILE_HEADER};
+use loopers_common::config::{Config, FILE_HEADER, MidiMapping};
 use loopers_common::gui_channel::{
     EngineState, EngineStateSnapshot, GuiCommand, GuiSender, LogMessage,
 };
 use loopers_common::midi::MidiEvent;
 use loopers_common::music::*;
-use loopers_common::Host;
 
 use crate::error::SaveLoadError;
 use crate::looper::Looper;

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(test)]
 mod tests {

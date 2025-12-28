@@ -1,6 +1,6 @@
 use crate::sample;
 use crate::sample::{Sample, XfadeDirection};
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use crossbeam_queue::ArrayQueue;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use loopers_common::api::{
 };
 use loopers_common::gui_channel::GuiCommand::{AddNewSample, AddOverdubSample};
 use loopers_common::gui_channel::{
-    GuiCommand, GuiSender, LooperState, Waveform, WAVEFORM_DOWNSAMPLE,
+    GuiCommand, GuiSender, LooperState, WAVEFORM_DOWNSAMPLE, Waveform,
 };
 use loopers_common::music::PanLaw;
 use std::collections::VecDeque;
@@ -984,16 +984,18 @@ pub struct LooperBackend {
 
 impl LooperBackend {
     fn start(mut self) {
-        thread::spawn(move || loop {
-            match self.channel.recv() {
-                Ok(msg) => {
-                    if !self.handle_msg(msg) {
+        thread::spawn(move || {
+            loop {
+                match self.channel.recv() {
+                    Ok(msg) => {
+                        if !self.handle_msg(msg) {
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        info!("Channel closed, stopping");
                         break;
                     }
-                }
-                Err(_) => {
-                    info!("Channel closed, stopping");
-                    break;
                 }
             }
         });
@@ -1132,20 +1134,20 @@ impl LooperBackend {
             ControlMessage::Undo => {
                 info!("Performing Undo on queue: {:?}", self.undo_queue);
 
-                if let Some(change) = self.undo_queue.pop_back() {
-                    if let Some(change) = self.undo_change(change) {
-                        self.redo_queue.push_back(change);
-                    }
+                if let Some(change) = self.undo_queue.pop_back()
+                    && let Some(change) = self.undo_change(change)
+                {
+                    self.redo_queue.push_back(change);
                 }
                 self.gui_sender
                     .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
             }
             ControlMessage::Redo => {
                 info!("Performing Redo on queue: {:?}", self.redo_queue);
-                if let Some(change) = self.redo_queue.pop_back() {
-                    if let Some(change) = self.undo_change(change) {
-                        self.undo_queue.push_back(change);
-                    }
+                if let Some(change) = self.redo_queue.pop_back()
+                    && let Some(change) = self.undo_change(change)
+                {
+                    self.undo_queue.push_back(change);
                 }
                 self.gui_sender
                     .send_update(GuiCommand::LooperStateChange(self.id, self.current_state()));
