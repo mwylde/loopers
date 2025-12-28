@@ -15,9 +15,9 @@ hound = "3.4.0"
 bytes = "1.5"
 dirs = "5.0"
 
-skia-safe = {version = "0.69", features = ["gl", "x11"]}
+skia-safe = {version = "0.91", features = ["gl", "x11"]}
 
-sdl2 = "0.36"
+sdl2 = { version = "0.38"}
 
 tinyfiledialogs = "3.9"
 lazy_static = "1"

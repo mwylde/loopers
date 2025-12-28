@@ -1,9 +1,9 @@
-use skia_safe::gpu::gl::{FramebufferInfo, Interface};
-use skia_safe::gpu::{self, DirectContext, SurfaceOrigin};
+use skia_safe::gpu;
+use skia_safe::gpu::ganesh::gl::interface::Interface;
+use skia_safe::gpu::ganesh::gl::types::{Format, FramebufferInfo};
+use skia_safe::gpu::ganesh::{self, DirectContext, SurfaceOrigin};
 
-use skia_safe::{
-    Color, ColorType, Font, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob, Typeface,
-};
+use skia_safe::{Color, ColorType, Paint, PictureRecorder, Point, Rect, Size, Surface, TextBlob};
 use std::convert::TryInto;
 
 use crate::{Gui, GuiEvent, KeyEventKey, KeyEventType, MouseEventType};
@@ -35,11 +35,13 @@ fn create_surface(
     scale_factor: f32,
 ) -> Surface {
     let backend_render_target =
-        gpu::backend_render_targets::make_gl((size.0 as i32, size.1 as i32), 0, 8, fb_info);
+        ganesh::gl::backend_render_targets::make_gl((size.0 as i32, size.1 as i32), 0, 8, fb_info);
 
     let color_type = match pixel_format {
         PixelFormatEnum::RGBA8888 => ColorType::RGBA8888,
         PixelFormatEnum::BGRA8888 => ColorType::BGRA8888,
+        PixelFormatEnum::ARGB8888 => ColorType::BGRA8888,
+        PixelFormatEnum::ABGR8888 => ColorType::RGBA8888,
         PixelFormatEnum::RGB888 => ColorType::RGBA8888,
         ct => {
             warn!("Unexpected color type {:?}", ct);
@@ -47,7 +49,7 @@ fn create_surface(
         }
     };
 
-    let mut surface = gpu::surfaces::wrap_backend_render_target(
+    let mut surface = ganesh::surface_ganesh::wrap_backend_render_target(
         gr_context,
         &backend_render_target,
         SurfaceOrigin::BottomLeft,
@@ -94,16 +96,18 @@ pub fn skia_main(mut gui: Gui) {
             return std::ptr::null();
         }
         video_subsystem.gl_get_proc_address(&name) as *const _
-    });
+    })
+    .expect("Unable to create Skia GL interface");
 
-    let mut gr_context = DirectContext::new_gl(interface, None).unwrap();
+    let mut gr_context =
+        gpu::direct_contexts::make_gl(interface, None).expect("Unable to create Skia GL context");
 
     let mut fboid: GLint = 0;
     unsafe { gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut fboid) };
 
     let fb_info = FramebufferInfo {
         fboid: fboid.try_into().unwrap(),
-        format: skia_safe::gpu::gl::Format::RGBA8.into(),
+        format: Format::RGBA8.into(),
         protected: gpu::Protected::No,
     };
 
@@ -216,7 +220,7 @@ pub fn skia_main(mut gui: Gui) {
         if capture_debug_frame {
             let mut recorder = PictureRecorder::new();
             let recording_canvas =
-                recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), None);
+                recorder.begin_recording(Rect::from_iwh(size.0 as i32, size.1 as i32), false);
 
             canvas.clear(*BACKGROUND_COLOR);
 
@@ -256,11 +260,8 @@ pub fn skia_main(mut gui: Gui) {
         let avg_frame_time = frame_times.iter().sum::<u64>() as f32 / frame_times.len() as f32;
         let fps = 1.0 / (avg_frame_time / 1_000_000.0);
 
-        let text = TextBlob::new(
-            &format!("{:.1} fps", fps),
-            &Font::new(Typeface::default(), 12.0),
-        )
-        .unwrap();
+        let font = crate::default_font(12.0);
+        let text = TextBlob::new(&format!("{:.1} fps", fps), &font).unwrap();
 
         if debug && frame_counter > frame_times.len() {
             canvas.draw_text_blob(

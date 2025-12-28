@@ -8,8 +8,8 @@ use std::sync::Arc;
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use loopers_common::music::Tempo;
     use super::*;
+    use loopers_common::music::Tempo;
 
     fn sample(v: f32, n: usize) -> Sample {
         Sample {
@@ -25,8 +25,10 @@ mod tests {
         let bpm = 60_000f32 / FrameTime(8).to_ms() as f32;
 
         let mut met = Metronome::new(
-            MetricStructure::new(3, 4,
-                                 Tempo::from_bpm(bpm)).unwrap(), normal, emphasis);
+            MetricStructure::new(3, 4, Tempo::from_bpm(bpm)).unwrap(),
+            normal,
+            emphasis,
+        );
 
         assert_eq!(0, met.time.0);
 

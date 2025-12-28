@@ -13,9 +13,9 @@ use loopers_common::gui_channel::EngineState;
 use loopers_common::music::{MetricStructure, TimeSignature};
 use regex::Regex;
 use sdl2::mouse::MouseButton;
-use skia_safe::gpu::SurfaceOrigin;
+use skia_safe::gpu::ganesh;
+use skia_safe::gpu::ganesh::SurfaceOrigin;
 use skia_safe::paint::Style;
-use skia_safe::path::Path;
 use skia_safe::Rect;
 use skia_safe::*;
 use std::collections::{BTreeMap, HashMap};
@@ -160,11 +160,12 @@ impl AddButton {
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
-        let mut p = Path::new();
+        let mut p = PathBuilder::new();
         p.move_to((0.0, 15.0));
         p.line_to((30.0, 15.0));
         p.move_to((15.0, 0.0));
         p.line_to((15.0, 30.0));
+        let p = p.snapshot();
 
         let on_click = |button: MouseButton| {
             if button == MouseButton::Left {
@@ -219,11 +220,12 @@ impl DeleteButton {
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) {
-        let mut p = Path::new();
+        let mut p = PathBuilder::new();
         p.move_to((0.0, 0.0));
         p.line_to((size, size));
         p.move_to((size, 0.0));
         p.line_to((0.0, size));
+        let p = p.snapshot();
 
         let on_click = |button: MouseButton| {
             if button == MouseButton::Left {
@@ -374,15 +376,14 @@ impl MainPage {
 
             canvas.save();
             canvas.translate(Vector::new(WAVEFORM_OFFSET_X, 0.0));
-            let mut path = Path::new();
-            {
-                path.move_to(Point::new(x - 5.0, 10.0));
-                path.line_to(Point::new(x + 5.0, 10.0));
-                path.move_to(Point::new(x, 10.0));
-                path.line_to(Point::new(x, looper_h));
-                path.move_to(Point::new(x - 5.0, looper_h));
-                path.line_to(Point::new(x + 5.0, looper_h));
-            }
+            let mut path = PathBuilder::new();
+            path.move_to(Point::new(x - 5.0, 10.0));
+            path.line_to(Point::new(x + 5.0, 10.0));
+            path.move_to(Point::new(x, 10.0));
+            path.line_to(Point::new(x, looper_h));
+            path.move_to(Point::new(x - 5.0, looper_h));
+            path.line_to(Point::new(x + 5.0, looper_h));
+            let path = path.snapshot();
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
 
@@ -555,7 +556,7 @@ impl TempoView {
         controller: &mut Controller,
         last_event: Option<GuiEvent>,
     ) -> Size {
-        let font = Font::new(Typeface::default(), 20.0);
+        let font = crate::default_font(20.0);
         let text = &format!(
             "{} bpm",
             data.engine_state.metric_structure.tempo.bpm() as u32
@@ -721,7 +722,7 @@ impl MetronomeView {
 
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        let font = Font::new(Typeface::default(), 20.0);
+        let font = crate::default_font(20.0);
 
         let beat_color = if beat_of_measure == 0 {
             color_for_mode(LooperMode::Playing)
@@ -774,7 +775,7 @@ impl MetronomeView {
             text_paint.set_color(Color::WHITE);
             let lower = data.engine_state.metric_structure.time_signature.lower;
 
-            let font = Font::new(Typeface::default(), 12.0);
+            let font = crate::default_font(12.0);
 
             let x = x + radius * 2.0 + 10.0;
             canvas.draw_str(&upper.to_string(), (x, 10.0), &font, &text_paint);
@@ -946,7 +947,7 @@ impl TimeView {
         ms -= (minutes * 60) as f64;
         let seconds = ms as u64;
 
-        let font = Font::new(Typeface::default(), 20.0);
+        let font = crate::default_font(20.0);
         let mut text_paint = Paint::default();
         text_paint.set_color(Color::WHITE);
         text_paint.set_anti_alias(true);
@@ -1054,7 +1055,7 @@ impl PeakMeterView {
 
         let image_info = ImageInfo::new_n32((w as i32, h as i32), AlphaType::Premul, None);
 
-        let mut surface = gpu::surfaces::render_target(
+        let mut surface = ganesh::surface_ganesh::render_target(
             &mut canvas.recording_context().unwrap(),
             gpu::Budgeted::Yes,
             &image_info,
@@ -1070,7 +1071,7 @@ impl PeakMeterView {
         for (c, v) in self.levels.iter().enumerate() {
             for i in 0..self.lines {
                 let y = Self::y(c, h);
-                let mut path = Path::new();
+                let mut path = PathBuilder::new();
                 let x = i as f32 / self.lines as f32 * w;
 
                 if i < *v {
@@ -1081,6 +1082,7 @@ impl PeakMeterView {
 
                 path.move_to((x, y));
                 path.line_to((x, y + h / 2.0 - 7.0));
+                let path = path.snapshot();
                 surface.canvas().draw_path(&path, paint);
             }
         }
@@ -1149,7 +1151,7 @@ impl PeakMeterView {
         // draw peak
         for (i, (peak, animation)) in self.peaks.iter().enumerate() {
             let y = Self::y(i, h);
-            let mut path = Path::new();
+            let mut path = PathBuilder::new();
             let x = *peak as f32 / self.lines as f32 * w;
             paint.set_color(Self::color(self.lines, *peak));
             if let Some(animation) = animation {
@@ -1157,6 +1159,7 @@ impl PeakMeterView {
             }
             path.move_to((x, y));
             path.line_to((x, y + h / 2.0 - 7.0));
+            let path = path.snapshot();
             canvas.draw_path(&path, &paint);
         }
 
@@ -1170,9 +1173,10 @@ impl PeakMeterView {
             paint.set_stroke_width(2.0);
             paint.set_style(Style::Stroke);
 
-            let mut path = Path::new();
+            let mut path = PathBuilder::new();
             path.move_to((w * level, -5.0));
             path.line_to((w * level, h));
+            let path = path.snapshot();
             canvas.draw_path(&path, &paint);
 
             // handle clicks
@@ -1267,12 +1271,13 @@ impl PlayPauseButton {
             canvas.draw_rect(rect2, &paint);
         } else {
             // draw play icon
-            let mut path = Path::new();
+            let mut path = PathBuilder::new();
             path.move_to((0.0, 0.0));
             path.line_to((0.0, 20.0));
             path.line_to((20.0, 10.0));
             path.line_to((0.0, 0.0));
             path.close();
+            let path = path.snapshot();
             canvas.draw_path(&path, &paint);
         }
 
@@ -1587,7 +1592,7 @@ impl LogMessageView {
     fn draw(canvas: &Canvas, data: &AppData) -> Size {
         let msg = data.messages.cur.as_ref().map(|(_, l)| l.as_str());
         if let Some(msg) = msg.as_ref() {
-            let font = Font::new(Typeface::default(), Some(14.0));
+            let font = crate::default_font(14.0);
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(Color::WHITE);
@@ -1851,7 +1856,7 @@ impl LooperView {
         if looper.speed != LooperSpeed::One {
             let mut paint = Paint::default();
 
-            let font = Font::new(Typeface::default(), 21.0);
+            let font = crate::default_font(21.0);
             let (text, x) = match looper.speed {
                 LooperSpeed::Half => ("½x", 35.0),
                 LooperSpeed::Double => ("2x", 40.0),
@@ -1948,7 +1953,7 @@ impl LooperView {
             }
             paint.set_anti_alias(true);
 
-            let font = Font::new(Typeface::default(), 12.0);
+            let font = crate::default_font(12.0);
             let x = if looper.id > 9 { -8.0 } else { -4.0 };
             canvas.draw_str(&format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
         }
@@ -2068,7 +2073,7 @@ impl<T: Eq + Copy> DrawCache<T> {
             != size
         {
             let image_info = ImageInfo::new_n32(size, AlphaType::Premul, None);
-            let mut surface = gpu::surfaces::render_target(
+            let mut surface = ganesh::surface_ganesh::render_target(
                 &mut canvas.recording_context()?,
                 gpu::Budgeted::Yes,
                 &image_info,
@@ -2228,7 +2233,7 @@ impl WaveformView {
     }
 
     fn path_for_waveform(waveform: [&[f32]; 2], w: f32, h: f32) -> Path {
-        let mut p = Path::new();
+        let mut p = PathBuilder::new();
         p.move_to(Point::new(0.0, h / 2.0));
 
         let len = waveform[0].len();
@@ -2251,7 +2256,7 @@ impl WaveformView {
 
         p.close();
 
-        p
+        p.snapshot()
     }
 
     fn draw_waveform(
@@ -2282,8 +2287,8 @@ impl WaveformView {
         scale: f32,
         canvas: &Canvas,
     ) -> Size {
-        let mut beat_p = Path::new();
-        let mut bar_p = Path::new();
+        let mut beat_p = PathBuilder::new();
+        let mut bar_p = PathBuilder::new();
 
         let ms = data.engine_state.metric_structure;
 
@@ -2308,6 +2313,9 @@ impl WaveformView {
 
             x += beat_width;
         }
+
+        let beat_p = beat_p.snapshot();
+        let bar_p = bar_p.snapshot();
 
         let mut beat_paint = Paint::default();
         beat_paint
@@ -2547,7 +2555,7 @@ impl WaveformView {
                 canvas.draw_rect(rect, &paint);
 
                 if let Some(text) = text {
-                    let font = Font::new(Typeface::default(), 24.0);
+                    let font = crate::default_font(24.0);
                     let mut text_paint = Paint::default();
                     text_paint.set_color(Color::BLACK);
                     text_paint.set_anti_alias(true);

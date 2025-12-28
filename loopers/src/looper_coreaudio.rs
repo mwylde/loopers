@@ -1,5 +1,3 @@
-use std::{io, mem};
-use std::ptr::null;
 use coreaudio::audio_unit::audio_format::LinearPcmFlags;
 use coreaudio::audio_unit::render_callback::{self, data};
 use coreaudio::audio_unit::{AudioUnit, Element, SampleFormat, Scope, StreamFormat};
@@ -10,13 +8,14 @@ use loopers_common::gui_channel::GuiSender;
 use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
+use std::ptr::null;
+use std::{io, mem};
 
 const SAMPLE_RATE: f64 = 44100.0;
 type S = f32;
 const SAMPLE_FORMAT: SampleFormat = SampleFormat::F32;
 
-pub struct CoreAudioHost {
-}
+pub struct CoreAudioHost {}
 
 impl<'a> Host<'a> for CoreAudioHost {
     fn add_looper(&mut self, _: u32) -> Result<(), String> {
@@ -29,24 +28,31 @@ impl<'a> Host<'a> for CoreAudioHost {
         Ok(())
     }
 
-    fn output_for_looper<'b>(&'b mut self, _: u32) -> Option<[&'b mut [f32]; 2]> where 'a: 'b {
+    fn output_for_looper<'b>(&'b mut self, _: u32) -> Option<[&'b mut [f32]; 2]>
+    where
+        'a: 'b,
+    {
         // no per-looper outputs on coreaudio
         None
     }
 }
 
-pub fn coreaudio_main(gui: Option<Gui>,
-                      gui_sender: GuiSender,
-                      gui_to_engine_receiver: Receiver<Command>,
-                      beat_normal: Vec<f32>,
-                      beat_emphasis: Vec<f32>,
-                      restore: bool) -> Result<(), coreaudio::Error> {
+pub fn coreaudio_main(
+    gui: Option<Gui>,
+    gui_sender: GuiSender,
+    gui_to_engine_receiver: Receiver<Command>,
+    beat_normal: Vec<f32>,
+    beat_emphasis: Vec<f32>,
+    restore: bool,
+) -> Result<(), coreaudio::Error> {
     let mut input_audio_unit = audio_unit_from_device(default_input_device().unwrap(), true)?;
     let mut output_audio_unit = audio_unit_from_device(default_output_device().unwrap(), false)?;
 
     let format_flag = match SAMPLE_FORMAT {
         SampleFormat::F32 => LinearPcmFlags::IS_FLOAT,
-        SampleFormat::I24 | SampleFormat::I32 | SampleFormat::I16 | SampleFormat::I8 => LinearPcmFlags::IS_SIGNED_INTEGER,
+        SampleFormat::I24 | SampleFormat::I32 | SampleFormat::I16 | SampleFormat::I8 => {
+            LinearPcmFlags::IS_SIGNED_INTEGER
+        }
     };
 
     // Using IS_NON_INTERLEAVED everywhere because data::Interleaved is commented out / not implemented
@@ -140,13 +146,15 @@ pub fn coreaudio_main(gui: Option<Gui>,
             met_r[i] = 0.0;
         }
 
-        engine.process(&mut host,
-                       [&input_l[0..num_frames], &input_r[0..num_frames]],
-                       &mut output_l[0..num_frames],
-                       &mut output_r[0..num_frames],
-                       [&mut met_l[0..num_frames], &mut met_r[0..num_frames]],
-                       num_frames as u64,
-                       &[][..]);
+        engine.process(
+            &mut host,
+            [&input_l[0..num_frames], &input_r[0..num_frames]],
+            &mut output_l[0..num_frames],
+            &mut output_r[0..num_frames],
+            [&mut met_l[0..num_frames], &mut met_r[0..num_frames]],
+            num_frames as u64,
+            &[][..],
+        );
 
         let outputs = [&output_l, &output_r];
         let mets = [&met_l, &met_r];
@@ -265,4 +273,3 @@ fn audio_unit_from_device(
 
     Ok(audio_unit)
 }
-

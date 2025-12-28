@@ -2,9 +2,7 @@ use crate::{AppData, Controller, GuiEvent, KeyEventKey, KeyEventType, MouseEvent
 use loopers_common::clamp;
 use sdl2::mouse::MouseButton;
 use skia_safe::paint::Style;
-use skia_safe::{
-    Canvas, Color, Contains, Font, Paint, Path, Point, Rect, Size, TextBlob, Typeface,
-};
+use skia_safe::{Canvas, Color, Contains, Font, Paint, PathBuilder, Point, Rect, Size, TextBlob};
 use std::f32::consts::PI;
 use std::time::UNIX_EPOCH;
 
@@ -17,7 +15,7 @@ pub fn draw_circle_indicator(canvas: &Canvas, color: Color, p: f32, x: f32, y: f
 
     paint.set_alpha_f(1.0);
 
-    let mut path = Path::new();
+    let mut path = PathBuilder::new();
     path.move_to(Point::new(x + r, y + r));
     path.line_to(Point::new(x + r, y));
     path.arc_to(
@@ -28,6 +26,7 @@ pub fn draw_circle_indicator(canvas: &Canvas, color: Color, p: f32, x: f32, y: f
     );
     path.line_to(Point::new(x + r, y + r));
     path.close();
+    let path = path.snapshot();
 
     paint.set_stroke_width(2.0);
     paint.set_style(Style::StrokeAndFill);
@@ -92,7 +91,7 @@ pub struct ControlButton {
 
 impl ControlButton {
     pub fn new(text: &str, color: Color, width: Option<f32>, height: f32) -> Self {
-        let font = Font::new(Typeface::default(), 16.0);
+        let font = crate::default_font(16.0);
 
         let text_size = font.measure_str(text, None).1.size();
 
@@ -347,7 +346,7 @@ pub trait TextEditable {
                 }
             } else {
                 text_paint.set_color(Color::BLACK);
-                let mut cursor = Path::new();
+                let mut cursor = PathBuilder::new();
                 let x = if edited.is_empty() {
                     20.0
                 } else {
@@ -356,6 +355,7 @@ pub trait TextEditable {
 
                 cursor.move_to((x, 2.0));
                 cursor.line_to((x, 20.0));
+                let cursor = cursor.snapshot();
                 let mut paint = Paint::default();
                 paint.set_color(Color::BLACK);
                 paint.set_style(Style::Stroke);
@@ -407,16 +407,17 @@ impl PotWidget {
 
         let offset_angle = 20.0;
 
-        let mut path = Path::new();
+        let mut path = PathBuilder::new();
         path.arc_to(
             Rect::from_wh(self.size, self.size),
             180.0 - offset_angle,
             180.0 + offset_angle * 2.0,
             true,
         );
+        let path = path.snapshot();
         canvas.draw_path(&path, &paint);
 
-        let mut path = Path::new();
+        let mut path = PathBuilder::new();
         let r = self.size / 2.0;
         let c = r;
 
@@ -425,6 +426,7 @@ impl PotWidget {
 
         path.move_to((c, c));
         path.line_to((c + (r + 3.0) * angle.cos(), c + (r + 3.0) * angle.sin()));
+        let path = path.snapshot();
 
         let mut bg_paint = Paint::default();
         bg_paint.set_anti_alias(true);

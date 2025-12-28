@@ -64,7 +64,7 @@ const DEFAULT_DRIVER: &str = "coreaudio";
 const DEFAULT_DRIVER: &str = "jack";
 
 fn main() {
-    let drivers = if cfg!(feature = "coreaudio-rs") {
+    let drivers = if cfg!(target_os = "macos") {
         "coreaudio, jack"
     } else {
         "jack"

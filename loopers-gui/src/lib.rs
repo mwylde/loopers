@@ -7,7 +7,7 @@ mod app;
 mod skia;
 mod widgets;
 
-use skia_safe::{Canvas, Size};
+use skia_safe::{Canvas, Font, FontMgr, FontStyle, Size};
 
 use crate::app::MainPage;
 use crossbeam_channel::{Sender, TryRecvError, TrySendError};
@@ -27,6 +27,18 @@ use std::time::{Duration, Instant};
 const SHOW_BUTTONS: bool = true;
 
 pub const MESSAGE_DISPLAY_TIME_SECS: u64 = 4;
+
+pub fn default_font(size: f32) -> Font {
+    let typeface = FontMgr::default().legacy_make_typeface(None, FontStyle::normal());
+    match typeface {
+        Some(typeface) => Font::new(typeface, size),
+        None => {
+            let mut font = Font::default();
+            font.set_size(size);
+            font
+        }
+    }
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MouseEventType {
