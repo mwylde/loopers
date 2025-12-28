@@ -1,6 +1,6 @@
 # Loopers
 
-![master status](https://github.com/mwylde/loopers/workflows/Rust/badge.svg?branch=master)
+![master status](https://github.com/atinm/loopers/workflows/Rust/badge.svg?branch=master)
 [![Crate](https://img.shields.io/crates/v/loopers.svg)](https://crates.io/crates/loopers)
 
 Loopers is a graphical [live looper](http://www.livelooping.org/),
