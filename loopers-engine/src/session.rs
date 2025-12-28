@@ -78,7 +78,7 @@ impl SessionSaver {
         gui_channel: &mut GuiSender,
     ) -> Result<(), SaveLoadError> {
         let now = Local::now();
-        let mut path = (&*sd.path).clone();
+        let mut path = (*sd.path).clone();
         path.push(now.format("%Y-%m-%d_%H:%M:%S").to_string());
 
         create_dir_all(&path)?;
@@ -135,8 +135,9 @@ impl SessionSaver {
             }
         }
 
-        if let Err(_) = write!(gui_channel, "Session saved to {}", path.to_string_lossy())
+        if write!(gui_channel, "Session saved to {}", path.to_string_lossy())
             .and_then(|_| gui_channel.flush())
+            .is_err()
         {
             warn!("failed to write gui message");
         }

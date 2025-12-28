@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-use std::{io, thread};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use jack::{AudioOut, Port, ProcessScope};
-use crossbeam_channel::{bounded, Sender, Receiver};
 use loopers_common::api::Command;
 use loopers_common::gui_channel::GuiSender;
-use loopers_common::Host;
 use loopers_common::midi::MidiEvent;
+use loopers_common::Host;
 use loopers_engine::Engine;
 use loopers_gui::Gui;
+use std::collections::HashMap;
+use std::{io, thread};
 
 enum ClientChange {
     AddPort(u32),
@@ -39,7 +39,10 @@ impl<'a> Host<'a> for JackHost<'a> {
 
     fn remove_looper(&mut self, id: u32) -> Result<(), String> {
         if let Some([l, r]) = self.looper_ports.remove(&id) {
-            if let Err(e) = self.port_change_tx.try_send(ClientChange::RemovePort(id, l, r)) {
+            if let Err(e) = self
+                .port_change_tx
+                .try_send(ClientChange::RemovePort(id, l, r))
+            {
                 warn!("Failed to send port remove request: {:?}", e);
             }
         }
@@ -48,14 +51,11 @@ impl<'a> Host<'a> for JackHost<'a> {
     }
 
     fn output_for_looper<'b>(&'b mut self, id: u32) -> Option<[&'b mut [f32]; 2]>
-        where
-            'a: 'b,
+    where
+        'a: 'b,
     {
-        match self.port_change_resp.try_recv() {
-            Ok(ClientChangeResponse::PortAdded(id, l, r)) => {
-                self.looper_ports.insert(id, [l, r]);
-            }
-            Err(_) => {}
+        if let Ok(ClientChangeResponse::PortAdded(id, l, r)) = self.port_change_resp.try_recv() {
+            self.looper_ports.insert(id, [l, r]);
         }
 
         let ps = self.ps?;
@@ -149,40 +149,34 @@ impl jack::NotificationHandler for Notifications {
     }
 }
 
-pub fn jack_main(gui: Option<Gui>,
-                 gui_sender: GuiSender,
-                 gui_to_engine_receiver: Receiver<Command>,
-                 beat_normal: Vec<f32>,
-                 beat_emphasis: Vec<f32>,
-                 restore: bool) {
+pub fn jack_main(
+    gui: Option<Gui>,
+    gui_sender: GuiSender,
+    gui_to_engine_receiver: Receiver<Command>,
+    beat_normal: Vec<f32>,
+    beat_emphasis: Vec<f32>,
+    restore: bool,
+) {
     // Create client
     let (client, _status) = jack::Client::new("loopers", jack::ClientOptions::NO_START_SERVER)
         .expect("Jack server is not running");
 
     // Register ports. They will be used in a callback that will be
     // called when new data is available.
-    let in_a = client
-        .register_port("in_l", jack::AudioIn::default())
-        .unwrap();
-    let in_b = client
-        .register_port("in_r", jack::AudioIn::default())
-        .unwrap();
-    let mut out_a = client
-        .register_port("main_out_l", jack::AudioOut::default())
-        .unwrap();
-    let mut out_b = client
-        .register_port("main_out_r", jack::AudioOut::default())
-        .unwrap();
+    let in_a = client.register_port("in_l", jack::AudioIn).unwrap();
+    let in_b = client.register_port("in_r", jack::AudioIn).unwrap();
+    let mut out_a = client.register_port("main_out_l", jack::AudioOut).unwrap();
+    let mut out_b = client.register_port("main_out_r", jack::AudioOut).unwrap();
 
     let mut met_out_a = client
-        .register_port("metronome_out_l", jack::AudioOut::default())
+        .register_port("metronome_out_l", jack::AudioOut)
         .unwrap();
     let mut met_out_b = client
-        .register_port("metronome_out_r", jack::AudioOut::default())
+        .register_port("metronome_out_r", jack::AudioOut)
         .unwrap();
 
     let midi_in = client
-        .register_port("loopers_midi_in", jack::MidiIn::default())
+        .register_port("loopers_midi_in", jack::MidiIn)
         .unwrap();
 
     let mut looper_ports: HashMap<u32, [Port<AudioOut>; 2]> = HashMap::new();
@@ -265,46 +259,47 @@ pub fn jack_main(gui: Option<Gui>,
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
 
-    thread::spawn(move || {
-        loop {
-            match port_change_rx.recv() {
-                Ok(ClientChange::AddPort(id)) => {
-                    let l = active_client
-                        .as_client()
-                        .register_port(&format!("loop{}_out_l", id), jack::AudioOut::default())
-                        .map_err(|e| format!("could not create jack port: {:?}", e));
-                    let r = active_client
-                        .as_client()
-                        .register_port(&format!("loop{}_out_r", id), jack::AudioOut::default())
-                        .map_err(|e| format!("could not create jack port: {:?}", e));
+    thread::spawn(move || loop {
+        match port_change_rx.recv() {
+            Ok(ClientChange::AddPort(id)) => {
+                let l = active_client
+                    .as_client()
+                    .register_port(&format!("loop{}_out_l", id), jack::AudioOut)
+                    .map_err(|e| format!("could not create jack port: {:?}", e));
+                let r = active_client
+                    .as_client()
+                    .register_port(&format!("loop{}_out_r", id), jack::AudioOut)
+                    .map_err(|e| format!("could not create jack port: {:?}", e));
 
-                    match (l, r) {
-                        (Ok(l), Ok(r)) => {
-                            if let Err(_) = port_change_resp_tx.send(ClientChangeResponse::PortAdded(id, l, r)) {
-                                break;
-                            }
-                        }
-                        (Err(e), _) | (_, Err(e)) => {
-                            error!("Failed to register port with jack: {:?}", e);
+                match (l, r) {
+                    (Ok(l), Ok(r)) => {
+                        if port_change_resp_tx
+                            .send(ClientChangeResponse::PortAdded(id, l, r))
+                            .is_err()
+                        {
+                            break;
                         }
                     }
-                }
-                Ok(ClientChange::RemovePort(id, l, r)) => {
-                    if let Err(e) = active_client.as_client()
-                        .unregister_port(l).and_then(|()| {
-                        active_client.as_client()
-                            .unregister_port(r)
-                    }) {
-                        error!("Unable to remove jack outputs: {:?}", e);
+                    (Err(e), _) | (_, Err(e)) => {
+                        error!("Failed to register port with jack: {:?}", e);
                     }
-                    info!("removed ports for looper {}", id);
                 }
-                Ok(ClientChange::Shutdown) => {
-                    break;
+            }
+            Ok(ClientChange::RemovePort(id, l, r)) => {
+                if let Err(e) = active_client
+                    .as_client()
+                    .unregister_port(l)
+                    .and_then(|()| active_client.as_client().unregister_port(r))
+                {
+                    error!("Unable to remove jack outputs: {:?}", e);
                 }
-                Err(_) => {
-                    break;
-                }
+                info!("removed ports for looper {}", id);
+            }
+            Ok(ClientChange::Shutdown) => {
+                break;
+            }
+            Err(_) => {
+                break;
             }
         }
     });
@@ -322,7 +317,7 @@ pub fn jack_main(gui: Option<Gui>,
         }
     }
 
-    if let Err(_) = port_change_tx.send(ClientChange::Shutdown) {
+    if port_change_tx.send(ClientChange::Shutdown).is_err() {
         warn!("Failed to shutdown worker thread");
     }
 
