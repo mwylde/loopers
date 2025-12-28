@@ -311,7 +311,7 @@ pub fn jack_main(
         loop {
             let mut user_input = String::new();
             io::stdin().read_line(&mut user_input).ok();
-            if user_input == "q" {
+            if user_input.trim_end() == "q" {
                 break;
             }
         }

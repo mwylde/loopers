@@ -95,7 +95,7 @@ pub fn skia_main(mut gui: Gui) {
         if name == "eglGetCurrentDisplay" {
             return std::ptr::null();
         }
-        video_subsystem.gl_get_proc_address(&name) as *const _
+        video_subsystem.gl_get_proc_address(name) as *const _
     })
     .expect("Unable to create Skia GL interface");
 
@@ -261,7 +261,7 @@ pub fn skia_main(mut gui: Gui) {
         let fps = 1.0 / (avg_frame_time / 1_000_000.0);
 
         let font = crate::default_font(12.0);
-        let text = TextBlob::new(&format!("{:.1} fps", fps), &font).unwrap();
+        let text = TextBlob::new(format!("{:.1} fps", fps), &font).unwrap();
 
         if debug && frame_counter > frame_times.len() {
             canvas.draw_text_blob(

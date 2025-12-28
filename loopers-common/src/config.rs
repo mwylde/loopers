@@ -155,8 +155,7 @@ impl MidiMapping {
         }
 
         if caught_error {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
+            Err(io::Error::other(
                 format!("Failed to parse midi mappings from {}", name),
             ))
         } else {

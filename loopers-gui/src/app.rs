@@ -90,7 +90,7 @@ impl FrameTimeAnimation {
 
     fn value(&self, time: FrameTime) -> f32 {
         let p = (time.to_ms() - self.start_time.to_ms()) as f32 / self.length.as_millis() as f32;
-        self.function.value(p).min(1.0).max(0.0)
+        self.function.value(p).clamp(0.0, 1.0)
     }
 
     #[allow(dead_code)]
@@ -120,7 +120,7 @@ impl ClockTimeAnimation {
             .unwrap_or(Duration::new(0, 0))
             .as_millis() as f32
             / self.length.as_millis() as f32;
-        self.function.value(p).min(1.0).max(0.0)
+        self.function.value(p).clamp(0.0, 1.0)
     }
 
     fn done(&self, time: Instant) -> bool {
@@ -778,8 +778,8 @@ impl MetronomeView {
             let font = crate::default_font(12.0);
 
             let x = x + radius * 2.0 + 10.0;
-            canvas.draw_str(&upper.to_string(), (x, 10.0), &font, &text_paint);
-            canvas.draw_str(&lower.to_string(), (x, 20.0), &font, &text_paint);
+            canvas.draw_str(upper.to_string(), (x, 10.0), &font, &text_paint);
+            canvas.draw_str(lower.to_string(), (x, 20.0), &font, &text_paint);
         }
 
         self.draw_edit(canvas, &font, &bounds, controller, last_event);
@@ -888,7 +888,7 @@ impl MetronomeButton {
             canvas.draw_rect(bounds.with_outset((3.0, 3.0)), &paint);
         }
 
-        paint.set_alpha_f(data.engine_state.metronome_volume.min(1.0).max(0.3));
+        paint.set_alpha_f(data.engine_state.metronome_volume.clamp(0.3, 1.0));
 
         canvas.draw_image_rect_with_sampling_options(
             &self.icon,
@@ -1597,7 +1597,7 @@ impl LogMessageView {
             paint.set_anti_alias(true);
             paint.set_color(Color::WHITE);
 
-            if msg.len() > 0 {
+            if !msg.is_empty() {
                 let blob = TextBlob::new(msg, &font).unwrap();
                 let text_size = font.measure_str(msg, None).1.size();
 
@@ -1955,7 +1955,7 @@ impl LooperView {
 
             let font = crate::default_font(12.0);
             let x = if looper.id > 9 { -8.0 } else { -4.0 };
-            canvas.draw_str(&format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
+            canvas.draw_str(format!("{}", looper.id), Point::new(x, 4.0), &font, &paint);
         }
 
         canvas.restore();

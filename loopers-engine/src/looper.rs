@@ -884,6 +884,7 @@ impl WaveformGenerator {
             self.start_time = time;
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..samples[0].len() {
             if self.size < WAVEFORM_DOWNSAMPLE {
                 #[allow(clippy::needless_range_loop)]
@@ -1714,7 +1715,7 @@ impl Looper {
     ) -> Result<Looper, SaveLoadError> {
         let mut samples = vec![];
         for sample_path in &state.samples {
-            let mut reader = hound::WavReader::open(&path.join(sample_path))?;
+            let mut reader = hound::WavReader::open(path.join(sample_path))?;
 
             let mut sample = Sample::default();
             let mut left = Vec::with_capacity(reader.len() as usize / 2);

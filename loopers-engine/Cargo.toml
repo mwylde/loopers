@@ -1,7 +1,7 @@
 [package]
 name = "loopers-engine"
 version = "0.2.0"
-edition = "2018"
+edition = "2021"
 authors = ["Micah Wylde <micah@micahw.com>"]
 description = "Core engine for loopers project. See loopers-jack for for the main project."
 homepage = "https://github.com/mwylde/loopers"

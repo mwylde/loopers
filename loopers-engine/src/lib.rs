@@ -430,7 +430,7 @@ impl Engine {
         self.sync_mode = session.sync_mode;
 
         if let Some(metronome) = &mut self.metronome {
-            metronome.set_volume((session.metronome_volume as f32 / 100.0).min(1.0).max(0.0));
+            metronome.set_volume((session.metronome_volume as f32 / 100.0).clamp(0.0, 1.0));
         }
 
         for l in &self.loopers {

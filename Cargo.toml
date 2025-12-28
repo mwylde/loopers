@@ -1,2 +1,3 @@
 [workspace]
 members = ["loopers-common", "loopers-engine", "loopers", "loopers-gui"]
+workspace.resolver = "2"
