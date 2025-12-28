@@ -1,25 +1,50 @@
-name: Rust
+name: CI
 
-on: [push]
+on:
+  push:
+  pull_request:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install libjack-dev libgl1-mesa-dev libsdl2-dev
     - name: Build
       run: cargo build -v
     - name: Run tests
       run: cargo test --verbose
+
   build-macos:
-    runs-on: macos-10.14
+    runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: brew install jack sdl2
+    - name: Set SDL2 env
+      run: |
+        echo "SDL2_PATH=$(brew --prefix sdl2)" >> "$GITHUB_ENV"
+        echo "PKG_CONFIG_PATH=$(brew --prefix sdl2)/lib/pkgconfig" >> "$GITHUB_ENV"
+        echo "LIBRARY_PATH=$(brew --prefix sdl2)/lib" >> "$GITHUB_ENV"
+        echo "CPATH=$(brew --prefix sdl2)/include" >> "$GITHUB_ENV"
     - name: Build
-      run: RUSTFLAGS="-L $(brew --prefix)/lib" cargo build -v
+      run: cargo build -v
     - name: Run tests
-      run: RUSTFLAGS="-L $(brew --prefix)/lib" cargo test --verbose
+      run: cargo test --verbose
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Rust fmt
+      run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install libjack-dev libgl1-mesa-dev libsdl2-dev
+    - name: Clippy
+      run: cargo clippy --all-targets -- -D warnings
